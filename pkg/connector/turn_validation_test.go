@@ -12,7 +12,7 @@ func TestIsGoogleModel(t *testing.T) {
 		want  bool
 	}{
 		{"google/gemini-2.5-flash", true},
-		{"google/gemini-3-pro-preview", true},
+		{"google/gemini-3.1-pro-preview", true},
 		{"gemini-pro", true},
 		{"openrouter/google/gemini-flash", true},
 		{"anthropic/claude-sonnet-4.5", false},

@@ -25,7 +25,7 @@ const (
 // Examples:
 //   - "openai/gpt-5.2" → (BackendOpenAI, "gpt-5.2")
 //   - "anthropic/claude-sonnet-4.5" (no routing prefix) → ("", "anthropic/claude-sonnet-4.5")
-//   - "gpt-4o" (no prefix) → ("", "gpt-4o")
+//   - "gpt-4.1" (no prefix) → ("", "gpt-4.1")
 func ParseModelPrefix(modelID string) (backend ModelBackend, actualModel string) {
 	prefix, rest, ok := strings.Cut(modelID, "/")
 	if !ok {

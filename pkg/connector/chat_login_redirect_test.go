@@ -55,7 +55,7 @@ func TestModelRedirectTarget(t *testing.T) {
 }
 
 func TestDMModelSwitchBlockedError(t *testing.T) {
-	err := dmModelSwitchBlockedError("anthropic/claude-3.7-sonnet")
+	err := dmModelSwitchBlockedError("anthropic/claude-sonnet-4.6")
 	if err == nil {
 		t.Fatalf("expected error")
 	}

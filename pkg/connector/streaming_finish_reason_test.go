@@ -87,7 +87,7 @@ func TestBuildCanonicalUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 		}},
 	}
 
-	ui := oc.buildCanonicalUIMessage(state, simpleModeTestMeta("openai/gpt-4o"))
+	ui := oc.buildCanonicalUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"))
 	if ui == nil {
 		t.Fatalf("expected canonical message")
 	}

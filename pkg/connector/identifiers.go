@@ -65,7 +65,7 @@ func defaultChatPortalKey(loginID networkid.UserLoginID) networkid.PortalKey {
 }
 
 func modelUserID(modelID string) networkid.UserID {
-	// Convert "gpt-4o" to "model-gpt-4o"
+	// Convert "gpt-4.1" to "model-gpt-4.1"
 	return networkid.UserID(fmt.Sprintf("model-%s", url.PathEscape(modelID)))
 }
 

@@ -53,7 +53,6 @@ var modelConfig = struct {
 		"google/gemini-2.5-pro":                "Gemini 2.5 Pro",
 		"google/gemini-3-flash-preview":        "Gemini 3 Flash",
 		"google/gemini-3-pro-image-preview":    "Nano Banana Pro",
-		"google/gemini-3-pro-preview":          "Gemini 3 Pro",
 		"google/gemini-3.1-flash-lite-preview": "Gemini 3.1 Flash Lite",
 		"google/gemini-3.1-pro-preview":        "Gemini 3.1 Pro",
 		// For Gemini image generation, use Nano Banana / Nano Banana Pro.
