@@ -15,6 +15,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
@@ -647,6 +648,7 @@ func extractAttachmentMetadata(message map[string]any) []map[string]any {
 }
 
 func (m *openClawManager) eventLoop(ctx context.Context, events <-chan gatewayEvent) {
+	defer m.handleEventLoopExit(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -657,6 +659,25 @@ func (m *openClawManager) eventLoop(ctx context.Context, events <-chan gatewayEv
 			}
 			m.handleEvent(ctx, evt)
 		}
+	}
+}
+
+func (m *openClawManager) handleEventLoopExit(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	m.mu.Lock()
+	m.gateway = nil
+	m.cancel = nil
+	m.started = make(map[string]struct{})
+	m.resyncing = make(map[string]time.Time)
+	m.mu.Unlock()
+	m.client.loggedIn.Store(false)
+	if m.client.UserLogin != nil {
+		m.client.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Message:    "Gateway connection closed",
+		})
 	}
 }
 

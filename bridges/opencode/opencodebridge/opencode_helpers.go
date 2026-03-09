@@ -2,7 +2,14 @@ package opencodebridge
 
 import (
 	"net/url"
+	"path/filepath"
 	"strings"
+)
+
+const (
+	OpenCodeModeRemote          = "remote"
+	OpenCodeModeManagedLauncher = "managed_launcher"
+	OpenCodeModeManaged         = "managed"
 )
 
 func (b *Bridge) InstanceConfig(instanceID string) *OpenCodeInstance {
@@ -28,6 +35,23 @@ func opencodeLabelFromURL(cfg *OpenCodeInstance) string {
 	label := "OpenCode"
 	if cfg == nil {
 		return label
+	}
+	switch cfg.Mode {
+	case OpenCodeModeManagedLauncher:
+		return "Managed OpenCode"
+	case OpenCodeModeManaged:
+		dir := strings.TrimSpace(cfg.WorkingDirectory)
+		if dir == "" {
+			dir = strings.TrimSpace(cfg.DefaultDirectory)
+		}
+		if dir == "" {
+			return "Managed OpenCode"
+		}
+		base := filepath.Base(dir)
+		if base == "." || base == string(filepath.Separator) || base == "" {
+			return "Managed OpenCode"
+		}
+		return "OpenCode (" + base + ")"
 	}
 	raw := strings.TrimSpace(cfg.URL)
 	if raw == "" {

@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 
@@ -60,12 +61,7 @@ func (oc *OpenCodeConnector) GetBridgeInfoVersion() (info, capabilities int) {
 }
 
 func (oc *OpenCodeConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	meta := portalMeta(portal)
-	if meta.IsOpenCodeRoom {
-		content.BeeperRoomTypeV2 = "opencode"
-	} else {
-		content.BeeperRoomTypeV2 = "chat"
-	}
+	content.BeeperRoomTypeV2 = "ai"
 }
 
 func (oc *OpenCodeConnector) GetName() bridgev2.BridgeName {
@@ -119,18 +115,33 @@ func (oc *OpenCodeConnector) LoadUserLogin(_ context.Context, login *bridgev2.Us
 }
 
 func (oc *OpenCodeConnector) GetLoginFlows() []bridgev2.LoginFlow {
-	return bridgeadapter.SingleLoginFlow(oc.openCodeEnabled(), bridgev2.LoginFlow{
-		ID:          ProviderOpenCode,
-		Name:        "OpenCode",
-		Description: "Create a login for an OpenCode server instance.",
-	})
+	if !oc.openCodeEnabled() {
+		return nil
+	}
+	return []bridgev2.LoginFlow{
+		{
+			ID:          FlowOpenCodeRemote,
+			Name:        "Remote OpenCode",
+			Description: "Connect to an already running OpenCode server.",
+		},
+		{
+			ID:          FlowOpenCodeManaged,
+			Name:        "Managed OpenCode",
+			Description: "Let the bridge spawn and manage OpenCode processes for you.",
+		},
+	}
 }
 
 func (oc *OpenCodeConnector) CreateLogin(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-	if err := bridgeadapter.ValidateSingleLoginFlow(flowID, ProviderOpenCode, oc.openCodeEnabled()); err != nil {
-		return nil, err
+	if !oc.openCodeEnabled() {
+		return nil, bridgev2.ErrNotLoggedIn
 	}
-	return &OpenCodeLogin{User: user, Connector: oc}, nil
+	if !slices.ContainsFunc(oc.GetLoginFlows(), func(flow bridgev2.LoginFlow) bool {
+		return flow.ID == flowID
+	}) {
+		return nil, bridgev2.ErrInvalidLoginFlowID
+	}
+	return &OpenCodeLogin{User: user, Connector: oc, FlowID: flowID}, nil
 }
 
 func (oc *OpenCodeConnector) openCodeEnabled() bool {

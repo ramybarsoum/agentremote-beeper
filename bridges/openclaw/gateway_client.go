@@ -26,8 +26,8 @@ import (
 
 const (
 	openClawProtocolVersion      = 3
-	openClawGatewayClientID      = "ai-bridge-openclaw"
-	openClawGatewayClientMode    = "operator"
+	openClawGatewayClientID      = "gateway-client"
+	openClawGatewayClientMode    = "backend"
 	openClawGatewayDisplayName   = "ai-bridge openclaw"
 	openClawGatewayDeviceFamily  = "bridge"
 	openClawDefaultSessionLimit  = 1000
@@ -42,39 +42,58 @@ type gatewayConnectConfig struct {
 }
 
 type gatewaySessionRow struct {
-	Key                string         `json:"key"`
-	Kind               string         `json:"kind"`
-	Label              string         `json:"label,omitempty"`
-	DisplayName        string         `json:"displayName,omitempty"`
-	DerivedTitle       string         `json:"derivedTitle,omitempty"`
-	LastMessagePreview string         `json:"lastMessagePreview,omitempty"`
-	Channel            string         `json:"channel,omitempty"`
-	Subject            string         `json:"subject,omitempty"`
-	GroupChannel       string         `json:"groupChannel,omitempty"`
-	Space              string         `json:"space,omitempty"`
-	ChatType           string         `json:"chatType,omitempty"`
-	Origin             string         `json:"origin,omitempty"`
-	UpdatedAt          int64          `json:"updatedAt,omitempty"`
-	SessionID          string         `json:"sessionId,omitempty"`
-	SystemSent         bool           `json:"systemSent,omitempty"`
-	AbortedLastRun     bool           `json:"abortedLastRun,omitempty"`
-	ThinkingLevel      string         `json:"thinkingLevel,omitempty"`
-	VerboseLevel       string         `json:"verboseLevel,omitempty"`
-	ReasoningLevel     string         `json:"reasoningLevel,omitempty"`
-	ElevatedLevel      string         `json:"elevatedLevel,omitempty"`
-	SendPolicy         string         `json:"sendPolicy,omitempty"`
-	InputTokens        int64          `json:"inputTokens,omitempty"`
-	OutputTokens       int64          `json:"outputTokens,omitempty"`
-	TotalTokens        int64          `json:"totalTokens,omitempty"`
-	TotalTokensFresh   bool           `json:"totalTokensFresh,omitempty"`
-	ResponseUsage      string         `json:"responseUsage,omitempty"`
-	ModelProvider      string         `json:"modelProvider,omitempty"`
-	Model              string         `json:"model,omitempty"`
-	ContextTokens      int64          `json:"contextTokens,omitempty"`
-	DeliveryContext    map[string]any `json:"deliveryContext,omitempty"`
-	LastChannel        string         `json:"lastChannel,omitempty"`
-	LastTo             string         `json:"lastTo,omitempty"`
-	LastAccountID      string         `json:"lastAccountId,omitempty"`
+	Key                string          `json:"key"`
+	Kind               string          `json:"kind"`
+	Label              string          `json:"label,omitempty"`
+	DisplayName        string          `json:"displayName,omitempty"`
+	DerivedTitle       string          `json:"derivedTitle,omitempty"`
+	LastMessagePreview string          `json:"lastMessagePreview,omitempty"`
+	Channel            string          `json:"channel,omitempty"`
+	Subject            string          `json:"subject,omitempty"`
+	GroupChannel       string          `json:"groupChannel,omitempty"`
+	Space              string          `json:"space,omitempty"`
+	ChatType           string          `json:"chatType,omitempty"`
+	Origin             json.RawMessage `json:"origin,omitempty"`
+	UpdatedAt          int64           `json:"updatedAt,omitempty"`
+	SessionID          string          `json:"sessionId,omitempty"`
+	SystemSent         bool            `json:"systemSent,omitempty"`
+	AbortedLastRun     bool            `json:"abortedLastRun,omitempty"`
+	ThinkingLevel      string          `json:"thinkingLevel,omitempty"`
+	VerboseLevel       string          `json:"verboseLevel,omitempty"`
+	ReasoningLevel     string          `json:"reasoningLevel,omitempty"`
+	ElevatedLevel      string          `json:"elevatedLevel,omitempty"`
+	SendPolicy         string          `json:"sendPolicy,omitempty"`
+	InputTokens        int64           `json:"inputTokens,omitempty"`
+	OutputTokens       int64           `json:"outputTokens,omitempty"`
+	TotalTokens        int64           `json:"totalTokens,omitempty"`
+	TotalTokensFresh   bool            `json:"totalTokensFresh,omitempty"`
+	ResponseUsage      string          `json:"responseUsage,omitempty"`
+	ModelProvider      string          `json:"modelProvider,omitempty"`
+	Model              string          `json:"model,omitempty"`
+	ContextTokens      int64           `json:"contextTokens,omitempty"`
+	DeliveryContext    map[string]any  `json:"deliveryContext,omitempty"`
+	LastChannel        string          `json:"lastChannel,omitempty"`
+	LastTo             string          `json:"lastTo,omitempty"`
+	LastAccountID      string          `json:"lastAccountId,omitempty"`
+}
+
+func (row gatewaySessionRow) OriginString() string {
+	if len(row.Origin) == 0 || string(row.Origin) == "null" {
+		return ""
+	}
+	var rawString string
+	if err := json.Unmarshal(row.Origin, &rawString); err == nil {
+		return strings.TrimSpace(rawString)
+	}
+	compact := make(map[string]any)
+	if err := json.Unmarshal(row.Origin, &compact); err != nil {
+		return strings.TrimSpace(string(row.Origin))
+	}
+	encoded, err := json.Marshal(compact)
+	if err != nil {
+		return strings.TrimSpace(string(row.Origin))
+	}
+	return string(encoded)
 }
 
 type gatewaySessionsListResponse struct {
@@ -253,9 +272,78 @@ type gatewayResponseFrame struct {
 	OK      bool            `json:"ok"`
 	Payload json.RawMessage `json:"payload,omitempty"`
 	Error   *struct {
-		Code    string `json:"code,omitempty"`
-		Message string `json:"message,omitempty"`
+		Code    string          `json:"code,omitempty"`
+		Message string          `json:"message,omitempty"`
+		Details json.RawMessage `json:"details,omitempty"`
 	} `json:"error,omitempty"`
+}
+
+type gatewayErrorDetails struct {
+	Code      string `json:"code,omitempty"`
+	RequestID string `json:"requestId,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+type gatewayRPCError struct {
+	Method     string
+	Code       string
+	Message    string
+	DetailCode string
+	RequestID  string
+	Reason     string
+}
+
+func (e *gatewayRPCError) Error() string {
+	if e == nil {
+		return ""
+	}
+	msg := strings.TrimSpace(e.Message)
+	if msg == "" {
+		msg = "gateway request failed"
+	}
+	if requestID := strings.TrimSpace(e.RequestID); requestID != "" {
+		return fmt.Sprintf("%s (requestId: %s)", msg, requestID)
+	}
+	return msg
+}
+
+func (e *gatewayRPCError) IsPairingRequired() bool {
+	if e == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(e.DetailCode), "PAIRING_REQUIRED") ||
+		strings.EqualFold(strings.TrimSpace(e.Message), "pairing required") ||
+		strings.Contains(strings.ToLower(e.Error()), "pairing required")
+}
+
+func newGatewayRPCError(method string, res gatewayResponseFrame) error {
+	msg := method + " failed"
+	code := ""
+	detailCode := ""
+	requestID := ""
+	reason := ""
+	if res.Error != nil {
+		if strings.TrimSpace(res.Error.Message) != "" {
+			msg = strings.TrimSpace(res.Error.Message)
+		}
+		code = strings.TrimSpace(res.Error.Code)
+		if len(res.Error.Details) > 0 {
+			var details gatewayErrorDetails
+			if err := json.Unmarshal(res.Error.Details, &details); err == nil {
+				detailCode = strings.TrimSpace(details.Code)
+				requestID = strings.TrimSpace(details.RequestID)
+				reason = strings.TrimSpace(details.Reason)
+			}
+		}
+	}
+	return &gatewayRPCError{
+		Method:     method,
+		Code:       code,
+		Message:    msg,
+		DetailCode: detailCode,
+		RequestID:  requestID,
+		Reason:     reason,
+	}
 }
 
 type gatewayEventFrame struct {
@@ -335,12 +423,10 @@ func (c *gatewayWSClient) Connect(ctx context.Context) (string, error) {
 		_ = conn.Close(websocket.StatusPolicyViolation, "connect response failed")
 		return "", err
 	} else if !res.OK {
-		msg := "gateway connect failed"
-		if res.Error != nil && strings.TrimSpace(res.Error.Message) != "" {
-			msg = strings.TrimSpace(res.Error.Message)
-		}
+		rpcErr := newGatewayRPCError("connect", *res)
+		msg := rpcErr.Error()
 		_ = conn.Close(websocket.StatusPolicyViolation, msg)
-		return "", errors.New(msg)
+		return "", rpcErr
 	}
 
 	deviceToken := parseHelloDeviceToken(res.Payload)
@@ -594,11 +680,7 @@ func (c *gatewayWSClient) Request(ctx context.Context, method string, params map
 	select {
 	case res := <-respCh:
 		if !res.OK {
-			msg := method + " failed"
-			if res.Error != nil && strings.TrimSpace(res.Error.Message) != "" {
-				msg = strings.TrimSpace(res.Error.Message)
-			}
-			return errors.New(msg)
+			return newGatewayRPCError(method, res)
 		}
 		if out == nil || len(res.Payload) == 0 {
 			return nil
@@ -727,8 +809,9 @@ func (c *gatewayWSClient) failPending(err error) {
 			ID:   id,
 			OK:   false,
 			Error: &struct {
-				Code    string `json:"code,omitempty"`
-				Message string `json:"message,omitempty"`
+				Code    string          `json:"code,omitempty"`
+				Message string          `json:"message,omitempty"`
+				Details json.RawMessage `json:"details,omitempty"`
 			}{Message: err.Error()},
 		}:
 		default:
@@ -738,9 +821,11 @@ func (c *gatewayWSClient) failPending(err error) {
 
 func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, nonce string) (map[string]any, error) {
 	scopes := []string{"operator.read", "operator.write", "operator.approvals"}
-	authToken := strings.TrimSpace(c.cfg.DeviceToken)
+	sharedToken := strings.TrimSpace(c.cfg.Token)
+	deviceToken := strings.TrimSpace(c.cfg.DeviceToken)
+	authToken := sharedToken
 	if authToken == "" {
-		authToken = strings.TrimSpace(c.cfg.Token)
+		authToken = deviceToken
 	}
 	params := map[string]any{
 		"minProtocol": openClawProtocolVersion,
@@ -753,14 +838,20 @@ func (c *gatewayWSClient) buildConnectParams(identity *gatewayDeviceIdentity, no
 			"mode":         openClawGatewayClientMode,
 			"deviceFamily": openClawGatewayDeviceFamily,
 		},
-		"role":      "operator",
-		"scopes":    scopes,
-		"caps":      []string{},
-		"locale":    "en-US",
-		"userAgent": "ai-bridge/openclaw",
+		"role":        "operator",
+		"scopes":      scopes,
+		"caps":        []string{},
+		"commands":    []string{},
+		"permissions": map[string]bool{},
+		"locale":      "en-US",
+		"userAgent":   "ai-bridge/openclaw",
 	}
 	if authToken != "" {
-		params["auth"] = map[string]any{"token": authToken}
+		auth := map[string]any{"token": authToken}
+		if deviceToken != "" {
+			auth["deviceToken"] = deviceToken
+		}
+		params["auth"] = auth
 	} else if strings.TrimSpace(c.cfg.Password) != "" {
 		params["auth"] = map[string]any{"password": strings.TrimSpace(c.cfg.Password)}
 	}

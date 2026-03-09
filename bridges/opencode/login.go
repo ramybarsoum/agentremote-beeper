@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -22,13 +25,18 @@ var (
 )
 
 const (
-	openCodeLoginStepCredentials = "io.ai-bridge.opencode.enter_credentials"
-	defaultOpenCodeUsername      = "opencode"
+	FlowOpenCodeRemote  = "opencode_remote"
+	FlowOpenCodeManaged = "opencode_managed"
+
+	openCodeLoginStepRemoteCredentials  = "io.ai-bridge.opencode.enter_remote_credentials"
+	openCodeLoginStepManagedCredentials = "io.ai-bridge.opencode.enter_managed_credentials"
+	defaultOpenCodeUsername             = "opencode"
 )
 
 type OpenCodeLogin struct {
 	User      *bridgev2.User
 	Connector *OpenCodeConnector
+	FlowID    string
 
 	bgMu     sync.Mutex
 	bgCtx    context.Context
@@ -49,35 +57,64 @@ func (ol *OpenCodeLogin) Start(_ context.Context) (*bridgev2.LoginStep, error) {
 	if err := ol.validate(); err != nil {
 		return nil, err
 	}
-	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeUserInput,
-		StepID:       openCodeLoginStepCredentials,
-		Instructions: "Enter your OpenCode server details.",
-		UserInputParams: &bridgev2.LoginUserInputParams{
-			Fields: []bridgev2.LoginInputDataField{
-				{
-					Type:         bridgev2.LoginInputFieldTypeURL,
-					ID:           "url",
-					Name:         "Server URL",
-					Description:  "OpenCode server URL, e.g. http://localhost:4096",
-					DefaultValue: "http://localhost:4096",
-				},
-				{
-					Type:         bridgev2.LoginInputFieldTypeUsername,
-					ID:           "username",
-					Name:         "Username",
-					Description:  "Optional HTTP basic-auth username.",
-					DefaultValue: defaultOpenCodeUsername,
-				},
-				{
-					Type:        bridgev2.LoginInputFieldTypePassword,
-					ID:          "password",
-					Name:        "Password",
-					Description: "Optional HTTP basic-auth password.",
+	switch ol.FlowID {
+	case FlowOpenCodeRemote:
+		return &bridgev2.LoginStep{
+			Type:         bridgev2.LoginStepTypeUserInput,
+			StepID:       openCodeLoginStepRemoteCredentials,
+			Instructions: "Enter your remote OpenCode server details.",
+			UserInputParams: &bridgev2.LoginUserInputParams{
+				Fields: []bridgev2.LoginInputDataField{
+					{
+						Type:         bridgev2.LoginInputFieldTypeURL,
+						ID:           "url",
+						Name:         "Server URL",
+						Description:  "OpenCode server URL, e.g. http://127.0.0.1:4096",
+						DefaultValue: "http://127.0.0.1:4096",
+					},
+					{
+						Type:         bridgev2.LoginInputFieldTypeUsername,
+						ID:           "username",
+						Name:         "Username",
+						Description:  "Optional HTTP basic-auth username.",
+						DefaultValue: defaultOpenCodeUsername,
+					},
+					{
+						Type:        bridgev2.LoginInputFieldTypePassword,
+						ID:          "password",
+						Name:        "Password",
+						Description: "Optional HTTP basic-auth password.",
+					},
 				},
 			},
-		},
-	}, nil
+		}, nil
+	case FlowOpenCodeManaged:
+		return &bridgev2.LoginStep{
+			Type:         bridgev2.LoginStepTypeUserInput,
+			StepID:       openCodeLoginStepManagedCredentials,
+			Instructions: "Enter how the bridge should spawn OpenCode.",
+			UserInputParams: &bridgev2.LoginUserInputParams{
+				Fields: []bridgev2.LoginInputDataField{
+					{
+						Type:         bridgev2.LoginInputFieldTypeUsername,
+						ID:           "binary_path",
+						Name:         "Binary Path",
+						Description:  "Path to the opencode binary the bridge should launch.",
+						DefaultValue: defaultManagedOpenCodeBinary(),
+					},
+					{
+						Type:         bridgev2.LoginInputFieldTypeUsername,
+						ID:           "default_path",
+						Name:         "Default Path",
+						Description:  "Default working directory when you leave the path blank in chat.",
+						DefaultValue: defaultManagedOpenCodeDirectory(),
+					},
+				},
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("login flow %s is not available", ol.FlowID)
+	}
 }
 
 func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
@@ -85,26 +122,22 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 		return nil, err
 	}
 
-	normalizedURL, err := openCodeAPI.NormalizeBaseURL(input["url"])
+	var (
+		instances  map[string]*opencodebridge.OpenCodeInstance
+		remoteName string
+		instanceID string
+		err        error
+	)
+	switch ol.FlowID {
+	case FlowOpenCodeRemote:
+		instances, remoteName, instanceID, err = ol.buildRemoteInstances(input)
+	case FlowOpenCodeManaged:
+		instances, remoteName, instanceID, err = ol.buildManagedInstances(input)
+	default:
+		err = fmt.Errorf("login flow %s is not available", ol.FlowID)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("invalid url: %w", err)
-	}
-	username := strings.TrimSpace(input["username"])
-	if username == "" {
-		username = defaultOpenCodeUsername
-	}
-	password := strings.TrimSpace(input["password"])
-	instanceID := opencodebridge.OpenCodeInstanceID(normalizedURL, username)
-	remoteName := openCodeRemoteName(normalizedURL, username)
-
-	instances := map[string]*opencodebridge.OpenCodeInstance{
-		instanceID: {
-			ID:          instanceID,
-			URL:         normalizedURL,
-			Username:    username,
-			Password:    password,
-			HasPassword: password != "",
-		},
+		return nil, err
 	}
 
 	for _, existing := range ol.User.GetUserLogins() {
@@ -156,6 +189,49 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	return openCodeCompleteStep(login), nil
 }
 
+func (ol *OpenCodeLogin) buildRemoteInstances(input map[string]string) (map[string]*opencodebridge.OpenCodeInstance, string, string, error) {
+	normalizedURL, err := openCodeAPI.NormalizeBaseURL(input["url"])
+	if err != nil {
+		return nil, "", "", fmt.Errorf("invalid url: %w", err)
+	}
+	username := strings.TrimSpace(input["username"])
+	if username == "" {
+		username = defaultOpenCodeUsername
+	}
+	password := strings.TrimSpace(input["password"])
+	instanceID := opencodebridge.OpenCodeInstanceID(normalizedURL, username)
+	return map[string]*opencodebridge.OpenCodeInstance{
+		instanceID: {
+			ID:          instanceID,
+			Mode:        opencodebridge.OpenCodeModeRemote,
+			URL:         normalizedURL,
+			Username:    username,
+			Password:    password,
+			HasPassword: password != "",
+		},
+	}, openCodeRemoteName(normalizedURL, username), instanceID, nil
+}
+
+func (ol *OpenCodeLogin) buildManagedInstances(input map[string]string) (map[string]*opencodebridge.OpenCodeInstance, string, string, error) {
+	binaryPath, err := resolveManagedOpenCodeBinary(input["binary_path"])
+	if err != nil {
+		return nil, "", "", err
+	}
+	defaultPath, err := resolveManagedOpenCodeDirectory(input["default_path"])
+	if err != nil {
+		return nil, "", "", err
+	}
+	instanceID := opencodebridge.OpenCodeManagedLauncherID(string(ol.User.MXID))
+	return map[string]*opencodebridge.OpenCodeInstance{
+		instanceID: {
+			ID:               instanceID,
+			Mode:             opencodebridge.OpenCodeModeManagedLauncher,
+			BinaryPath:       binaryPath,
+			DefaultDirectory: defaultPath,
+		},
+	}, openCodeManagedRemoteName(defaultPath), instanceID, nil
+}
+
 func openCodeCompleteStep(login *bridgev2.UserLogin) *bridgev2.LoginStep {
 	return &bridgev2.LoginStep{
 		Type:   bridgev2.LoginStepTypeComplete,
@@ -176,6 +252,62 @@ func openCodeRemoteName(baseURL, username string) string {
 		return "OpenCode (" + parsed.Host + ")"
 	}
 	return fmt.Sprintf("OpenCode (%s@%s)", username, parsed.Host)
+}
+
+func openCodeManagedRemoteName(defaultPath string) string {
+	defaultPath = strings.TrimSpace(defaultPath)
+	if defaultPath == "" {
+		return "Managed OpenCode"
+	}
+	return fmt.Sprintf("Managed OpenCode (%s)", filepath.Base(defaultPath))
+}
+
+func defaultManagedOpenCodeBinary() string {
+	if path, err := exec.LookPath("opencode"); err == nil {
+		return path
+	}
+	return "opencode"
+}
+
+func resolveManagedOpenCodeBinary(input string) (string, error) {
+	value := strings.TrimSpace(input)
+	if value == "" {
+		value = defaultManagedOpenCodeBinary()
+	}
+	resolved, err := exec.LookPath(value)
+	if err != nil {
+		return "", fmt.Errorf("invalid opencode binary path: %w", err)
+	}
+	return resolved, nil
+}
+
+func defaultManagedOpenCodeDirectory() string {
+	if wd, err := os.Getwd(); err == nil {
+		return wd
+	}
+	return ""
+}
+
+func resolveManagedOpenCodeDirectory(input string) (string, error) {
+	value := strings.TrimSpace(input)
+	if value == "" {
+		value = defaultManagedOpenCodeDirectory()
+	}
+	if value == "" {
+		return "", errors.New("default_path is required")
+	}
+	abs, err := filepath.Abs(value)
+	if err != nil {
+		return "", fmt.Errorf("invalid default path: %w", err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", fmt.Errorf("default path is not accessible: %w", err)
+	}
+	if !info.IsDir() {
+		return "", errors.New("default path must be a directory")
+	}
+	return abs, nil
 }
 
 func (ol *OpenCodeLogin) backgroundProcessContext() context.Context {

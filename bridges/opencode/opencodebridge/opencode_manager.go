@@ -90,6 +90,9 @@ func (m *OpenCodeManager) DisconnectAll() {
 			continue
 		}
 		inst.cancelAndStopTimer()
+		if inst.process != nil {
+			_ = inst.process.Close()
+		}
 	}
 	m.instances = make(map[string]*openCodeInstance)
 }
@@ -99,17 +102,13 @@ func (m *OpenCodeManager) RestoreConnections(ctx context.Context) error {
 		return nil
 	}
 	for _, cfg := range m.bridge.host.OpenCodeInstances() {
-		if cfg == nil || strings.TrimSpace(cfg.URL) == "" {
+		if cfg == nil {
 			continue
 		}
-		password := strings.TrimSpace(cfg.Password)
-		if cfg.HasPassword && password == "" {
-			m.log().Warn().
-				Str("instance", cfg.ID).
-				Msg("Skipping OpenCode restore because the password is missing from persisted metadata")
+		if cfg.Mode == OpenCodeModeManagedLauncher {
 			continue
 		}
-		if _, _, err := m.Connect(ctx, cfg.URL, password, cfg.Username); err != nil {
+		if _, _, err := m.connectConfiguredInstance(ctx, cfg); err != nil {
 			m.log().Warn().Err(err).Str("instance", cfg.ID).Msg("Failed to restore OpenCode instance")
 		}
 	}
@@ -117,42 +116,92 @@ func (m *OpenCodeManager) RestoreConnections(ctx context.Context) error {
 }
 
 func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, username string) (*openCodeInstance, int, error) {
+	return m.connectConfiguredInstance(ctx, &OpenCodeInstance{
+		ID:          OpenCodeInstanceID(baseURL, username),
+		Mode:        OpenCodeModeRemote,
+		URL:         baseURL,
+		Username:    username,
+		Password:    password,
+		HasPassword: strings.TrimSpace(password) != "",
+	})
+}
+
+func (m *OpenCodeManager) connectConfiguredInstance(ctx context.Context, cfg *OpenCodeInstance) (*openCodeInstance, int, error) {
 	if m == nil || m.bridge == nil || m.bridge.host == nil {
 		return nil, 0, errors.New("opencode manager unavailable")
 	}
-	if strings.TrimSpace(baseURL) == "" {
+	if cfg == nil {
+		return nil, 0, errors.New("instance config is required")
+	}
+
+	cfgCopy := *cfg
+	if cfgCopy.Mode == "" {
+		cfgCopy.Mode = OpenCodeModeRemote
+	}
+	if cfgCopy.Mode == OpenCodeModeManagedLauncher {
+		return nil, 0, errors.New("managed launcher instances are not directly connectable")
+	}
+
+	var proc *managedOpenCodeProcess
+	if cfgCopy.Mode == OpenCodeModeManaged && strings.TrimSpace(cfgCopy.WorkingDirectory) != "" {
+		if strings.TrimSpace(cfgCopy.URL) != "" {
+			if inst, count, err := m.connectInstanceClient(ctx, &cfgCopy, nil); err == nil {
+				return inst, count, nil
+			}
+		}
+		managedProc, err := m.spawnManagedProcess(ctx, &cfgCopy, cfgCopy.WorkingDirectory)
+		if err != nil {
+			return nil, 0, fmt.Errorf("spawn managed opencode: %w", err)
+		}
+		cfgCopy.URL = managedProc.url
+		cfgCopy.Username = "opencode"
+		cfgCopy.Password = ""
+		cfgCopy.HasPassword = false
+		proc = managedProc
+	}
+
+	if strings.TrimSpace(cfgCopy.URL) == "" {
 		return nil, 0, errors.New("url is required")
 	}
-	user := strings.TrimSpace(username)
+	user := strings.TrimSpace(cfgCopy.Username)
 	if user == "" {
 		user = "opencode"
 	}
 
-	normalized, err := opencode.NormalizeBaseURL(baseURL)
+	normalized, err := opencode.NormalizeBaseURL(cfgCopy.URL)
 	if err != nil {
 		return nil, 0, fmt.Errorf("normalize url: %w", err)
 	}
-	instanceID := OpenCodeInstanceID(normalized, user)
+	cfgCopy.URL = normalized
+	cfgCopy.Username = user
+	if cfgCopy.ID == "" {
+		cfgCopy.ID = OpenCodeInstanceID(normalized, user)
+	}
+	if cfgCopy.Mode == OpenCodeModeRemote {
+		cfgCopy.Password = strings.TrimSpace(cfgCopy.Password)
+		cfgCopy.HasPassword = cfgCopy.Password != ""
+	}
+	return m.connectInstanceClient(ctx, &cfgCopy, proc)
+}
 
-	client, err := opencode.NewClient(normalized, user, password)
+func (m *OpenCodeManager) connectInstanceClient(ctx context.Context, cfg *OpenCodeInstance, proc *managedOpenCodeProcess) (*openCodeInstance, int, error) {
+	client, err := opencode.NewClient(cfg.URL, cfg.Username, cfg.Password)
 	if err != nil {
 		return nil, 0, fmt.Errorf("create client: %w", err)
 	}
 	sessions, err := client.ListSessions(ctx)
 	if err != nil {
+		if proc != nil {
+			_ = proc.Close()
+		}
 		return nil, 0, fmt.Errorf("list sessions: %w", err)
 	}
 
 	inst := &openCodeInstance{
-		cfg: OpenCodeInstance{
-			ID:          instanceID,
-			URL:         normalized,
-			Username:    user,
-			Password:    strings.TrimSpace(password),
-			HasPassword: strings.TrimSpace(password) != "",
-		},
-		password:       strings.TrimSpace(password),
+		cfg:            *cfg,
+		password:       strings.TrimSpace(cfg.Password),
 		client:         client,
+		process:        proc,
 		connected:      true,
 		seenMsg:        make(map[string]map[string]string),
 		seenPart:       make(map[string]map[string]*openCodePartState),
@@ -162,14 +211,17 @@ func (m *OpenCodeManager) Connect(ctx context.Context, baseURL, password, userna
 	}
 
 	m.mu.Lock()
-	if existing := m.instances[instanceID]; existing != nil {
+	if existing := m.instances[cfg.ID]; existing != nil {
 		existing.cancelAndStopTimer()
+		if existing.process != nil {
+			_ = existing.process.Close()
+		}
 	}
-	m.instances[instanceID] = inst
+	m.instances[cfg.ID] = inst
 	m.mu.Unlock()
 
 	m.persistInstance(ctx, inst)
-	m.bridge.EnsureGhostDisplayName(ctx, instanceID)
+	m.bridge.EnsureGhostDisplayName(ctx, cfg.ID)
 
 	count, syncErr := m.syncSessions(ctx, inst, sessions)
 	m.startEventLoop(inst)
@@ -182,11 +234,16 @@ func (m *OpenCodeManager) persistInstance(ctx context.Context, inst *openCodeIns
 		meta = make(map[string]*OpenCodeInstance)
 	}
 	meta[inst.cfg.ID] = &OpenCodeInstance{
-		ID:          inst.cfg.ID,
-		URL:         inst.cfg.URL,
-		Username:    inst.cfg.Username,
-		Password:    strings.TrimSpace(inst.password),
-		HasPassword: inst.cfg.HasPassword,
+		ID:               inst.cfg.ID,
+		Mode:             inst.cfg.Mode,
+		URL:              inst.cfg.URL,
+		Username:         inst.cfg.Username,
+		Password:         strings.TrimSpace(inst.password),
+		HasPassword:      inst.cfg.HasPassword,
+		BinaryPath:       inst.cfg.BinaryPath,
+		DefaultDirectory: inst.cfg.DefaultDirectory,
+		WorkingDirectory: inst.cfg.WorkingDirectory,
+		LauncherID:       inst.cfg.LauncherID,
 	}
 	if err := m.bridge.host.SaveOpenCodeInstances(ctx, meta); err != nil {
 		m.log().Warn().Err(err).Msg("Failed to persist OpenCode instance")
@@ -215,6 +272,9 @@ func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string)
 	if inst := m.instances[id]; inst != nil {
 		hadInstance = true
 		inst.cancelAndStopTimer()
+		if inst.process != nil {
+			_ = inst.process.Close()
+		}
 		delete(m.instances, id)
 	}
 	m.mu.Unlock()
@@ -233,6 +293,51 @@ func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string)
 		return ErrInstanceNotFound
 	}
 	return m.bridge.host.SaveOpenCodeInstances(ctx, meta)
+}
+
+func (m *OpenCodeManager) EnsureManagedInstance(ctx context.Context, launcherID, workingDir string) (*openCodeInstance, error) {
+	if m == nil || m.bridge == nil || m.bridge.host == nil {
+		return nil, errors.New("opencode manager unavailable")
+	}
+	workingDir = strings.TrimSpace(workingDir)
+	if workingDir == "" {
+		return nil, errors.New("working directory is required")
+	}
+	all := m.bridge.host.OpenCodeInstances()
+	launcher := all[launcherID]
+	if launcher == nil || launcher.Mode != OpenCodeModeManagedLauncher {
+		return nil, errors.New("managed launcher not found")
+	}
+	login := m.bridge.host.Login()
+	if login == nil {
+		return nil, errors.New("login unavailable")
+	}
+	instanceID := OpenCodeManagedInstanceID(string(login.ID), workingDir)
+	if inst := m.getInstance(instanceID); inst != nil && inst.connected {
+		return inst, nil
+	}
+	cfg := all[instanceID]
+	if cfg == nil {
+		cfg = &OpenCodeInstance{
+			ID:               instanceID,
+			Mode:             OpenCodeModeManaged,
+			BinaryPath:       launcher.BinaryPath,
+			DefaultDirectory: launcher.DefaultDirectory,
+			WorkingDirectory: workingDir,
+			LauncherID:       launcherID,
+		}
+	} else {
+		cfg.Mode = OpenCodeModeManaged
+		cfg.BinaryPath = launcher.BinaryPath
+		cfg.DefaultDirectory = launcher.DefaultDirectory
+		cfg.WorkingDirectory = workingDir
+		cfg.LauncherID = launcherID
+	}
+	inst, _, err := m.connectConfiguredInstance(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return inst, nil
 }
 
 func (m *OpenCodeManager) cleanupInstancePortals(ctx context.Context, inst *openCodeInstance) {

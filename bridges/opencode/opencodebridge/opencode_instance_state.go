@@ -56,6 +56,7 @@ type openCodeInstance struct {
 	cfg       OpenCodeInstance
 	password  string
 	client    *opencode.Client
+	process   *managedOpenCodeProcess
 	connected bool
 	cancel    func()
 

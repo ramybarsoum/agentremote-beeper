@@ -15,6 +15,16 @@ func OpenCodeInstanceID(baseURL, username string) string {
 	return hex.EncodeToString(hash[:8])
 }
 
+func OpenCodeManagedLauncherID(loginID string) string {
+	hash := sha256.Sum256([]byte("managed-launcher|" + strings.TrimSpace(loginID)))
+	return hex.EncodeToString(hash[:8])
+}
+
+func OpenCodeManagedInstanceID(loginID, directory string) string {
+	hash := sha256.Sum256([]byte("managed|" + strings.TrimSpace(loginID) + "|" + strings.TrimSpace(directory)))
+	return hex.EncodeToString(hash[:8])
+}
+
 func OpenCodeUserID(instanceID string) networkid.UserID {
 	return networkid.UserID("opencode-" + url.PathEscape(instanceID))
 }

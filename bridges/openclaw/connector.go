@@ -60,12 +60,7 @@ func (oc *OpenClawConnector) GetBridgeInfoVersion() (info, capabilities int) {
 }
 
 func (oc *OpenClawConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	meta := portalMeta(portal)
-	if meta.IsOpenClawRoom {
-		content.BeeperRoomTypeV2 = "openclaw"
-	} else {
-		content.BeeperRoomTypeV2 = "chat"
-	}
+	content.BeeperRoomTypeV2 = "ai"
 }
 
 func (oc *OpenClawConnector) GetName() bridgev2.BridgeName {

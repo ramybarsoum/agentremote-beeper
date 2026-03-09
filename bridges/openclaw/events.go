@@ -63,7 +63,7 @@ func (evt *OpenClawSessionResyncEvent) GetChatInfo(ctx context.Context, portal *
 	meta.OpenClawGroupChannel = evt.session.GroupChannel
 	meta.OpenClawSpace = evt.session.Space
 	meta.OpenClawChatType = evt.session.ChatType
-	meta.OpenClawOrigin = evt.session.Origin
+	meta.OpenClawOrigin = evt.session.OriginString()
 	meta.OpenClawAgentID = stringsTrimDefault(meta.OpenClawAgentID, openClawAgentIDFromSessionKey(evt.session.Key))
 	if isOpenClawSyntheticDMSessionKey(evt.session.Key) {
 		meta.OpenClawDMTargetAgentID = stringsTrimDefault(meta.OpenClawDMTargetAgentID, openClawAgentIDFromSessionKey(evt.session.Key))

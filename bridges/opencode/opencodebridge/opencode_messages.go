@@ -2,8 +2,10 @@ package opencodebridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"mime"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -64,18 +66,78 @@ func (b *Bridge) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 }
 
 func (b *Bridge) handleAwaitingPath(ctx context.Context, msg *bridgev2.MatrixMessage, portal *bridgev2.Portal, meta *PortalMeta) (*bridgev2.MatrixMessageResponse, error) {
-	path := strings.TrimSpace(msg.Content.Body)
-	session, err := b.manager.CreateSession(ctx, meta.InstanceID, "", path)
+	cfg := b.InstanceConfig(meta.InstanceID)
+	if cfg == nil || cfg.Mode != OpenCodeModeManagedLauncher {
+		b.host.SendSystemNotice(ctx, portal, "This room is no longer waiting for a managed OpenCode path.")
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+	path, err := resolveManagedWorkingDirectory(msg.Content.Body, cfg.DefaultDirectory)
+	if err != nil {
+		b.host.SendSystemNotice(ctx, portal, err.Error())
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+	inst, err := b.manager.EnsureManagedInstance(ctx, meta.InstanceID, path)
+	if err != nil {
+		b.host.SendSystemNotice(ctx, portal, "Failed to start managed OpenCode: "+err.Error())
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+	session, err := b.manager.CreateSession(ctx, inst.cfg.ID, "", "")
 	if err != nil {
 		b.host.SendSystemNotice(ctx, portal, "Failed to create session: "+err.Error())
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
+	if !openCodeSessionUsesDirectory(path, session) {
+		if deleteErr := b.manager.DeleteSession(ctx, inst.cfg.ID, session.ID); deleteErr != nil {
+			b.host.Log().Warn().Err(deleteErr).Str("session_id", session.ID).Msg("Failed to delete managed OpenCode session created with unexpected directory")
+		}
+		actualDir := strings.TrimSpace(session.Directory)
+		if actualDir == "" {
+			b.host.SendSystemNotice(ctx, portal, fmt.Sprintf("Managed OpenCode created the session without reporting a working directory. Requested %s.", path))
+		} else {
+			b.host.SendSystemNotice(ctx, portal, fmt.Sprintf("Managed OpenCode created the session in %s instead of %s.", actualDir, path))
+		}
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+	portal, err = b.ReIDPortalToSession(ctx, portal, inst.cfg.ID, session.ID)
+	if err != nil {
+		b.host.SendSystemNotice(ctx, portal, "Failed to attach the room to the managed OpenCode session: "+err.Error())
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+	portal.OtherUserID = OpenCodeUserID(inst.cfg.ID)
 	meta.SessionID = session.ID
+	meta.InstanceID = inst.cfg.ID
 	meta.AwaitingPath = false
+	meta.ReadOnly = false
 	b.host.SetPortalMeta(portal, meta)
 	_ = b.host.SavePortal(ctx, portal)
-	b.host.SendSystemNotice(ctx, portal, fmt.Sprintf("Working directory set to %s", path))
+	b.host.SendSystemNotice(ctx, portal, fmt.Sprintf("Managed OpenCode started in %s", session.Directory))
 	return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+}
+
+func resolveManagedWorkingDirectory(raw, defaultDir string) (string, error) {
+	path := strings.TrimSpace(raw)
+	if path == "" {
+		path = strings.TrimSpace(defaultDir)
+	}
+	if path == "" {
+		return "", errors.New("Send an absolute path, or configure a default path in the managed OpenCode login.")
+	}
+	if !filepath.IsAbs(path) {
+		return "", errors.New("Send an absolute path for managed OpenCode.")
+	}
+	return filepath.Clean(path), nil
+}
+
+func openCodeSessionUsesDirectory(requested string, session *opencode.Session) bool {
+	if session == nil {
+		return false
+	}
+	requested = strings.TrimSpace(requested)
+	actual := strings.TrimSpace(session.Directory)
+	if requested == "" || actual == "" {
+		return false
+	}
+	return filepath.Clean(actual) == filepath.Clean(requested)
 }
 
 func (b *Bridge) buildInboundParts(ctx context.Context, msg *bridgev2.MatrixMessage, msgType event.MessageType) ([]opencode.PartInput, string, error) {

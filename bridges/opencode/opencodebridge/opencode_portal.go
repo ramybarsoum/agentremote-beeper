@@ -3,6 +3,7 @@ package opencodebridge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -155,13 +156,47 @@ func (b *Bridge) CreateSessionChat(ctx context.Context, instanceID, title string
 	if b.manager == nil {
 		return nil, errors.New("OpenCode integration is not available")
 	}
+	cfg := b.InstanceConfig(instanceID)
+	if cfg == nil {
+		return nil, errors.New("OpenCode instance not found")
+	}
+	if cfg.Mode == OpenCodeModeManagedLauncher {
+		return b.createManagedLauncherChat(ctx, login, instanceID, title, pendingTitle)
+	}
 	inst := b.manager.getInstance(instanceID)
-	if inst == nil {
+	if inst == nil || !inst.connected {
 		return nil, errors.New("OpenCode instance not connected")
 	}
+	session, err := b.manager.CreateSession(ctx, instanceID, title, "")
+	if err != nil {
+		return nil, err
+	}
+	if err = b.ensureOpenCodeSessionPortalWithRoom(ctx, inst, *session, true); err != nil {
+		return nil, err
+	}
+	portal := b.findOpenCodePortal(ctx, instanceID, session.ID)
+	if portal == nil {
+		return nil, errors.New("failed to create OpenCode portal")
+	}
+	meta := b.portalMeta(portal)
+	meta.TitlePending = pendingTitle
+	if title != "" {
+		meta.Title = title
+	}
+	b.host.SetPortalMeta(portal, meta)
+	if err = b.host.SavePortal(ctx, portal); err != nil {
+		return nil, err
+	}
+	chatInfo := b.composeOpenCodeChatInfo(portal.Name, instanceID)
+	b.host.SendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
+	return &bridgev2.CreateChatResponse{
+		PortalKey:  portal.PortalKey,
+		PortalInfo: chatInfo,
+		Portal:     portal,
+	}, nil
+}
 
-	// Use a placeholder session ID; the real session is created after the
-	// user provides a working directory path.
+func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.UserLogin, instanceID, title string, pendingTitle bool) (*bridgev2.CreateChatResponse, error) {
 	placeholderSessionID := "setup-" + uuid.New().String()
 
 	displayTitle := title
@@ -204,11 +239,38 @@ func (b *Bridge) CreateSessionChat(ctx context.Context, instanceID, title string
 	}
 
 	b.host.SendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
-	b.host.SendSystemNotice(ctx, portal, "What directory should OpenCode work in? Send an absolute path.")
+	b.host.SendSystemNotice(ctx, portal, "What directory should OpenCode work in? Send an absolute path, or send an empty message to use the managed default path.")
 
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
 		PortalInfo: chatInfo,
 		Portal:     portal,
 	}, nil
+}
+
+func (b *Bridge) ReIDPortalToSession(ctx context.Context, portal *bridgev2.Portal, instanceID, sessionID string) (*bridgev2.Portal, error) {
+	if b == nil || b.host == nil || portal == nil {
+		return portal, nil
+	}
+	login := b.host.Login()
+	if login == nil || login.Bridge == nil {
+		return portal, errors.New("login unavailable")
+	}
+	target := OpenCodePortalKey(login.ID, instanceID, sessionID)
+	if portal.PortalKey == target {
+		return portal, nil
+	}
+	result, updated, err := login.Bridge.ReIDPortal(ctx, portal.PortalKey, target)
+	if err != nil {
+		return nil, err
+	}
+	switch result {
+	case bridgev2.ReIDResultSourceReIDd, bridgev2.ReIDResultTargetDeletedAndSourceReIDd, bridgev2.ReIDResultNoOp:
+		if updated != nil {
+			return updated, nil
+		}
+		return b.findOpenCodePortal(ctx, instanceID, sessionID), nil
+	default:
+		return nil, fmt.Errorf("unexpected portal re-id result: %v", result)
+	}
 }

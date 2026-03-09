@@ -638,7 +638,7 @@ func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, login any, bridg
 
 func integrationPortalRoomType(meta *PortalMetadata) string {
 	if kind := moduleRoomKind(meta); kind != "" {
-		return kind
+		return "ai-" + kind
 	}
 	return "ai"
 }

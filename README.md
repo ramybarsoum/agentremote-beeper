@@ -1,143 +1,134 @@
-# AI Bridge
+# AgentRemote
 
-AI Bridge is a Matrix-ish bridge for Beeper that brings AI Chats into your favorite chat app.
+AgentRemote brings all your agents into one app.
 
-Batteries included - one click setup (for [Beeper Plus](https://www.beeper.com/plus)), all models. It also comes with a faithful Go port of [OpenClaw](https://github.com/openclaw/openclaw) (formerly knows as Moltbot (formerly known as Clawdbot)) called Beep.
+Beeper becomes the universal remote for agents.
 
-Coming soon to Beeper Desktop as an experiment. Join the [Developer Community](beeper://connect) on [Matrix](https://matrix.to/#/#beeper-developers:beeper.com?via=beeper.com) for early access.
+Connect agent runtimes to Beeper with full history, live streaming, tool approvals, and encrypted delivery.
 
-Connect all your chats with one click and manage your inbox with agents. Supports image generation, reminders, web search, and memory. Create direct model chats for simple conversations or agent chats for richer workflows.
+Run the bridge next to your agent, then talk to it from Beeper on your phone or desktop.
 
-Made by humans using agentic coding.
+## Why Use It
 
-## Status
+- Keep agents on your own machine, server, or private network
+- Use Beeper instead of building a separate web UI
+- Stream responses and approve tool calls in the same chat
+- Reach your agents from anywhere Beeper runs
 
-Experimental Matrix ↔ AI bridge for Beeper, built on top of [mautrix/bridgev2](https://pkg.go.dev/maunium.net/go/mautrix/bridgev2). Works best with alpha versions of Beeper Desktop. Supports any OpenAI-compatible provider (including OpenRouter).
+## Open Source Focus
 
-## Highlights
+This repository is centered on the self-hosted path.
 
-- Multi-provider routing with prefixed model IDs (e.g. `openai/...`, `anthropic/...`)
-- Per-model chats (each model shows up as its own contact)
-- Streaming responses
-- Multimodal input (images, PDFs, audio, video) when supported by the model
-- Ghost-based chat targeting for models and agents
-- Login flows for Beeper, Magic Proxy, or custom (BYOK)
-- OpenClaw-style memory search (stored in the bridge DB)
+That means:
 
-## Docs
+- local developer machines
+- homelabs
+- office servers
+- runtimes behind a firewall
+- private deployments that still want a polished remote interface
 
-- `docs/matrix-ai-matrix-spec-v1.md`: Full Matrix transport spec (events, streaming, approvals, state, and schema examples).
-- `docs/bridge-orchestrator.md`: One-command bridge management in this repo.
+There is a broader product direction around richer AI chats and more opinionated agent experiences. Open source here is focused on making the bridge layer for private deployments easy to run and hard to break.
 
-## Development note
+## Included Bridges
 
-The shared AI bridge schema now uses a single `ai_bridge_version` table. If you have a local dev SQLite database created before this refactor, delete and recreate it instead of expecting an automatic migration from the old version-table layout.
+Each bridge has its own README with setup details and scope:
 
-## Bridge Orchestrator
+| Bridge | Purpose |
+| --- | --- |
+| `ai` | General Matrix-to-AI bridge surface used by the project |
+| [`codex`](./bridges/codex/README.md) | Connect the Codex CLI app-server to Beeper |
+| [`openclaw`](./bridges/openclaw/README.md) | Connect a self-hosted OpenClaw gateway to Beeper |
+| [`opencode`](./bridges/opencode/README.md) | Connect a self-hosted OpenCode server to Beeper |
 
-Use `tools/bridges` to manage isolated bridge instances for Beeper.
+## Quick Start
 
-### Configured bridge instances
-
-- `ai`
-- `codex`
-- `opencode`
-
-Instances are defined in `bridges.manifest.yml`.
-
-### Login and run
+Log into Beeper and start a bridge:
 
 ```bash
 ./tools/bridges login --env prod
-./tools/bridges run ai
+./tools/bridges run codex
 ```
 
-To log into a local Beeper env instead of production:
+Then open Beeper and use the connected bridge from chat.
+
+For a local Beeper environment:
 
 ```bash
 ./tools/bridges login --env local
 ./tools/bridges whoami
-./tools/bridges run ai
+./tools/bridges run codex
 ```
 
-`local` maps to `beeper.localtest.me`. Other supported envs are `prod`, `staging`, and `dev`.
+Configured instances in `bridges.manifest.yml`:
 
-### Run other bridges
+- `ai`
+- `codex`
+- `openclaw`
+- `opencode`
+
+Run any of them directly:
 
 ```bash
+./tools/bridges run ai
 ./tools/bridges run codex
+./tools/bridges run openclaw
 ./tools/bridges run opencode
 ```
 
-### Simple wrapper
+Or use the wrapper:
 
 ```bash
 ./run.sh ai
 ./run.sh codex
+./run.sh openclaw
 ./run.sh opencode
 ```
 
-`run.sh` checks login first and prompts you to login if needed, then runs the selected bridge.
+## Bridge Manager
 
-### Useful commands
+Common commands:
 
 ```bash
 ./tools/bridges list
 ./tools/bridges status
-./tools/bridges logs ai --follow
-./tools/bridges down ai
-./tools/bridges restart ai
+./tools/bridges logs codex --follow
+./tools/bridges restart codex
+./tools/bridges down codex
 ./tools/bridges whoami
 ```
 
-### Reset everything
-
-If you want to wipe the current login session and fully reset the built-in bridge manager state:
-
-1. Stop and delete each bridge instance, including its remote Beeper registration:
+Reset all local bridge state and registrations:
 
 ```bash
 ./tools/bridges delete --remote ai
 ./tools/bridges delete --remote codex
+./tools/bridges delete --remote openclaw
 ./tools/bridges delete --remote opencode
-```
-
-2. Remove the saved login session:
-
-```bash
 ./tools/bridges logout
 ```
 
-3. Log back into the env you actually want:
+## Docs
 
-```bash
-./tools/bridges login --env local
-./tools/bridges whoami
-```
+- [`docs/bridge-orchestrator.md`](./docs/bridge-orchestrator.md): local bridge management workflow
+- [`docs/matrix-ai-matrix-spec-v1.md`](./docs/matrix-ai-matrix-spec-v1.md): Matrix transport profile for streaming, approvals, state, and AI payloads
+- [`bridges/codex/README.md`](./bridges/codex/README.md): Codex bridge details
+- [`bridges/openclaw/README.md`](./bridges/openclaw/README.md): OpenClaw bridge details
+- [`bridges/opencode/README.md`](./bridges/opencode/README.md): OpenCode bridge details
 
-4. Start the bridge again:
+## Status
 
-```bash
-./tools/bridges run ai
-```
-
-Notes:
-
-- `delete --remote <instance>` removes the local instance state under `~/.local/share/ai-bridge-manager/instances/<instance>` and also deletes the remote Beeper bridge record.
-- `logout` removes the saved auth config at `~/.config/ai-bridge-manager/config.json`.
-- If you only want to reset the login session, `logout` followed by `login --env ...` is enough.
-- If you want the absolute manual nuke after the commands above, you can also remove `~/.local/share/ai-bridge-manager/` and `~/.config/ai-bridge-manager/`.
+Experimental and evolving quickly. The transport and bridge surfaces are real, but the project is still early.
 
 ## Build
 
-Requires libolm for encryption support.
+Requires `libolm` for encryption support.
 
 ```bash
 ./build.sh
 ```
 
-Or use Docker:
+Or with Docker:
 
 ```bash
-docker build -t ai .
+docker build -t agentremote .
 ```

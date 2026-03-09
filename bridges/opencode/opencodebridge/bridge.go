@@ -52,11 +52,16 @@ type PortalMeta struct {
 
 // OpenCodeInstance stores connection details for an OpenCode server.
 type OpenCodeInstance struct {
-	ID          string `json:"id,omitempty"`
-	URL         string `json:"url,omitempty"`
-	Username    string `json:"username,omitempty"`
-	Password    string `json:"password,omitempty"`
-	HasPassword bool   `json:"has_password,omitempty"`
+	ID               string `json:"id,omitempty"`
+	Mode             string `json:"mode,omitempty"`
+	URL              string `json:"url,omitempty"`
+	Username         string `json:"username,omitempty"`
+	Password         string `json:"password,omitempty"`
+	HasPassword      bool   `json:"has_password,omitempty"`
+	BinaryPath       string `json:"binary_path,omitempty"`
+	DefaultDirectory string `json:"default_directory,omitempty"`
+	WorkingDirectory string `json:"working_directory,omitempty"`
+	LauncherID       string `json:"launcher_id,omitempty"`
 }
 
 // Bridge coordinates OpenCode sessions with Matrix rooms.
