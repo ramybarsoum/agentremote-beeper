@@ -8,6 +8,11 @@ func ClassifyFallbackError(err error) FailureClass {
 	}
 	text := strings.ToLower(strings.TrimSpace(err.Error()))
 	switch {
+	case strings.Contains(text, "model_not_found"),
+		strings.Contains(text, "this model is not available"),
+		(strings.Contains(text, "model") && strings.Contains(text, "not found")),
+		(strings.Contains(text, "model") && strings.Contains(text, "not available")):
+		return FailureClassProviderHard
 	case strings.Contains(text, "api key"), strings.Contains(text, "invalid_api_key"),
 		strings.Contains(text, "authentication"), strings.Contains(text, "unauthorized"),
 		strings.Contains(text, "forbidden"), strings.Contains(text, "permission"):

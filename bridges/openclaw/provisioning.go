@@ -13,6 +13,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 )
 
 const openClawAgentCatalogTTL = 30 * time.Second
@@ -28,11 +30,11 @@ func (oc *OpenClawClient) loadAgentCatalog(ctx context.Context, force bool) ([]g
 	now := time.Now()
 	oc.agentCatalogMu.RLock()
 	if !force && len(oc.agentCatalog) > 0 && now.Sub(oc.agentCatalogFetchedAt) < openClawAgentCatalogTTL {
-		cached := cloneGatewayAgentSummaries(oc.agentCatalog)
+		cached := oc.mergeDiscoveredSessionAgents(cloneGatewayAgentSummaries(oc.agentCatalog))
 		oc.agentCatalogMu.RUnlock()
 		return cached, nil
 	}
-	cached := cloneGatewayAgentSummaries(oc.agentCatalog)
+	cached := oc.mergeDiscoveredSessionAgents(cloneGatewayAgentSummaries(oc.agentCatalog))
 	oc.agentCatalogMu.RUnlock()
 
 	var gateway *gatewayWSClient
@@ -54,6 +56,7 @@ func (oc *OpenClawClient) loadAgentCatalog(ctx context.Context, force bool) ([]g
 		return nil, err
 	}
 	agents := normalizeGatewayAgentSummaries(resp.Agents)
+	agents = oc.mergeDiscoveredSessionAgents(agents)
 	oc.agentCatalogMu.Lock()
 	oc.agentCatalog = cloneGatewayAgentSummaries(agents)
 	oc.agentCatalogDefaultID = strings.TrimSpace(resp.DefaultID)
@@ -62,6 +65,36 @@ func (oc *OpenClawClient) loadAgentCatalog(ctx context.Context, force bool) ([]g
 	oc.agentCatalogFetchedAt = now
 	oc.agentCatalogMu.Unlock()
 	return cloneGatewayAgentSummaries(agents), nil
+}
+
+func (oc *OpenClawClient) mergeDiscoveredSessionAgents(agents []gatewayAgentSummary) []gatewayAgentSummary {
+	if oc == nil || oc.manager == nil {
+		return agents
+	}
+	discovered := oc.manager.discoveredAgentIDs()
+	if len(discovered) == 0 {
+		return agents
+	}
+	merged := cloneGatewayAgentSummaries(agents)
+	seen := make(map[string]struct{}, len(merged))
+	for _, agent := range merged {
+		agentID := strings.ToLower(strings.TrimSpace(agent.ID))
+		if agentID != "" {
+			seen[agentID] = struct{}{}
+		}
+	}
+	for _, agentID := range discovered {
+		key := strings.ToLower(strings.TrimSpace(agentID))
+		if key == "" || strings.EqualFold(key, "gateway") {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, gatewayAgentSummary{ID: strings.TrimSpace(agentID)})
+	}
+	return merged
 }
 
 func (oc *OpenClawClient) refreshAgentCatalog(ctx context.Context) ([]gatewayAgentSummary, error) {
@@ -81,6 +114,29 @@ func (oc *OpenClawClient) agentCatalogEntryByID(ctx context.Context, agentID str
 		}
 	}
 	return nil, nil
+}
+
+func openClawVirtualAgentSummary(agentID string) *gatewayAgentSummary {
+	agentID = canonicalOpenClawAgentID(agentID)
+	if agentID == "" || strings.EqualFold(agentID, "gateway") {
+		return nil
+	}
+	return &gatewayAgentSummary{ID: agentID}
+}
+
+func (oc *OpenClawClient) agentSummaryOrVirtual(ctx context.Context, agentID string) (*gatewayAgentSummary, error) {
+	agentID = canonicalOpenClawAgentID(agentID)
+	if agentID == "" {
+		return nil, nil
+	}
+	agent, err := oc.agentCatalogEntryByID(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	if agent != nil {
+		return agent, nil
+	}
+	return openClawVirtualAgentSummary(agentID), nil
 }
 
 func (oc *OpenClawClient) configuredAgentDisplayName(agent gatewayAgentSummary) string {
@@ -158,6 +214,31 @@ func (oc *OpenClawClient) SearchUsers(ctx context.Context, query string) ([]*bri
 			Ghost:    ghost,
 		})
 	}
+	if exactID, ok := parseOpenClawResolvableIdentifier(query); ok {
+		exactID = canonicalOpenClawAgentID(exactID)
+		alreadyIncluded := false
+		for _, match := range matches {
+			if strings.EqualFold(strings.TrimSpace(match.ID), exactID) {
+				alreadyIncluded = true
+				break
+			}
+		}
+		if !alreadyIncluded {
+			if agent, err := oc.agentSummaryOrVirtual(ctx, exactID); err != nil {
+				return nil, err
+			} else if agent != nil {
+				ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, openClawGhostUserID(agent.ID))
+				if err != nil {
+					return nil, fmt.Errorf("failed to get ghost for agent %s: %w", agent.ID, err)
+				}
+				out = append(out, &bridgev2.ResolveIdentifierResponse{
+					UserID:   openClawGhostUserID(agent.ID),
+					UserInfo: oc.configuredAgentUserInfo(ctx, *agent, ghost),
+					Ghost:    ghost,
+				})
+			}
+		}
+	}
 	return out, nil
 }
 
@@ -166,7 +247,7 @@ func (oc *OpenClawClient) ResolveIdentifier(ctx context.Context, identifier stri
 	if !ok {
 		return nil, bridgev2.WrapRespErr(fmt.Errorf("identifier %q not found", identifier), mautrix.MNotFound)
 	}
-	agent, err := oc.agentCatalogEntryByID(ctx, agentID)
+	agent, err := oc.agentSummaryOrVirtual(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +281,7 @@ func (oc *OpenClawClient) CreateChatWithGhost(ctx context.Context, ghost *bridge
 	if !ok {
 		return nil, bridgev2.WrapRespErr(fmt.Errorf("unsupported ghost id %q", ghost.ID), mautrix.MInvalidParam)
 	}
-	agent, err := oc.agentCatalogEntryByID(ctx, agentID)
+	agent, err := oc.agentSummaryOrVirtual(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +334,12 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 		member := chatInfo.Members.MemberMap[openClawGhostUserID(agentID)]
 		member.UserInfo = info
 		chatInfo.Members.MemberMap[openClawGhostUserID(agentID)] = member
+	}
+	if portal.MXID == "" {
+		if err := portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
+			return nil, fmt.Errorf("failed to create openclaw dm portal room: %w", err)
+		}
+		bridgeadapter.SendAIRoomInfo(ctx, portal, bridgeadapter.AIRoomKindAgent)
 	}
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,

@@ -194,6 +194,7 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 	if err := p.CreateMatrixRoom(ctx, h.client.UserLogin, chatInfo); err != nil {
 		return nil, "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
+	sendAIPortalInfo(ctx, p, portalMeta(p))
 	return p, p.MXID.String(), nil
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
 	integrationmodules "github.com/beeper/ai-bridge/pkg/integrations/modules"
 	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
 )
@@ -636,11 +637,14 @@ func (oc *AIClient) purgeLoginIntegrations(ctx context.Context, login any, bridg
 	}
 }
 
-func integrationPortalRoomType(meta *PortalMetadata) string {
-	if kind := moduleRoomKind(meta); kind != "" {
-		return "ai-" + kind
+func integrationPortalAIKind(meta *PortalMetadata) string {
+	if meta != nil && strings.TrimSpace(meta.SubagentParentRoomID) != "" {
+		return "subagent"
 	}
-	return "ai"
+	if kind := moduleRoomKind(meta); kind != "" {
+		return kind
+	}
+	return bridgeadapter.AIRoomKindAgent
 }
 
 func isIntegrationSessionKindAllowed(kind string) bool {

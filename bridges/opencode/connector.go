@@ -61,7 +61,10 @@ func (oc *OpenCodeConnector) GetBridgeInfoVersion() (info, capabilities int) {
 }
 
 func (oc *OpenCodeConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	content.BeeperRoomTypeV2 = "ai"
+	if portal == nil {
+		return
+	}
+	bridgeadapter.ApplyAIBridgeInfo(content, "ai-opencode", portal.RoomType, bridgeadapter.AIRoomKindAgent)
 }
 
 func (oc *OpenCodeConnector) GetName() bridgev2.BridgeName {

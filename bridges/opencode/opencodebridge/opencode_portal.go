@@ -83,6 +83,7 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
 			return err
 		}
+		bridgeadapter.SendAIRoomInfo(ctx, portal, bridgeadapter.AIRoomKindAgent)
 		return nil
 	}
 
@@ -237,6 +238,7 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 		b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
 		return nil, err
 	}
+	bridgeadapter.SendAIRoomInfo(ctx, portal, bridgeadapter.AIRoomKindAgent)
 
 	b.host.SendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 	b.host.SendSystemNotice(ctx, portal, "What directory should OpenCode work in? Send an absolute path, or send an empty message to use the managed default path.")

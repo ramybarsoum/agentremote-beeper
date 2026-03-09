@@ -100,5 +100,6 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	if err := portal.CreateMatrixRoom(ctx, s.client.UserLogin, chatInfo); err != nil {
 		return nil, err
 	}
+	sendAIPortalInfo(ctx, portal, meta)
 	return portal, nil
 }

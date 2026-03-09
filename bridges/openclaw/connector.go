@@ -63,7 +63,10 @@ func (oc *OpenClawConnector) GetBridgeInfoVersion() (info, capabilities int) {
 }
 
 func (oc *OpenClawConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	content.BeeperRoomTypeV2 = "ai"
+	if portal == nil {
+		return
+	}
+	bridgeadapter.ApplyAIBridgeInfo(content, "ai-openclaw", portal.RoomType, bridgeadapter.AIRoomKindAgent)
 }
 
 func (oc *OpenClawConnector) GetName() bridgev2.BridgeName {

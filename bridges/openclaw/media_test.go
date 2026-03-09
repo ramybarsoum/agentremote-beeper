@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -478,6 +479,9 @@ func TestOpenClawSessionResyncProjectsTypeTopicAndCapabilities(t *testing.T) {
 	if info.Type == nil || *info.Type != database.RoomTypeDefault {
 		t.Fatalf("unexpected room type: %#v", info.Type)
 	}
+	if !info.CanBackfill {
+		t.Fatal("expected session resync chat info to allow backfill")
+	}
 	if info.Topic == nil {
 		t.Fatal("expected topic")
 	}
@@ -498,6 +502,42 @@ func TestOpenClawSessionResyncProjectsTypeTopicAndCapabilities(t *testing.T) {
 	}
 	if !strings.Contains(*info.Topic, "Origin: Channel 123") {
 		t.Fatalf("expected structured origin summary, got %q", *info.Topic)
+	}
+}
+
+func TestOpenClawSessionResyncCheckNeedsBackfill(t *testing.T) {
+	evt := &OpenClawSessionResyncEvent{
+		session: gatewaySessionRow{
+			UpdatedAt:          2_000,
+			LastMessagePreview: "hello",
+		},
+	}
+	needs, err := evt.CheckNeedsBackfill(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("CheckNeedsBackfill returned error: %v", err)
+	}
+	if !needs {
+		t.Fatal("expected empty portal history to trigger backfill")
+	}
+
+	needs, err = evt.CheckNeedsBackfill(context.Background(), &database.Message{
+		Timestamp: time.UnixMilli(1_000),
+	})
+	if err != nil {
+		t.Fatalf("CheckNeedsBackfill returned error: %v", err)
+	}
+	if !needs {
+		t.Fatal("expected newer session timestamp to trigger backfill")
+	}
+
+	needs, err = evt.CheckNeedsBackfill(context.Background(), &database.Message{
+		Timestamp: time.UnixMilli(2_500),
+	})
+	if err != nil {
+		t.Fatalf("CheckNeedsBackfill returned error: %v", err)
+	}
+	if needs {
+		t.Fatal("expected up-to-date latest message to suppress backfill")
 	}
 }
 

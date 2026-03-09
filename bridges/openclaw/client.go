@@ -73,6 +73,10 @@ type OpenClawClient struct {
 
 	manager *openClawManager
 
+	connectMu     sync.Mutex
+	connectCancel context.CancelFunc
+	connectSeq    uint64
+
 	loggedIn atomic.Bool
 
 	agentCatalogMu        sync.RWMutex
@@ -97,31 +101,33 @@ type OpenClawClient struct {
 }
 
 type openClawStreamState struct {
-	portal           *bridgev2.Portal
-	turnID           string
-	agentID          string
-	sessionKey       string
-	messageTS        time.Time
-	targetEventID    string
-	initialEventID   id.EventID
-	networkMessageID networkid.MessageID
-	sequenceNum      int
-	accumulated      strings.Builder
-	visible          strings.Builder
-	ui               streamui.UIState
-	lastVisibleText  string
-	role             string
-	runID            string
-	sessionID        string
-	finishReason     string
-	errorText        string
-	promptTokens     int64
-	completionTokens int64
-	reasoningTokens  int64
-	totalTokens      int64
-	startedAtMs      int64
-	firstTokenAtMs   int64
-	completedAtMs    int64
+	portal                    *bridgev2.Portal
+	turnID                    string
+	agentID                   string
+	sessionKey                string
+	messageTS                 time.Time
+	placeholderPending        bool
+	targetEventID             string
+	initialEventID            id.EventID
+	networkMessageID          networkid.MessageID
+	sequenceNum               int
+	accumulated               strings.Builder
+	visible                   strings.Builder
+	ui                        streamui.UIState
+	lastVisibleText           string
+	role                      string
+	runID                     string
+	sessionID                 string
+	finishReason              string
+	errorText                 string
+	promptTokens              int64
+	completionTokens          int64
+	reasoningTokens           int64
+	totalTokens               int64
+	startedAtMs               int64
+	firstTokenAtMs            int64
+	completedAtMs             int64
+	streamFallbackToDebounced atomic.Bool
 }
 
 func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) (*OpenClawClient, error) {
@@ -141,29 +147,43 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 }
 
 func (oc *OpenClawClient) Connect(ctx context.Context) {
-	oc.loggedIn.Store(true)
+	oc.connectMu.Lock()
+	if oc.connectCancel != nil {
+		oc.connectMu.Unlock()
+		return
+	}
+	runCtx, cancel := context.WithCancel(oc.BackgroundContext(ctx))
+	oc.connectSeq++
+	seq := oc.connectSeq
+	oc.connectCancel = cancel
+	oc.connectMu.Unlock()
+
 	oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnecting, Message: "Connecting"})
 	go func() {
-		if err := oc.manager.Start(oc.BackgroundContext(ctx)); err != nil {
-			oc.loggedIn.Store(false)
-			oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateBadCredentials, Message: err.Error()})
-			return
-		}
-		if _, err := oc.loadAgentCatalog(oc.BackgroundContext(ctx), true); err != nil {
-			oc.Log().Debug().Err(err).Msg("Failed to refresh OpenClaw agent catalog on connect")
-		}
-		if _, err := oc.loadModelCatalog(oc.BackgroundContext(ctx), true); err != nil {
-			oc.Log().Debug().Err(err).Msg("Failed to refresh OpenClaw model catalog on connect")
-		}
-		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
+		defer func() {
+			oc.connectMu.Lock()
+			if seq == oc.connectSeq {
+				oc.connectCancel = nil
+			}
+			oc.connectMu.Unlock()
+		}()
+		oc.connectLoop(runCtx)
 	}()
 }
 
 func (oc *OpenClawClient) Disconnect() {
-	oc.loggedIn.Store(false)
+	oc.connectMu.Lock()
+	cancel := oc.connectCancel
+	oc.connectCancel = nil
+	oc.connectSeq++
+	oc.connectMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	if oc.manager != nil {
 		oc.manager.Stop()
 	}
+	oc.loggedIn.Store(false)
 	oc.streamMu.Lock()
 	sessions := make([]*streamtransport.StreamSession, 0, len(oc.streamSessions))
 	for _, s := range oc.streamSessions {
@@ -179,6 +199,45 @@ func (oc *OpenClawClient) Disconnect() {
 	}
 	if oc.UserLogin != nil {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected"})
+	}
+}
+
+func (oc *OpenClawClient) connectLoop(ctx context.Context) {
+	attempt := 0
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		connected, err := oc.manager.Start(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		if err == nil {
+			if connected {
+				oc.loggedIn.Store(false)
+			}
+			return
+		}
+		if connected {
+			attempt = 0
+		}
+		retryDelay := openClawReconnectDelay(attempt)
+		attempt++
+		state, retry := classifyOpenClawConnectionError(err, retryDelay)
+		oc.loggedIn.Store(false)
+		if oc.UserLogin != nil {
+			oc.UserLogin.BridgeState.Send(state)
+		}
+		if !retry {
+			return
+		}
+		timer := time.NewTimer(retryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 	}
 }
 

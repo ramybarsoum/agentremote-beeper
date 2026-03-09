@@ -178,9 +178,9 @@ func (oc *OpenAIConnector) GetBridgeInfoVersion() (info, capabilities int) {
 	return bridgeadapter.DefaultBridgeInfoVersion()
 }
 
-// FillPortalBridgeInfo sets custom room type for AI rooms
+// FillPortalBridgeInfo sets bridge metadata for AI rooms.
 func (oc *OpenAIConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	content.BeeperRoomTypeV2 = integrationPortalRoomType(portalMeta(portal))
+	applyAIBridgeInfo(portal, portalMeta(portal), content)
 }
 
 func (oc *OpenAIConnector) GetName() bridgev2.BridgeName {

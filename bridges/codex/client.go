@@ -72,8 +72,9 @@ type CodexClient struct {
 	connector *CodexConnector
 	log       zerolog.Logger
 
-	rpcMu sync.Mutex
-	rpc   *codexrpc.Client
+	defaultChatMu sync.Mutex // serializes default-room bootstrap and welcome notices
+	rpcMu         sync.Mutex
+	rpc           *codexrpc.Client
 
 	notifCh   chan codexNotif
 	notifDone chan struct{} // closed on Disconnect to stop dispatchNotifications
@@ -447,10 +448,14 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 
 	if meta.AwaitingCwdSetup {
-		path := strings.TrimSpace(msg.Content.Body)
+		path, err := resolveCodexWorkingDirectory(strings.TrimSpace(msg.Content.Body))
+		if err != nil {
+			cc.sendSystemNotice(ctx, portal, "That path must be absolute. `~/...` is also accepted.")
+			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+		}
 		info, err := os.Stat(path)
 		if err != nil || !info.IsDir() {
-			cc.sendSystemNotice(ctx, portal, "That path doesn't exist or isn't a directory. Send a valid absolute path.")
+			cc.sendSystemNotice(ctx, portal, fmt.Sprintf("That path doesn't exist or isn't a directory: %s", path))
 			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 		}
 		meta.CodexCwd = path
@@ -1449,6 +1454,9 @@ func (cc *CodexClient) waitForLoginPersisted(ctx context.Context) {
 }
 
 func (cc *CodexClient) ensureDefaultCodexChat(ctx context.Context) error {
+	cc.defaultChatMu.Lock()
+	defer cc.defaultChatMu.Unlock()
+
 	portalKey := defaultCodexChatPortalKey(cc.UserLogin.ID)
 	portal, err := cc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
 	if err != nil {
@@ -1478,8 +1486,9 @@ func (cc *CodexClient) ensureDefaultCodexChat(ctx context.Context) error {
 		if err := portal.CreateMatrixRoom(ctx, cc.UserLogin, info); err != nil {
 			return err
 		}
+		bridgeadapter.SendAIRoomInfo(ctx, portal, bridgeadapter.AIRoomKindAgent)
 		cc.sendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
-		cc.sendSystemNotice(ctx, portal, "What directory should Codex work in? Send an absolute path.")
+		cc.sendSystemNotice(ctx, portal, "What directory should Codex work in? Send an absolute path or `~/...`.")
 		meta.AwaitingCwdSetup = true
 		if err := portal.Save(ctx); err != nil {
 			return err
@@ -1507,6 +1516,28 @@ func (cc *CodexClient) composeCodexChatInfo(title string) *bridgev2.ChatInfo {
 		CapabilitiesEvent: matrixevents.RoomCapabilitiesEventType,
 		SettingsEvent:     matrixevents.RoomSettingsEventType,
 	})
+}
+
+func resolveCodexWorkingDirectory(raw string) (string, error) {
+	path := strings.TrimSpace(raw)
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(home, rest)
+	} else if path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = home
+	}
+
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("path must be absolute")
+	}
+	return filepath.Clean(path), nil
 }
 
 func (cc *CodexClient) buildSandboxPolicy(cwd string) map[string]any {

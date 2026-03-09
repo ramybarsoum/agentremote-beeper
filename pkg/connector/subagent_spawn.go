@@ -321,6 +321,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 			"error":  err.Error(),
 		}), nil
 	}
+	sendAIPortalInfo(ctx, childPortal, childMeta)
 
 	oc.sendWelcomeMessage(ctx, childPortal)
 	if roomName != "" {

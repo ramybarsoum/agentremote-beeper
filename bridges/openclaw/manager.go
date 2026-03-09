@@ -62,7 +62,7 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 	}
 }
 
-func (m *openClawManager) Start(ctx context.Context) error {
+func (m *openClawManager) Start(ctx context.Context) (bool, error) {
 	meta := loginMetadata(m.client.UserLogin)
 	cfg := gatewayConnectConfig{
 		URL:         meta.GatewayURL,
@@ -73,25 +73,26 @@ func (m *openClawManager) Start(ctx context.Context) error {
 	gw := newGatewayWSClient(cfg)
 	deviceToken, err := gw.Connect(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if deviceToken != "" && deviceToken != meta.DeviceToken {
 		meta.DeviceToken = deviceToken
 		_ = m.client.UserLogin.Save(ctx)
 	}
-	runCtx, cancel := context.WithCancel(context.Background())
+	runCtx, cancel := context.WithCancel(ctx)
 	started := false
 	defer func() {
-		if started {
-			return
-		}
 		cancel()
-		gw.Close()
+		if !started || ctx.Err() == nil {
+			gw.Close()
+		}
 		m.mu.Lock()
 		if m.gateway == gw {
 			m.gateway = nil
 		}
 		m.cancel = nil
+		m.started = make(map[string]struct{})
+		m.resyncing = make(map[string]time.Time)
 		m.mu.Unlock()
 	}()
 	m.mu.Lock()
@@ -99,11 +100,25 @@ func (m *openClawManager) Start(ctx context.Context) error {
 	m.cancel = cancel
 	m.mu.Unlock()
 	if err = m.syncSessions(ctx); err != nil {
-		return err
+		return false, err
 	}
+	if _, err := m.client.loadAgentCatalog(m.client.BackgroundContext(ctx), true); err != nil {
+		m.client.Log().Debug().Err(err).Msg("Failed to refresh OpenClaw agent catalog on connect")
+	}
+	if _, err := m.client.loadModelCatalog(m.client.BackgroundContext(ctx), true); err != nil {
+		m.client.Log().Debug().Err(err).Msg("Failed to refresh OpenClaw model catalog on connect")
+	}
+	m.client.loggedIn.Store(true)
+	m.client.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
 	started = true
-	go m.eventLoop(runCtx, gw.Events())
-	return nil
+	m.eventLoop(runCtx, gw.Events())
+	if ctx.Err() != nil {
+		return true, nil
+	}
+	if err := gw.LastError(); err != nil {
+		return true, err
+	}
+	return true, errors.New("gateway connection closed")
 }
 
 func (m *openClawManager) Stop() {
@@ -151,6 +166,33 @@ func (m *openClawManager) gatewayClient() *gatewayWSClient {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.gateway
+}
+
+func (m *openClawManager) discoveredAgentIDs() []string {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if len(m.sessions) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(m.sessions))
+	agentIDs := make([]string, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		agentID := strings.TrimSpace(openClawAgentIDFromSessionKey(session.Key))
+		if agentID == "" {
+			continue
+		}
+		key := strings.ToLower(agentID)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		agentIDs = append(agentIDs, agentID)
+	}
+	sort.Strings(agentIDs)
+	return agentIDs
 }
 
 func (m *openClawManager) requireGateway() (*gatewayWSClient, error) {
@@ -815,7 +857,6 @@ func extractAttachmentMetadata(message map[string]any) []map[string]any {
 }
 
 func (m *openClawManager) eventLoop(ctx context.Context, events <-chan gatewayEvent) {
-	defer m.handleEventLoopExit(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -826,25 +867,6 @@ func (m *openClawManager) eventLoop(ctx context.Context, events <-chan gatewayEv
 			}
 			m.handleEvent(ctx, evt)
 		}
-	}
-}
-
-func (m *openClawManager) handleEventLoopExit(ctx context.Context) {
-	if ctx.Err() != nil {
-		return
-	}
-	m.mu.Lock()
-	m.gateway = nil
-	m.cancel = nil
-	m.started = make(map[string]struct{})
-	m.resyncing = make(map[string]time.Time)
-	m.mu.Unlock()
-	m.client.loggedIn.Store(false)
-	if m.client.UserLogin != nil {
-		m.client.UserLogin.BridgeState.Send(status.BridgeState{
-			StateEvent: status.StateTransientDisconnect,
-			Message:    "Gateway connection closed",
-		})
 	}
 }
 
@@ -991,7 +1013,11 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		text := extractMessageText(payload.Message)
 		if trimmed := strings.TrimSpace(text); trimmed != "" {
 			meta.OpenClawPreviewSnippet = trimmed
-			meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
+			if !eventTS.IsZero() {
+				meta.OpenClawLastPreviewAt = eventTS.UnixMilli()
+			} else {
+				meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
+			}
 		}
 		if delta := m.client.computeVisibleDelta(turnID, text); delta != "" {
 			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
@@ -1153,6 +1179,7 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 					"output":           output,
 					"providerExecuted": true,
 				})
+				m.ensureSpawnedSessionPortal(ctx, openClawSpawnedSessionKeyFromToolResult(toolName, output))
 			} else if result, ok := payload.Data["result"]; ok {
 				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
 					"timestamp":        eventTS.UnixMilli(),
@@ -1161,6 +1188,7 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 					"output":           result,
 					"providerExecuted": true,
 				})
+				m.ensureSpawnedSessionPortal(ctx, openClawSpawnedSessionKeyFromToolResult(toolName, result))
 			}
 			if errText := strings.TrimSpace(stringValue(payload.Data["error"])); errText != "" {
 				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
@@ -1182,6 +1210,67 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 			"data":      map[string]any{"stream": payload.Stream, "data": payload.Data},
 		})
 	}
+}
+
+func (m *openClawManager) ensureSpawnedSessionPortal(ctx context.Context, sessionKey string) {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return
+	}
+
+	// Queue a portal resync immediately so persistent child sessions materialize
+	// as their own rooms instead of waiting for later child traffic.
+	m.resolvePortal(m.client.BackgroundContext(ctx), sessionKey)
+
+	go func() {
+		if err := m.syncSessions(m.client.BackgroundContext(ctx)); err != nil {
+			m.client.Log().Debug().Err(err).Str("session_key", sessionKey).Msg("Failed to refresh OpenClaw sessions after spawned session detection")
+		}
+	}()
+}
+
+func openClawSpawnedSessionKeyFromToolResult(toolName string, value any) string {
+	if !strings.EqualFold(strings.TrimSpace(toolName), "sessions_spawn") {
+		return ""
+	}
+	return openClawExtractSpawnedSessionKey(value)
+}
+
+func openClawExtractSpawnedSessionKey(value any) string {
+	switch typed := value.(type) {
+	case map[string]any:
+		if childSessionKey := strings.TrimSpace(stringValue(typed["childSessionKey"])); isOpenClawSpawnedSessionKey(childSessionKey) {
+			return childSessionKey
+		}
+		for _, nestedKey := range []string{"result", "output", "payload", "data"} {
+			if nested := openClawExtractSpawnedSessionKey(typed[nestedKey]); nested != "" {
+				return nested
+			}
+		}
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return ""
+		}
+		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+			var parsed map[string]any
+			if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+				return openClawExtractSpawnedSessionKey(parsed)
+			}
+		}
+		if isOpenClawSpawnedSessionKey(trimmed) {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func isOpenClawSpawnedSessionKey(sessionKey string) bool {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return false
+	}
+	return strings.Contains(sessionKey, ":subagent:") || strings.Contains(sessionKey, ":acp:")
 }
 
 func (m *openClawManager) attachApprovalContext(approvalID, sessionKey, turnID, toolCallID, toolName string) {

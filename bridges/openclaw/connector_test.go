@@ -10,20 +10,24 @@ import (
 
 func TestFillPortalBridgeInfoSetsAIRoomType(t *testing.T) {
 	conn := &OpenClawConnector{}
-	portal := &bridgev2.Portal{Portal: &database.Portal{}}
+	portal := &bridgev2.Portal{Portal: &database.Portal{RoomType: database.RoomTypeDM}}
 	meta := portalMeta(portal)
 	meta.IsOpenClawRoom = true
 
 	content := &event.BridgeEventContent{}
 	conn.FillPortalBridgeInfo(portal, content)
-	if content.BeeperRoomTypeV2 != "ai" {
-		t.Fatalf("expected ai room type, got %q", content.BeeperRoomTypeV2)
+	if content.BeeperRoomTypeV2 != "dm" {
+		t.Fatalf("expected dm room type, got %q", content.BeeperRoomTypeV2)
+	}
+	if content.Protocol.ID != "ai-openclaw" {
+		t.Fatalf("expected ai-openclaw protocol, got %q", content.Protocol.ID)
 	}
 
 	meta.IsOpenClawRoom = false
+	portal.RoomType = database.RoomTypeDefault
 	conn.FillPortalBridgeInfo(portal, content)
-	if content.BeeperRoomTypeV2 != "ai" {
-		t.Fatalf("expected ai room type for non-openclaw room, got %q", content.BeeperRoomTypeV2)
+	if content.BeeperRoomTypeV2 != "group" {
+		t.Fatalf("expected group room type for non-openclaw room, got %q", content.BeeperRoomTypeV2)
 	}
 }
 

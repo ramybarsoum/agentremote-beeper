@@ -19,6 +19,62 @@ import (
 	"github.com/beeper/ai-bridge/pkg/shared/streamui"
 )
 
+func openClawStreamPartTimestamp(part map[string]any) time.Time {
+	if len(part) == 0 {
+		return time.Time{}
+	}
+	if value, ok := maputil.NumberArg(part, "timestamp"); ok && value > 0 {
+		return time.UnixMilli(int64(value))
+	}
+	return time.Time{}
+}
+
+func applyOpenClawStreamPartTimestamp(state *openClawStreamState, partType string, ts time.Time) {
+	if state == nil || ts.IsZero() {
+		return
+	}
+	tsMillis := ts.UnixMilli()
+	if state.messageTS.IsZero() || ts.Before(state.messageTS) {
+		state.messageTS = ts
+	}
+	switch partType {
+	case "start":
+		if state.startedAtMs == 0 || tsMillis < state.startedAtMs {
+			state.startedAtMs = tsMillis
+		}
+	case "text-delta", "reasoning-delta":
+		if state.startedAtMs == 0 || tsMillis < state.startedAtMs {
+			state.startedAtMs = tsMillis
+		}
+		if state.firstTokenAtMs == 0 || tsMillis < state.firstTokenAtMs {
+			state.firstTokenAtMs = tsMillis
+		}
+	case "abort", "error", "finish":
+		if state.completedAtMs == 0 || tsMillis > state.completedAtMs {
+			state.completedAtMs = tsMillis
+		}
+	}
+}
+
+func openClawStreamMessageTimestamp(state *openClawStreamState) time.Time {
+	if state == nil {
+		return time.Now()
+	}
+	if !state.messageTS.IsZero() {
+		return state.messageTS
+	}
+	if state.startedAtMs > 0 {
+		return time.UnixMilli(state.startedAtMs)
+	}
+	if state.firstTokenAtMs > 0 {
+		return time.UnixMilli(state.firstTokenAtMs)
+	}
+	if state.completedAtMs > 0 {
+		return time.UnixMilli(state.completedAtMs)
+	}
+	return time.Now()
+}
+
 func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.Portal, turnID, agentID, sessionKey string, part map[string]any) {
 	if oc == nil || portal == nil || portal.MXID == "" || strings.TrimSpace(turnID) == "" || part == nil {
 		return
@@ -37,6 +93,8 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		oc.applyStreamMessageMetadata(state, metadata)
 	}
 	partType := strings.TrimSpace(stringValue(part["type"]))
+	partTS := openClawStreamPartTimestamp(part)
+	applyOpenClawStreamPartTimestamp(state, partType, partTS)
 	if state.startedAtMs == 0 && partType == "start" {
 		state.startedAtMs = time.Now().UnixMilli()
 	}
@@ -68,7 +126,10 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		}
 	}
 	streamui.ApplyChunk(&state.ui, part)
-	needPlaceholder := state.initialEventID == ""
+	needPlaceholder := state.networkMessageID == "" && !state.placeholderPending
+	if needPlaceholder {
+		state.placeholderPending = true
+	}
 	oc.streamMu.Unlock()
 
 	if needPlaceholder {
@@ -103,7 +164,7 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 				}
 				return 0
 			},
-			RuntimeFallbackFlag: &oc.streamFallbackToDebounced,
+			RuntimeFallbackFlag: &state.streamFallbackToDebounced,
 			GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
 				ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
 				return ephemeralSender, ok
@@ -137,7 +198,7 @@ func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
 			state.finishReason = strings.TrimSpace(finishReason)
 		}
 		if state.completedAtMs == 0 {
-			state.completedAtMs = time.Now().UnixMilli()
+			state.completedAtMs = openClawStreamMessageTimestamp(state).UnixMilli()
 		}
 	}
 	oc.streamMu.Unlock()
@@ -201,12 +262,11 @@ func (oc *OpenClawClient) ensureStreamStateLocked(portal *bridgev2.Portal, turnI
 	state := oc.streamStates[turnID]
 	if state == nil {
 		state = &openClawStreamState{
-			portal:      portal,
-			turnID:      turnID,
-			agentID:     agentID,
-			sessionKey:  sessionKey,
-			role:        "assistant",
-			startedAtMs: time.Now().UnixMilli(),
+			portal:     portal,
+			turnID:     turnID,
+			agentID:    agentID,
+			sessionKey: sessionKey,
+			role:       "assistant",
 		}
 		state.ui.TurnID = turnID
 		oc.streamStates[turnID] = state
@@ -241,6 +301,7 @@ func (oc *OpenClawClient) ensureStreamPlaceholder(portal *bridgev2.Portal, turnI
 	runID := state.runID
 	sessionID := state.sessionID
 	sessionKey := state.sessionKey
+	messageTS := openClawStreamMessageTimestamp(state)
 	oc.streamMu.Unlock()
 
 	msgID := newOpenClawMessageID()
@@ -273,23 +334,35 @@ func (oc *OpenClawClient) ensureStreamPlaceholder(portal *bridgev2.Portal, turnI
 		portal:    portal.PortalKey,
 		id:        msgID,
 		sender:    oc.senderForAgent(agentID, false),
-		timestamp: time.Now(),
+		timestamp: messageTS,
 		preBuilt:  converted,
 	})
+	oc.applyStreamPlaceholderResult(turnID, msgID, result)
+}
 
-	if !result.Success || result.EventID == "" {
-		return
-	}
-
+func (oc *OpenClawClient) applyStreamPlaceholderResult(turnID string, msgID networkid.MessageID, result bridgev2.EventHandlingResult) {
 	oc.streamMu.Lock()
 	defer oc.streamMu.Unlock()
-	state = oc.streamStates[turnID]
-	if state == nil || state.initialEventID != "" {
+
+	state := oc.streamStates[turnID]
+	if state == nil {
 		return
 	}
-	state.initialEventID = result.EventID
+	state.placeholderPending = false
+	if !result.Success {
+		return
+	}
+
 	state.networkMessageID = msgID
-	state.targetEventID = result.EventID.String()
+	if result.EventID != "" {
+		state.initialEventID = result.EventID
+		state.targetEventID = result.EventID.String()
+		return
+	}
+
+	// Without a concrete target event ID, ephemeral stream events cannot be
+	// correlated to the placeholder message, so stay on edit-based streaming.
+	state.streamFallbackToDebounced.Store(true)
 }
 
 func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState, metadata map[string]any) {
@@ -471,7 +544,7 @@ func (oc *OpenClawClient) queueDebouncedStreamEdit(ctx context.Context, portal *
 		portal:        portal.PortalKey,
 		sender:        oc.senderForAgent(state.agentID, false),
 		targetMessage: state.networkMessageID,
-		timestamp:     time.Now(),
+		timestamp:     openClawStreamMessageTimestamp(state),
 		preBuilt: &bridgev2.ConvertedEdit{
 			ModifiedParts: []*bridgev2.ConvertedEditPart{{
 				Type: event.EventMessage,
@@ -481,12 +554,15 @@ func (oc *OpenClawClient) queueDebouncedStreamEdit(ctx context.Context, portal *
 					Format:        content.Format,
 					FormattedBody: content.FormattedBody,
 				},
-					Extra: map[string]any{"m.mentions": map[string]any{}},
-					TopLevelExtra: map[string]any{
-						matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
-						"com.beeper.dont_render_edited": true,
-						"m.mentions":                    map[string]any{},
-					},
+				Extra: map[string]any{"m.mentions": map[string]any{}},
+				TopLevelExtra: map[string]any{
+					"body":                          content.Body,
+					matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
+					"com.beeper.dont_render_edited": true,
+					"format":                        content.Format,
+					"formatted_body":                content.FormattedBody,
+					"m.mentions":                    map[string]any{},
+				},
 			}},
 		},
 	})
@@ -512,7 +588,7 @@ func (oc *OpenClawClient) queueFinalStreamEdit(ctx context.Context, portal *brid
 		portal:        portal.PortalKey,
 		sender:        oc.senderForAgent(state.agentID, false),
 		targetMessage: state.networkMessageID,
-		timestamp:     time.Now(),
+		timestamp:     openClawStreamMessageTimestamp(state),
 		preBuilt: &bridgev2.ConvertedEdit{
 			ModifiedParts: []*bridgev2.ConvertedEditPart{{
 				Type: event.EventMessage,
@@ -522,12 +598,15 @@ func (oc *OpenClawClient) queueFinalStreamEdit(ctx context.Context, portal *brid
 					Format:        rendered.Format,
 					FormattedBody: rendered.FormattedBody,
 				},
-					Extra: map[string]any{"m.mentions": map[string]any{}},
-					TopLevelExtra: map[string]any{
-						matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
-						"com.beeper.dont_render_edited": true,
-						"m.mentions":                    map[string]any{},
-					},
+				Extra: map[string]any{"m.mentions": map[string]any{}},
+				TopLevelExtra: map[string]any{
+					"body":                          body,
+					matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
+					"com.beeper.dont_render_edited": true,
+					"format":                        rendered.Format,
+					"formatted_body":                rendered.FormattedBody,
+					"m.mentions":                    map[string]any{},
+				},
 			}},
 		},
 	})

@@ -30,6 +30,9 @@ const (
 	openClawGatewayClientMode    = "backend"
 	openClawGatewayDisplayName   = "ai-bridge openclaw"
 	openClawGatewayDeviceFamily  = "bridge"
+	openClawGatewayWSReadLimit   = 32 * 1024 * 1024
+	openClawGatewayPingInterval  = 30 * time.Second
+	openClawGatewayPingTimeout   = 10 * time.Second
 	openClawDefaultSessionLimit  = 1000
 	openClawDefaultRequestTimout = 30 * time.Second
 )
@@ -373,12 +376,14 @@ type gatewayWSClient struct {
 	pendingMu sync.Mutex
 	pending   map[string]chan gatewayResponseFrame
 
-	conn        *websocket.Conn
-	events      chan gatewayEvent
-	closeOnce   sync.Once
-	closeCh     chan struct{}
-	readDone    chan struct{}
-	readStarted atomic.Bool
+	conn         *websocket.Conn
+	events       chan gatewayEvent
+	shutdownOnce sync.Once
+	closeCh      chan struct{}
+	readDone     chan struct{}
+	readStarted  atomic.Bool
+	lastErrMu    sync.Mutex
+	lastErr      error
 }
 
 func newGatewayWSClient(cfg gatewayConnectConfig) *gatewayWSClient {
@@ -403,6 +408,7 @@ func (c *gatewayWSClient) Connect(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("dial gateway websocket: %w", err)
 	}
+	conn.SetReadLimit(openClawGatewayWSReadLimit)
 	c.conn = conn
 
 	nonce, err := c.waitForConnectChallenge(ctx)
@@ -446,24 +452,46 @@ func (c *gatewayWSClient) Connect(ctx context.Context) (string, error) {
 	deviceToken := parseHelloDeviceToken(res.Payload)
 	c.readStarted.Store(true)
 	go c.readLoop()
+	go c.pingLoop()
 	return deviceToken, nil
 }
 
 func (c *gatewayWSClient) Close() {
-	c.closeOnce.Do(func() {
-		close(c.closeCh)
-		if c.conn != nil {
-			_ = c.conn.Close(websocket.StatusNormalClosure, "closing")
-		}
-		if c.readStarted.Load() {
-			<-c.readDone
-		}
-		close(c.events)
-	})
+	c.shutdown(nil, websocket.StatusNormalClosure, "closing", true, true)
 }
 
 func (c *gatewayWSClient) Events() <-chan gatewayEvent {
 	return c.events
+}
+
+func (c *gatewayWSClient) LastError() error {
+	c.lastErrMu.Lock()
+	defer c.lastErrMu.Unlock()
+	return c.lastErr
+}
+
+func (c *gatewayWSClient) setLastError(err error) {
+	c.lastErrMu.Lock()
+	defer c.lastErrMu.Unlock()
+	c.lastErr = err
+}
+
+func (c *gatewayWSClient) shutdown(err error, closeCode websocket.StatusCode, reason string, closeConn, waitRead bool) {
+	c.shutdownOnce.Do(func() {
+		c.setLastError(err)
+		close(c.closeCh)
+		if closeConn && c.conn != nil {
+			_ = c.conn.Close(closeCode, reason)
+		}
+		if err == nil {
+			err = errors.New("gateway connection closed")
+		}
+		c.failPending(err)
+		if waitRead && c.readStarted.Load() {
+			<-c.readDone
+		}
+		close(c.events)
+	})
 }
 
 func (c *gatewayWSClient) ListSessions(ctx context.Context, limit int) ([]gatewaySessionRow, error) {
@@ -805,7 +833,7 @@ func (c *gatewayWSClient) readLoop() {
 	for {
 		_, data, err := c.conn.Read(context.Background())
 		if err != nil {
-			c.failPending(err)
+			c.shutdown(err, websocket.StatusAbnormalClosure, "read failed", false, false)
 			return
 		}
 		var envelope struct {
@@ -837,6 +865,25 @@ func (c *gatewayWSClient) readLoop() {
 			select {
 			case c.events <- gatewayEvent{Name: evt.Event, Payload: evt.Payload}:
 			case <-c.closeCh:
+				return
+			}
+		}
+	}
+}
+
+func (c *gatewayWSClient) pingLoop() {
+	ticker := time.NewTicker(openClawGatewayPingInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.closeCh:
+			return
+		case <-ticker.C:
+			pingCtx, cancel := context.WithTimeout(context.Background(), openClawGatewayPingTimeout)
+			err := c.conn.Ping(pingCtx)
+			cancel()
+			if err != nil {
+				c.shutdown(err, websocket.StatusGoingAway, "ping failed", true, false)
 				return
 			}
 		}

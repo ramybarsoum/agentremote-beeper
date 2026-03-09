@@ -117,6 +117,9 @@ func TestQueueFallbackToolCompactionDecisions(t *testing.T) {
 	if d := DecideFallback(assertErr("invalid_api_key")); d.Action != FallbackActionAbort {
 		t.Fatalf("expected auth fallback action abort, got %#v", d)
 	}
+	if cls := ClassifyFallbackError(assertErr(`403 Forbidden {"message":"This model is not available","code":"model_not_found"}`)); cls != FailureClassProviderHard {
+		t.Fatalf("expected model_not_found 403 to classify as provider hard failure, got %s", cls)
+	}
 }
 
 func TestNormalizeMessageID(t *testing.T) {

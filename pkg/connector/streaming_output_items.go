@@ -25,7 +25,7 @@ func mergeMaps(base map[string]any, extra map[string]any) map[string]any {
 func parseJSONOrRaw(input string) any {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
-		return map[string]any{}
+		return nil
 	}
 	var parsed any
 	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {

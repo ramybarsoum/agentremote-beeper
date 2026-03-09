@@ -2,10 +2,28 @@ package connector
 
 import (
 	"errors"
+	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/openai/openai-go/v3"
 )
+
+func testOpenAIError(statusCode int, code, typ, message string) *openai.Error {
+	return &openai.Error{
+		StatusCode: statusCode,
+		Code:       code,
+		Type:       typ,
+		Message:    message,
+		Request: &http.Request{
+			Method: "POST",
+			URL:    &url.URL{Scheme: "https", Host: "example.test", Path: "/responses"},
+		},
+		Response: &http.Response{
+			StatusCode: statusCode,
+		},
+	}
+}
 
 func TestParseContextLengthError_OpenAIStyle(t *testing.T) {
 	err := &openai.Error{
@@ -317,6 +335,24 @@ func TestIsAuthError_StringFallback(t *testing.T) {
 		if got := IsAuthError(errors.New(tt.msg)); got != tt.want {
 			t.Errorf("IsAuthError(%q) = %v, want %v", tt.msg, got, tt.want)
 		}
+	}
+}
+
+func TestIsAuthError_ModelNotFound403(t *testing.T) {
+	err := testOpenAIError(403, "model_not_found", "invalid_request_error", "This model is not available")
+	if IsAuthError(err) {
+		t.Fatal("expected model_not_found 403 to not be classified as auth")
+	}
+	if !IsModelNotFound(err) {
+		t.Fatal("expected model_not_found 403 to be classified as model not found")
+	}
+}
+
+func TestFormatUserFacingError_ModelNotFound403(t *testing.T) {
+	err := testOpenAIError(403, "model_not_found", "invalid_request_error", "This model is not available")
+	msg := FormatUserFacingError(err)
+	if msg != "That model isn't available. Choose a different model." {
+		t.Fatalf("unexpected message: %q", msg)
 	}
 }
 

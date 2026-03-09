@@ -216,10 +216,45 @@ func IsServerError(err error) bool {
 // IsAuthError checks if the error is an authentication error.
 // Checks openai.Error status codes first, then falls back to string pattern matching.
 func IsAuthError(err error) bool {
+	if IsModelNotFound(err) {
+		return false
+	}
+
 	var apiErr *openai.Error
 	if errors.As(err, &apiErr) {
-		if apiErr.StatusCode == 401 || apiErr.StatusCode == 403 {
+		if apiErr.StatusCode == 401 {
 			return true
+		}
+		if apiErr.StatusCode == 403 {
+			authSignals := []string{
+				strings.ToLower(strings.TrimSpace(apiErr.Code)),
+				strings.ToLower(strings.TrimSpace(apiErr.Type)),
+				strings.ToLower(strings.TrimSpace(apiErr.Message)),
+				strings.ToLower(strings.TrimSpace(apiErr.RawJSON())),
+			}
+			for _, signal := range authSignals {
+				if signal == "" {
+					continue
+				}
+				switch {
+				case strings.Contains(signal, "invalid api key"),
+					strings.Contains(signal, "invalid_api_key"),
+					strings.Contains(signal, "incorrect api key"),
+					strings.Contains(signal, "invalid token"),
+					strings.Contains(signal, "unauthorized"),
+					strings.Contains(signal, "access denied"),
+					strings.Contains(signal, "token has expired"),
+					strings.Contains(signal, "no credentials found"),
+					strings.Contains(signal, "no api key found"),
+					strings.Contains(signal, "re-authenticate"),
+					strings.Contains(signal, "oauth token refresh failed"),
+					strings.Contains(signal, "insufficient permission"),
+					strings.Contains(signal, "insufficient_permission"),
+					strings.Contains(signal, "permission denied"),
+					strings.Contains(signal, "forbidden"):
+					return true
+				}
+			}
 		}
 	}
 	return containsAnyPattern(err, []string{
@@ -242,9 +277,28 @@ func IsAuthError(err error) bool {
 func IsModelNotFound(err error) bool {
 	var apiErr *openai.Error
 	if errors.As(err, &apiErr) {
-		return apiErr.StatusCode == 404
+		if apiErr.StatusCode == 404 {
+			return true
+		}
+		lowerCode := strings.ToLower(strings.TrimSpace(apiErr.Code))
+		lowerType := strings.ToLower(strings.TrimSpace(apiErr.Type))
+		lowerMsg := strings.ToLower(strings.TrimSpace(apiErr.Message))
+		lowerRaw := strings.ToLower(strings.TrimSpace(apiErr.RawJSON()))
+		if lowerCode == "model_not_found" {
+			return true
+		}
+		if lowerType == "invalid_request_error" &&
+			(strings.Contains(lowerMsg, "model is not available") ||
+				strings.Contains(lowerMsg, "model not found") ||
+				strings.Contains(lowerRaw, "\"code\":\"model_not_found\"")) {
+			return true
+		}
 	}
-	return false
+	return containsAnyPattern(err, []string{
+		"model_not_found",
+		"this model is not available",
+		"model not found",
+	})
 }
 
 // IsToolSchemaError checks if the error indicates a tool schema validation failure.

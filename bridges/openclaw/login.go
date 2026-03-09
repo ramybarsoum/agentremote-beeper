@@ -42,6 +42,9 @@ const (
 	openClawPairingPollInterval = 2 * time.Second
 	openClawPairingReturnAfter  = 20 * time.Second
 	openClawPairingWaitTimeout  = 10 * time.Minute
+	openClawPreflightTimeout    = 20 * time.Second
+	openClawPreflightConnect    = 10 * time.Second
+	openClawPreflightList       = 10 * time.Second
 )
 
 type openClawPendingLogin struct {
@@ -279,8 +282,10 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		return nil, errors.New("missing pending OpenClaw login details")
 	}
 	persistCtx := ol.backgroundProcessContext()
+	log := ol.User.Log.With().Str("component", "openclaw_login").Str("gateway_url", pending.gatewayURL).Logger()
 	remoteName := openClawRemoteName(pending.gatewayURL, pending.label)
 	loginID := nextOpenClawUserLoginID(ol.User)
+	log.Debug().Str("login_id", string(loginID)).Str("remote_name", remoteName).Msg("Creating OpenClaw user login")
 	login, err := ol.User.NewLogin(persistCtx, &database.UserLogin{
 		ID:         loginID,
 		RemoteName: remoteName,
@@ -295,17 +300,23 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		},
 	}, nil)
 	if err != nil {
+		log.Debug().Err(err).Str("login_id", string(loginID)).Msg("OpenClaw user login creation failed")
 		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
+	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
 	if err = ol.Connector.LoadUserLogin(persistCtx, login); err != nil {
+		log.Debug().Err(err).Str("login_id", string(login.ID)).Msg("Reloading OpenClaw user login failed")
 		return nil, fmt.Errorf("failed to load client: %w", err)
 	}
+	log.Debug().Str("login_id", string(login.ID)).Msg("Loaded OpenClaw user login client")
 	if login.Client != nil {
+		log.Debug().Str("login_id", string(login.ID)).Msg("Starting OpenClaw user login connect loop")
 		go login.Client.Connect(login.Log.WithContext(ol.backgroundProcessContext()))
 	}
 	ol.pending = nil
 	ol.step = ""
 	ol.waitUntil = time.Time{}
+	log.Debug().Str("login_id", string(login.ID)).Msg("Returning completed OpenClaw login step")
 	return &bridgev2.LoginStep{
 		Type:   bridgev2.LoginStepTypeComplete,
 		StepID: "io.ai-bridge.openclaw.complete",
@@ -405,28 +416,45 @@ func (ol *OpenClawLogin) preflightGatewayLogin(ctx context.Context, gatewayURL, 
 	if ol.preflight != nil {
 		return ol.preflight(ctx, gatewayURL, token, password)
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-	}
+	log := ol.User.Log.With().Str("component", "openclaw_login").Logger()
+	ctx, cancel := openClawBoundedContext(ctx, openClawPreflightTimeout)
+	defer cancel()
+	log.Debug().Str("gateway_url", gatewayURL).Msg("Starting OpenClaw gateway preflight")
+
 	client := newGatewayWSClient(gatewayConnectConfig{
 		URL:      gatewayURL,
 		Token:    token,
 		Password: password,
 	})
-	deviceToken, err := client.Connect(ctx)
+
+	connectCtx, connectCancel := openClawBoundedContext(ctx, openClawPreflightConnect)
+	deviceToken, err := client.Connect(connectCtx)
+	connectCancel()
 	if err != nil {
+		log.Debug().Err(err).Str("gateway_url", gatewayURL).Msg("OpenClaw gateway preflight connect failed")
 		return "", err
 	}
 	defer client.Close()
-	if _, err = client.ListSessions(ctx, 1); err != nil {
+
+	listCtx, listCancel := openClawBoundedContext(ctx, openClawPreflightList)
+	_, err = client.ListSessions(listCtx, 1)
+	listCancel()
+	if err != nil {
+		log.Debug().Err(err).Str("gateway_url", gatewayURL).Msg("OpenClaw gateway preflight sessions.list failed")
 		return "", err
 	}
+	log.Debug().Str("gateway_url", gatewayURL).Msg("Completed OpenClaw gateway preflight")
 	return deviceToken, nil
+}
+
+func openClawBoundedContext(ctx context.Context, max time.Duration) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= max {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, max)
 }
 
 func mapOpenClawLoginError(err error) error {

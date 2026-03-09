@@ -4,8 +4,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/status"
 )
 
 func TestMapOpenClawLoginErrorPairingRequired(t *testing.T) {
@@ -39,6 +41,44 @@ func TestMapOpenClawLoginErrorAuthFailure(t *testing.T) {
 	}
 	if respErr.StatusCode != 403 {
 		t.Fatalf("unexpected status code: %d", respErr.StatusCode)
+	}
+}
+
+func TestClassifyOpenClawConnectionErrorPairingRequired(t *testing.T) {
+	state, retry := classifyOpenClawConnectionError(&gatewayRPCError{
+		Method:     "connect",
+		Message:    "pairing required",
+		DetailCode: "PAIRING_REQUIRED",
+		RequestID:  "req-123",
+	}, time.Second)
+	if retry {
+		t.Fatal("expected pairing-required error to stop retries")
+	}
+	if state.StateEvent != status.StateBadCredentials {
+		t.Fatalf("unexpected state event: %s", state.StateEvent)
+	}
+	if state.Error != openClawPairingRequiredError {
+		t.Fatalf("unexpected state error: %s", state.Error)
+	}
+	if got := state.Info["request_id"]; got != "req-123" {
+		t.Fatalf("unexpected request id info: %#v", state.Info)
+	}
+}
+
+func TestClassifyOpenClawConnectionErrorAuthFailure(t *testing.T) {
+	state, retry := classifyOpenClawConnectionError(&gatewayRPCError{
+		Method:     "connect",
+		Message:    "token mismatch",
+		DetailCode: "AUTH_TOKEN_MISMATCH",
+	}, time.Second)
+	if retry {
+		t.Fatal("expected auth failure to stop retries")
+	}
+	if state.StateEvent != status.StateBadCredentials {
+		t.Fatalf("unexpected state event: %s", state.StateEvent)
+	}
+	if state.Error != openClawAuthFailedError {
+		t.Fatalf("unexpected state error: %s", state.Error)
 	}
 }
 

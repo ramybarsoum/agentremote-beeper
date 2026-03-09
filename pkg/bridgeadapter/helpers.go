@@ -13,7 +13,12 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/ai-bridge/pkg/matrixevents"
 	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
+)
+
+const (
+	AIRoomKindAgent = "agent"
 )
 
 func BuildMetaTypes(portal, message, userLogin, ghost func() any) database.MetaTypes {
@@ -195,6 +200,49 @@ func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic
 		Name:  ptr.Ptr(title),
 		Topic: ptr.NonZero(portalTopic),
 	}
+}
+
+func NormalizeAIRoomTypeV2(roomType database.RoomType, aiKind string) string {
+	if aiKind != "" && aiKind != AIRoomKindAgent {
+		return "group"
+	}
+	switch roomType {
+	case database.RoomTypeDM:
+		return "dm"
+	case database.RoomTypeSpace:
+		return "space"
+	default:
+		return "group"
+	}
+}
+
+func ApplyAIBridgeInfo(content *event.BridgeEventContent, protocolID string, roomType database.RoomType, aiKind string) {
+	if content == nil {
+		return
+	}
+	if protocolID != "" {
+		content.Protocol.ID = protocolID
+	}
+	content.BeeperRoomTypeV2 = NormalizeAIRoomTypeV2(roomType, aiKind)
+}
+
+func SendAIRoomInfo(ctx context.Context, portal *bridgev2.Portal, aiKind string) bool {
+	if portal == nil || portal.MXID == "" {
+		return false
+	}
+	if aiKind == "" {
+		aiKind = AIRoomKindAgent
+	}
+	return portal.Internal().SendRoomMeta(
+		ctx,
+		nil,
+		time.Now(),
+		matrixevents.AIRoomInfoEventType,
+		"",
+		map[string]any{"type": aiKind},
+		true,
+		nil,
+	)
 }
 
 // UpsertAssistantMessageParams holds parameters for UpsertAssistantMessage.

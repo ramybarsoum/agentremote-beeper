@@ -542,6 +542,7 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		cleanupPortal(ctx, b.store.client, portal, "failed to create Matrix room")
 		return "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
+	sendAIPortalInfo(ctx, portal, pm)
 
 	// Send welcome message (excluded from LLM history)
 	b.store.client.sendWelcomeMessage(ctx, portal)

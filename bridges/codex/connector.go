@@ -272,7 +272,10 @@ func (cc *CodexConnector) GetBridgeInfoVersion() (info, capabilities int) {
 }
 
 func (cc *CodexConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {
-	content.BeeperRoomTypeV2 = "ai"
+	if portal == nil {
+		return
+	}
+	bridgeadapter.ApplyAIBridgeInfo(content, "ai-codex", portal.RoomType, bridgeadapter.AIRoomKindAgent)
 }
 
 func (cc *CodexConnector) GetName() bridgev2.BridgeName {

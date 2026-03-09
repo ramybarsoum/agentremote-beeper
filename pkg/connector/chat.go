@@ -858,6 +858,7 @@ func (oc *AIClient) createAndOpenAgentChat(ctx context.Context, portal *bridgev2
 		oc.sendSystemNotice(ctx, portal, "Couldn't create the room: "+err.Error())
 		return
 	}
+	sendAIPortalInfo(ctx, newPortal, portalMeta(newPortal))
 
 	oc.sendWelcomeMessage(ctx, newPortal)
 
@@ -879,6 +880,7 @@ func (oc *AIClient) createAndOpenSimpleChat(ctx context.Context, portal *bridgev
 		oc.sendSystemNotice(ctx, portal, "Couldn't create the room: "+err.Error())
 		return
 	}
+	sendAIPortalInfo(ctx, newPortal, portalMeta(newPortal))
 
 	oc.sendWelcomeMessage(ctx, newPortal)
 
@@ -1137,6 +1139,8 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 			err := portal.CreateMatrixRoom(ctx, oc.UserLogin, info)
 			if err != nil {
 				oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
+			} else {
+				sendAIPortalInfo(ctx, portal, portalMeta(portal))
 			}
 			oc.sendWelcomeMessage(ctx, portal)
 			return err
@@ -1211,6 +1215,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 				oc.loggerForContext(ctx).Err(createErr).Msg("Failed to create Matrix room for default chat")
 				return createErr
 			}
+			sendAIPortalInfo(ctx, existingPortal, portalMeta(existingPortal))
 			oc.sendWelcomeMessage(ctx, existingPortal)
 			oc.loggerForContext(ctx).Info().Stringer("portal", existingPortal.PortalKey).Msg("New AI Chat room created")
 			return nil
@@ -1246,6 +1251,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
 		return err
 	}
+	sendAIPortalInfo(ctx, portal, portalMeta(portal))
 	oc.sendWelcomeMessage(ctx, portal)
 	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("New AI Chat room created")
 	return nil
@@ -1269,6 +1275,7 @@ func (oc *AIClient) ensureExistingChatPortalReady(ctx context.Context, loginMeta
 		oc.loggerForContext(ctx).Err(err).Msg(errMsg)
 		return err
 	}
+	sendAIPortalInfo(ctx, portal, portalMeta(portal))
 	oc.sendWelcomeMessage(ctx, portal)
 	return nil
 }

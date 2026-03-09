@@ -86,3 +86,14 @@ func TestGetCapabilities_MessageToolDisabledDisablesReplyEditReaction(t *testing
 		t.Fatalf("expected reaction rejected when message tool is disabled, got %v", caps.Reaction)
 	}
 }
+
+func TestConnectorCapabilitiesEnableContactListProvisioning(t *testing.T) {
+	conn := &OpenAIConnector{}
+	caps := conn.GetCapabilities()
+	if caps == nil {
+		t.Fatal("expected capabilities")
+	}
+	if !caps.Provisioning.ResolveIdentifier.ContactList {
+		t.Fatal("expected contact list provisioning to be enabled")
+	}
+}
