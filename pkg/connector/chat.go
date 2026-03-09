@@ -729,70 +729,83 @@ func (oc *AIClient) handleNewChat(
 	args []string,
 ) {
 	runCtx := oc.backgroundContext(ctx)
+	agent, modelID, err := oc.resolveNewChatTarget(runCtx, meta, args)
+	if err != nil {
+		oc.sendSystemNotice(runCtx, portal, err.Error())
+		return
+	}
+	if agent != nil {
+		oc.createAndOpenAgentChat(runCtx, portal, agent, modelID, false)
+		return
+	}
+	oc.createAndOpenSimpleChat(runCtx, portal, modelID)
+}
 
+func (oc *AIClient) validateNewChatCommand(
+	ctx context.Context,
+	_ *bridgev2.Portal,
+	meta *PortalMetadata,
+	args []string,
+) error {
+	_, _, err := oc.resolveNewChatTarget(ctx, meta, args)
+	return err
+}
+
+func (oc *AIClient) resolveNewChatTarget(
+	ctx context.Context,
+	meta *PortalMetadata,
+	args []string,
+) (*agents.AgentDefinition, string, error) {
 	const usage = "Usage: !ai new [agent <agent_id>]"
 
 	if len(args) >= 2 {
 		cmd := strings.ToLower(args[0])
 		if cmd != "agent" {
-			oc.sendSystemNotice(runCtx, portal, usage)
-			return
+			return nil, "", fmt.Errorf(usage)
 		}
 		targetID := args[1]
 		if targetID == "" || len(args) > 2 {
-			oc.sendSystemNotice(runCtx, portal, usage)
-			return
+			return nil, "", fmt.Errorf(usage)
 		}
 		store := NewAgentStoreAdapter(oc)
-		agent, err := store.GetAgentByID(runCtx, targetID)
+		agent, err := store.GetAgentByID(ctx, targetID)
 		if err != nil || agent == nil {
-			oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("Agent not found: %s", targetID))
-			return
+			return nil, "", fmt.Errorf("Agent not found: %s", targetID)
 		}
-		modelID, err := oc.resolveAgentModelForNewChat(runCtx, agent, "")
+		modelID, err := oc.resolveAgentModelForNewChat(ctx, agent, "")
 		if err != nil {
-			oc.sendSystemNotice(runCtx, portal, err.Error())
-			return
+			return nil, "", err
 		}
-		oc.createAndOpenAgentChat(runCtx, portal, agent, modelID, false)
-		return
+		return agent, modelID, nil
 	} else if len(args) == 1 {
-		oc.sendSystemNotice(runCtx, portal, usage)
-		return
+		return nil, "", fmt.Errorf(usage)
 	}
 
-	// No args: create new room of same type
 	if meta == nil {
-		oc.sendSystemNotice(runCtx, portal, "Couldn't resolve the current chat target.")
-		return
+		return nil, "", fmt.Errorf("Couldn't resolve the current chat target.")
 	}
 	agentID := resolveAgentID(meta)
 	if agentID != "" {
 		store := NewAgentStoreAdapter(oc)
-		agent, err := store.GetAgentByID(runCtx, agentID)
+		agent, err := store.GetAgentByID(ctx, agentID)
 		if err != nil || agent == nil {
-			oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("Agent not found: %s", agentID))
-			return
+			return nil, "", fmt.Errorf("Agent not found: %s", agentID)
 		}
-		modelID, err := oc.resolveAgentModelForNewChat(runCtx, agent, oc.effectiveModel(meta))
+		modelID, err := oc.resolveAgentModelForNewChat(ctx, agent, oc.effectiveModel(meta))
 		if err != nil {
-			oc.sendSystemNotice(runCtx, portal, err.Error())
-			return
+			return nil, "", err
 		}
-		oc.createAndOpenAgentChat(runCtx, portal, agent, modelID, false)
-		return
+		return agent, modelID, nil
 	}
 
 	modelID := oc.effectiveModel(meta)
 	if modelID == "" {
-		oc.sendSystemNotice(runCtx, portal, "No model configured for this room.")
-		return
+		return nil, "", fmt.Errorf("No model configured for this room.")
 	}
-	if ok, _ := oc.validateModel(runCtx, modelID); !ok {
-		oc.sendSystemNotice(runCtx, portal, fmt.Sprintf("That model isn't available: %s", modelID))
-		return
+	if ok, _ := oc.validateModel(ctx, modelID); !ok {
+		return nil, "", fmt.Errorf("That model isn't available: %s", modelID)
 	}
-	oc.createAndOpenSimpleChat(runCtx, portal, modelID)
+	return nil, modelID, nil
 }
 
 func (oc *AIClient) resolveAgentModelForNewChat(ctx context.Context, agent *agents.AgentDefinition, preferredModel string) (string, error) {

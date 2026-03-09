@@ -692,7 +692,6 @@ func (oc *AIClient) dispatchOrQueueCore(
 		return true
 	}
 
-	pendingSent := false
 	messageSaved := false
 	if shouldSteer && queueItem.pending.Type == pendingTypeText {
 		queueItem.prompt = queueItem.pending.MessageBody
@@ -712,7 +711,6 @@ func (oc *AIClient) dispatchOrQueueCore(
 				if evt != nil && !queueItem.pending.PendingSent {
 					oc.sendPendingStatus(ctx, portal, evt, "Processing...")
 					queueItem.pending.PendingSent = true
-					pendingSent = true
 				}
 				if hasDBMessage {
 					oc.notifySessionMutation(ctx, portal, meta, false)
@@ -739,9 +737,6 @@ func (oc *AIClient) dispatchOrQueueCore(
 	}
 	if hasDBMessage && !messageSaved {
 		oc.saveUserMessage(ctx, evt, userMessage)
-	}
-	if evt != nil && !pendingSent {
-		oc.sendQueueAcceptedSuccess(ctx, portal, evt, queueItem.pending.StatusEvents)
 	}
 	if hasDBMessage {
 		oc.notifySessionMutation(ctx, portal, meta, false)

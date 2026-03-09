@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"maunium.net/go/mautrix/bridgev2/commands"
+	"maunium.net/go/mautrix/event"
 )
 
 // Definition describes a chat command in a tool-like schema.
@@ -22,16 +23,39 @@ type Definition struct {
 
 // FullHandler returns the maunium command handler for this definition.
 func (d Definition) FullHandler() *commands.FullHandler {
+	run := d.Handler
+	if run == nil {
+		return nil
+	}
 	return &commands.FullHandler{
-		Func: d.Handler,
+		Func: func(ce *commands.Event) {
+			switch {
+			case d.RequiresPortal && ce.Portal == nil:
+				if ce.MessageStatus != nil {
+					ce.MessageStatus.Status = event.MessageStatusFail
+					ce.MessageStatus.ErrorReason = event.MessageStatusUnsupported
+					ce.MessageStatus.Message = "That command can only be run in portal rooms."
+					ce.MessageStatus.IsCertain = true
+				}
+				ce.Reply("That command can only be ran in portal rooms.")
+			case d.RequiresLogin && (ce.User == nil || ce.User.GetDefaultLogin() == nil):
+				if ce.MessageStatus != nil {
+					ce.MessageStatus.Status = event.MessageStatusFail
+					ce.MessageStatus.ErrorReason = event.MessageStatusNoPermission
+					ce.MessageStatus.Message = "That command requires you to be logged in."
+					ce.MessageStatus.IsCertain = true
+				}
+				ce.Reply("That command requires you to be logged in.")
+			default:
+				run(ce)
+			}
+		},
 		Name: d.Name,
 		Help: commands.HelpMeta{
 			Section:     d.Section,
 			Description: d.Description,
 			Args:        d.Args,
 		},
-		RequiresPortal: d.RequiresPortal,
-		RequiresLogin:  d.RequiresLogin,
 	}
 }
 

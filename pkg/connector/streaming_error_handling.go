@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"errors"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 )
@@ -37,11 +38,10 @@ func (oc *AIClient) handleResponsesStreamErr(
 ) (*ContextLengthError, error) {
 	if errors.Is(err, context.Canceled) {
 		state.finishReason = "cancelled"
-		if state.hasInitialMessageTarget() && state.accumulated.Len() > 0 {
-			oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
-		}
+		state.completedAtMs = time.Now().UnixMilli()
 		oc.uiEmitter(state).EmitUIAbort(context.Background(), portal, "cancelled")
 		oc.emitUIFinish(context.Background(), portal, state, meta)
+		oc.persistTerminalAssistantTurn(context.Background(), *oc.loggerForContext(ctx), portal, state, meta)
 		return nil, streamFailureError(state, err)
 	}
 
@@ -53,7 +53,9 @@ func (oc *AIClient) handleResponsesStreamErr(
 	}
 
 	state.finishReason = "error"
+	state.completedAtMs = time.Now().UnixMilli()
 	oc.uiEmitter(state).EmitUIError(ctx, portal, err.Error())
 	oc.emitUIFinish(ctx, portal, state, meta)
+	oc.persistTerminalAssistantTurn(ctx, *oc.loggerForContext(ctx), portal, state, meta)
 	return nil, streamFailureError(state, err)
 }

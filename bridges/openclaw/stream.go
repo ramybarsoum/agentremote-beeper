@@ -481,15 +481,12 @@ func (oc *OpenClawClient) queueDebouncedStreamEdit(ctx context.Context, portal *
 					Format:        content.Format,
 					FormattedBody: content.FormattedBody,
 				},
-				Extra: map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: map[string]any{
-					"body":                          content.Body,
-					matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
-					"com.beeper.dont_render_edited": true,
-					"format":                        content.Format,
-					"formatted_body":                content.FormattedBody,
-					"m.mentions":                    map[string]any{},
-				},
+					Extra: map[string]any{"m.mentions": map[string]any{}},
+					TopLevelExtra: map[string]any{
+						matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
+						"com.beeper.dont_render_edited": true,
+						"m.mentions":                    map[string]any{},
+					},
 			}},
 		},
 	})
@@ -525,15 +522,12 @@ func (oc *OpenClawClient) queueFinalStreamEdit(ctx context.Context, portal *brid
 					Format:        rendered.Format,
 					FormattedBody: rendered.FormattedBody,
 				},
-				Extra: map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: map[string]any{
-					"body":                          body,
-					matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
-					"com.beeper.dont_render_edited": true,
-					"format":                        rendered.Format,
-					"formatted_body":                rendered.FormattedBody,
-					"m.mentions":                    map[string]any{},
-				},
+					Extra: map[string]any{"m.mentions": map[string]any{}},
+					TopLevelExtra: map[string]any{
+						matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
+						"com.beeper.dont_render_edited": true,
+						"m.mentions":                    map[string]any{},
+					},
 			}},
 		},
 	})

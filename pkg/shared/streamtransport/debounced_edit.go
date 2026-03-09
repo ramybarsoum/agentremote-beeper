@@ -40,9 +40,6 @@ func BuildDebouncedEditContent(p DebouncedEditParams) *DebouncedEditContent {
 	if body == "" {
 		return nil
 	}
-	if !p.Force {
-		return nil
-	}
 	rendered := format.RenderMarkdown(body, true, true)
 	return &DebouncedEditContent{
 		Body:          rendered.Body,
@@ -52,23 +49,14 @@ func BuildDebouncedEditContent(p DebouncedEditParams) *DebouncedEditContent {
 }
 
 // BuildConvertedEdit wraps rendered message content into a standard Matrix edit.
+// The bridge layer will derive the Matrix edit fallback fields from Content via SetEdit,
+// so TopLevelExtra should only contain custom top-level fields.
 func BuildConvertedEdit(content *event.MessageEventContent, topLevelExtra map[string]any) *bridgev2.ConvertedEdit {
 	if content == nil {
 		return nil
 	}
 	if topLevelExtra == nil {
 		topLevelExtra = map[string]any{}
-	}
-	if _, ok := topLevelExtra["body"]; !ok {
-		topLevelExtra["body"] = content.Body
-	}
-	if content.Format != "" {
-		if _, ok := topLevelExtra["format"]; !ok {
-			topLevelExtra["format"] = content.Format
-		}
-		if _, ok := topLevelExtra["formatted_body"]; !ok {
-			topLevelExtra["formatted_body"] = content.FormattedBody
-		}
 	}
 	return &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{{

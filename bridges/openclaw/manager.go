@@ -185,6 +185,17 @@ func (m *openClawManager) untrackWaitingRun(runID string) {
 	m.mu.Unlock()
 }
 
+func (m *openClawManager) forgetSession(sessionKey string) {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return
+	}
+	m.mu.Lock()
+	delete(m.sessions, sessionKey)
+	delete(m.resyncing, sessionKey)
+	m.mu.Unlock()
+}
+
 func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	gateway, err := m.requireGateway()
 	if err != nil {
@@ -197,6 +208,9 @@ func (m *openClawManager) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 			return nil, err
 		}
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
+	if handled, err := m.handleControlCommand(ctx, msg, gateway, body); handled || err != nil {
+		return &bridgev2.MatrixMessageResponse{Pending: false}, err
 	}
 
 	attachments, text, err := m.buildOutboundPayload(ctx, msg)
@@ -294,6 +308,127 @@ func isOpenClawAbortCommand(body string, msgType event.MessageType, evtType even
 	default:
 		return false
 	}
+}
+
+type openClawControlCommand struct {
+	Action string
+	Value  string
+	Clear  bool
+}
+
+func parseOpenClawControlCommand(body string, msgType event.MessageType, evtType event.Type) (*openClawControlCommand, bool) {
+	if evtType == event.EventSticker || msgType == event.MsgImage || msgType == event.MsgVideo || msgType == event.MsgAudio || msgType == event.MsgFile {
+		return nil, false
+	}
+	body = strings.TrimSpace(body)
+	if !strings.HasPrefix(body, "/") {
+		return nil, false
+	}
+	fields := strings.Fields(body)
+	if len(fields) == 0 {
+		return nil, false
+	}
+	cmd := strings.ToLower(strings.TrimPrefix(fields[0], "/"))
+	rest := strings.TrimSpace(strings.TrimPrefix(body, fields[0]))
+	switch cmd {
+	case "reset":
+		if rest != "" {
+			return nil, false
+		}
+		return &openClawControlCommand{Action: "reset"}, true
+	case "rename", "label":
+		if rest == "" {
+			return nil, false
+		}
+		if strings.EqualFold(rest, "clear") || rest == "-" {
+			return &openClawControlCommand{Action: "label", Clear: true}, true
+		}
+		return &openClawControlCommand{Action: "label", Value: rest}, true
+	case "thinking", "verbose", "reasoning":
+		if rest == "" {
+			return nil, false
+		}
+		value := strings.ToLower(strings.TrimSpace(rest))
+		if value == "inherit" || value == "default" || value == "-" {
+			return &openClawControlCommand{Action: cmd, Clear: true}, true
+		}
+		return &openClawControlCommand{Action: cmd, Value: value}, true
+	default:
+		return nil, false
+	}
+}
+
+func (m *openClawManager) handleControlCommand(ctx context.Context, msg *bridgev2.MatrixMessage, gateway *gatewayWSClient, body string) (bool, error) {
+	if msg == nil || msg.Portal == nil || gateway == nil {
+		return false, nil
+	}
+	command, ok := parseOpenClawControlCommand(body, msg.Content.MsgType, msg.Event.Type)
+	if !ok {
+		return false, nil
+	}
+	meta := portalMeta(msg.Portal)
+	sessionKey := strings.TrimSpace(meta.OpenClawSessionKey)
+	if sessionKey == "" {
+		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, "OpenClaw session key is unavailable for this room.")
+		return true, nil
+	}
+	switch command.Action {
+	case "reset":
+		if err := gateway.ResetSession(ctx, sessionKey); err != nil {
+			return true, err
+		}
+		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, "OpenClaw session reset.")
+	case "label":
+		value := any(nil)
+		notice := "OpenClaw session label cleared."
+		if !command.Clear {
+			value = command.Value
+			notice = "OpenClaw session label set to " + command.Value + "."
+		}
+		if err := gateway.PatchSession(ctx, sessionKey, map[string]any{"label": value}); err != nil {
+			return true, err
+		}
+		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, notice)
+	case "thinking":
+		value := any(nil)
+		notice := "OpenClaw thinking level cleared."
+		if !command.Clear {
+			value = command.Value
+			notice = "OpenClaw thinking level set to " + command.Value + "."
+		}
+		if err := gateway.PatchSession(ctx, sessionKey, map[string]any{"thinkingLevel": value}); err != nil {
+			return true, err
+		}
+		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, notice)
+	case "verbose":
+		value := any(nil)
+		notice := "OpenClaw verbose level cleared."
+		if !command.Clear {
+			value = command.Value
+			notice = "OpenClaw verbose level set to " + command.Value + "."
+		}
+		if err := gateway.PatchSession(ctx, sessionKey, map[string]any{"verboseLevel": value}); err != nil {
+			return true, err
+		}
+		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, notice)
+	case "reasoning":
+		value := any(nil)
+		notice := "OpenClaw reasoning level cleared."
+		if !command.Clear {
+			value = command.Value
+			notice = "OpenClaw reasoning level set to " + command.Value + "."
+		}
+		if err := gateway.PatchSession(ctx, sessionKey, map[string]any{"reasoningLevel": value}); err != nil {
+			return true, err
+		}
+		m.client.sendSystemNoticeViaPortal(ctx, msg.Portal, notice)
+	default:
+		return false, nil
+	}
+	if err := m.syncSessions(ctx); err != nil {
+		m.client.Log().Debug().Err(err).Str("session_key", sessionKey).Msg("Failed to refresh OpenClaw sessions after control command")
+	}
+	return true, nil
 }
 
 func (m *openClawManager) ResolveApprovalDecision(ctx context.Context, portal *bridgev2.Portal, decision bridgeadapter.ApprovalDecisionPayload) error {
@@ -621,6 +756,38 @@ func openClawErrorText(payload gatewayChatEvent) string {
 	return stringsTrimDefault(payload.ErrorMessage, stringsTrimDefault(payload.StopReason, ""))
 }
 
+func extractOpenClawEventTimestamp(eventTS int64, message map[string]any) time.Time {
+	if ts := extractMessageTimestamp(message); !ts.IsZero() && !ts.Equal(openClawMissingMessageTimestamp) {
+		return ts
+	}
+	if eventTS > 0 {
+		return time.UnixMilli(eventTS)
+	}
+	return time.Time{}
+}
+
+func normalizeOpenClawLiveMessage(eventTS int64, message map[string]any) map[string]any {
+	if len(message) == 0 {
+		return nil
+	}
+	normalized := make(map[string]any, len(message)+1)
+	for key, value := range message {
+		normalized[key] = value
+	}
+	if _, ok := normalized["timestamp"]; !ok && eventTS > 0 {
+		normalized["timestamp"] = eventTS
+	}
+	return normalized
+}
+
+func isOpenClawDirectChatEvent(state string, message map[string]any) bool {
+	if !strings.EqualFold(strings.TrimSpace(state), "final") || len(message) == 0 {
+		return false
+	}
+	role := strings.ToLower(strings.TrimSpace(stringValue(message["role"])))
+	return role != "" && role != "assistant"
+}
+
 func openClawApprovalDecisionStatus(decision string) (bool, string) {
 	switch strings.ToLower(strings.TrimSpace(decision)) {
 	case "allow-always":
@@ -776,26 +943,33 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		return
 	}
 	meta := portalMeta(portal)
+	payload.Message = normalizeOpenClawLiveMessage(payload.TS, payload.Message)
+	eventTS := extractOpenClawEventTimestamp(payload.TS, payload.Message)
+	if isOpenClawDirectChatEvent(payload.State, payload.Message) {
+		m.handleDirectChatEvent(ctx, portal, meta, payload, eventTS)
+		return
+	}
 	agentID := resolveOpenClawAgentID(meta, payload.SessionKey, payload.Message)
 	maybePersistPortalAgentID(ctx, portal, meta, agentID)
 	turnID := stringsTrimDefault(payload.RunID, "openclaw:"+payload.SessionKey)
 	messageMetadata := openClawStreamMessageMetadata(meta, payload, agentID, turnID)
 	if payload.State == "delta" {
-		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, messageMetadata)
+		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata)
 		m.startRunRecovery(ctx, portal, meta, turnID, payload.RunID, agentID)
 		text := extractMessageText(payload.Message)
 		delta := m.client.computeVisibleDelta(turnID, text)
 		if delta != "" {
 			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
-				"type":  "text-delta",
-				"id":    "text-" + turnID,
-				"delta": delta,
+				"timestamp": eventTS.UnixMilli(),
+				"type":      "text-delta",
+				"id":        "text-" + turnID,
+				"delta":     delta,
 			})
 		}
 		return
 	}
 	if payload.State == "final" || payload.State == "aborted" || payload.State == "error" {
-		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, messageMetadata)
+		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata)
 		if usage := normalizeOpenClawUsage(payload.Usage); len(usage) > 0 {
 			reasoningTokens := int64(0)
 			if value, ok := openClawUsageInt64(usage, "prompt_tokens"); ok {
@@ -821,17 +995,27 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		}
 		if delta := m.client.computeVisibleDelta(turnID, text); delta != "" {
 			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
-				"type":  "text-delta",
-				"id":    "text-" + turnID,
-				"delta": delta,
+				"timestamp": eventTS.UnixMilli(),
+				"type":      "text-delta",
+				"id":        "text-" + turnID,
+				"delta":     delta,
 			})
 		}
 		if payload.State == "error" {
-			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{"type": "error", "errorText": openClawErrorText(payload)})
+			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+				"timestamp": eventTS.UnixMilli(),
+				"type":      "error",
+				"errorText": openClawErrorText(payload),
+			})
 		} else if payload.State == "aborted" {
-			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{"type": "abort", "reason": stringsTrimDefault(payload.StopReason, "aborted")})
+			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+				"timestamp": eventTS.UnixMilli(),
+				"type":      "abort",
+				"reason":    stringsTrimDefault(payload.StopReason, "aborted"),
+			})
 		}
 		m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+			"timestamp":       eventTS.UnixMilli(),
 			"type":            "finish",
 			"messageMetadata": messageMetadata,
 		})
@@ -843,7 +1027,30 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 	}
 }
 
-func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, turnID, runID, agentID string, messageMetadata map[string]any) {
+func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, payload gatewayChatEvent, eventTS time.Time) {
+	converted, sender, messageID := m.convertHistoryMessage(ctx, portal, meta, payload.Message)
+	if converted == nil || messageID == "" {
+		return
+	}
+	m.client.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
+		portal:    portal.PortalKey,
+		id:        messageID,
+		sender:    sender,
+		timestamp: eventTS,
+		preBuilt:  converted,
+	})
+	if text := strings.TrimSpace(extractMessageText(payload.Message)); text != "" {
+		meta.OpenClawPreviewSnippet = text
+		if !eventTS.IsZero() {
+			meta.OpenClawLastPreviewAt = eventTS.UnixMilli()
+		} else {
+			meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
+		}
+		_ = portal.Save(ctx)
+	}
+}
+
+func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, turnID, runID, agentID string, eventTS time.Time, messageMetadata map[string]any) {
 	if strings.TrimSpace(turnID) == "" {
 		return
 	}
@@ -871,6 +1078,7 @@ func (m *openClawManager) ensureStreamStart(ctx context.Context, portal *bridgev
 		}
 	}
 	m.client.EmitStreamPart(ctx, portal, turnID, agentID, meta.OpenClawSessionKey, map[string]any{
+		"timestamp":       eventTS.UnixMilli(),
 		"type":            "start",
 		"messageId":       turnID,
 		"messageMetadata": messageMetadata,
@@ -900,41 +1108,78 @@ func (m *openClawManager) handleAgentEvent(ctx context.Context, payload gatewayA
 	if payload.SessionKey != "" {
 		agentMetadata["session_key"] = payload.SessionKey
 	}
-	m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, agentMetadata)
+	eventTS := extractOpenClawEventTimestamp(payload.TS, nil)
+	m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, agentMetadata)
 	m.startRunRecovery(ctx, portal, meta, turnID, payload.RunID, agentID)
 	stream := strings.ToLower(strings.TrimSpace(payload.Stream))
 	switch stream {
 	case "reasoning":
 		if text := stringsTrimDefault(stringValue(payload.Data["text"]), stringValue(payload.Data["delta"])); text != "" {
-			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{"type": "reasoning-delta", "id": "reasoning-" + turnID, "delta": text})
+			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+				"timestamp": eventTS.UnixMilli(),
+				"type":      "reasoning-delta",
+				"id":        "reasoning-" + turnID,
+				"delta":     text,
+			})
 		}
 	case "tool":
 		toolCallID := stringsTrimDefault(stringValue(payload.Data["toolCallId"]), stringsTrimDefault(stringValue(payload.Data["toolUseId"]), stringValue(payload.Data["id"])))
 		toolName := stringsTrimDefault(stringValue(payload.Data["toolName"]), stringsTrimDefault(stringValue(payload.Data["name"]), "tool"))
 		if toolCallID != "" {
 			if input, ok := payload.Data["input"]; ok {
-				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{"type": "tool-input-available", "toolCallId": toolCallID, "toolName": toolName, "input": input, "providerExecuted": true})
+				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+					"timestamp":        eventTS.UnixMilli(),
+					"type":             "tool-input-available",
+					"toolCallId":       toolCallID,
+					"toolName":         toolName,
+					"input":            input,
+					"providerExecuted": true,
+				})
 			}
 			if approvalID := strings.TrimSpace(stringValue(payload.Data["approvalId"])); approvalID != "" {
 				m.attachApprovalContext(approvalID, payload.SessionKey, turnID, toolCallID, toolName)
-				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{"type": "tool-approval-request", "approvalId": approvalID, "toolCallId": toolCallID})
+				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+					"timestamp":  eventTS.UnixMilli(),
+					"type":       "tool-approval-request",
+					"approvalId": approvalID,
+					"toolCallId": toolCallID,
+				})
 			}
 			if output, ok := payload.Data["output"]; ok {
-				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{"type": "tool-output-available", "toolCallId": toolCallID, "output": output, "providerExecuted": true})
+				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+					"timestamp":        eventTS.UnixMilli(),
+					"type":             "tool-output-available",
+					"toolCallId":       toolCallID,
+					"output":           output,
+					"providerExecuted": true,
+				})
 			} else if result, ok := payload.Data["result"]; ok {
-				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{"type": "tool-output-available", "toolCallId": toolCallID, "output": result, "providerExecuted": true})
+				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+					"timestamp":        eventTS.UnixMilli(),
+					"type":             "tool-output-available",
+					"toolCallId":       toolCallID,
+					"output":           result,
+					"providerExecuted": true,
+				})
 			}
 			if errText := strings.TrimSpace(stringValue(payload.Data["error"])); errText != "" {
-				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{"type": "tool-output-error", "toolCallId": toolCallID, "errorText": errText, "providerExecuted": true})
+				m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
+					"timestamp":        eventTS.UnixMilli(),
+					"type":             "tool-output-error",
+					"toolCallId":       toolCallID,
+					"errorText":        errText,
+					"providerExecuted": true,
+				})
 			}
 			return
 		}
 		fallthrough
 	default:
 		m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
-			"type": "data-openclaw-" + stream,
-			"id":   fmt.Sprintf("openclaw-%s-%d", stream, payload.Seq),
-			"data": map[string]any{"stream": payload.Stream, "data": payload.Data},
+			"timestamp": eventTS.UnixMilli(),
+			"type":      "data-openclaw-" + stream,
+			"id":        fmt.Sprintf("openclaw-%s-%d", stream, payload.Seq),
+			"data":      map[string]any{"stream": payload.Stream, "data": payload.Data},
 		})
 	}
 }
@@ -1136,6 +1381,13 @@ func (m *openClawManager) resolvePortal(ctx context.Context, sessionKey string) 
 }
 
 var openClawMissingMessageTimestamp = time.Unix(0, 0).UTC()
+
+func openClawSessionTimestamp(session gatewaySessionRow) time.Time {
+	if session.UpdatedAt > 0 {
+		return time.UnixMilli(session.UpdatedAt)
+	}
+	return time.Time{}
+}
 
 func extractMessageTimestamp(message map[string]any) time.Time {
 	if ts, ok := message["timestamp"].(float64); ok && ts > 0 {

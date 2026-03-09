@@ -50,7 +50,6 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 		}
 	}
 
-	foundText := false
 	foundSourceURL := false
 	foundSourceDocument := false
 	foundFile := false
@@ -62,8 +61,6 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 			continue
 		}
 		switch part["type"] {
-		case "text":
-			foundText = true
 		case "source-url":
 			foundSourceURL = true
 			meta, ok := part["providerMetadata"].(map[string]any)
@@ -78,10 +75,77 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 		}
 	}
 
-	if !foundText || !foundSourceURL || !foundSourceDocument || !foundFile {
-		t.Fatalf("missing expected part types (text=%v source-url=%v source-document=%v file=%v)", foundText, foundSourceURL, foundSourceDocument, foundFile)
+	if !foundSourceURL || !foundSourceDocument || !foundFile {
+		t.Fatalf("missing expected part types (source-url=%v source-document=%v file=%v)", foundSourceURL, foundSourceDocument, foundFile)
 	}
 	if !foundCamelSiteName || !foundSnakeSiteName {
 		t.Fatalf("expected source-url providerMetadata to include both siteName and site_name (siteName=%v site_name=%v)", foundCamelSiteName, foundSnakeSiteName)
+	}
+}
+
+func TestBuildFinalEditUIMessage_OmitsTextAndReasoningParts(t *testing.T) {
+	oc := &AIClient{}
+	state := &streamingState{turnID: "turn-2"}
+	state.accumulated.WriteString("hello")
+	state.reasoning.WriteString("thinking")
+	streamui.ApplyChunk(&state.ui, map[string]any{"type": "start", "messageId": "turn-2"})
+	streamui.ApplyChunk(&state.ui, map[string]any{"type": "text-start", "id": "text-2"})
+	streamui.ApplyChunk(&state.ui, map[string]any{"type": "text-delta", "id": "text-2", "delta": "hello"})
+	streamui.ApplyChunk(&state.ui, map[string]any{"type": "text-end", "id": "text-2"})
+	streamui.ApplyChunk(&state.ui, map[string]any{"type": "reasoning-start", "id": "reasoning-2"})
+	streamui.ApplyChunk(&state.ui, map[string]any{"type": "reasoning-delta", "id": "reasoning-2", "delta": "thinking"})
+	streamui.ApplyChunk(&state.ui, map[string]any{"type": "reasoning-end", "id": "reasoning-2"})
+
+	ui := oc.buildFinalEditUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"), nil)
+	parts, _ := ui["parts"].([]any)
+	for _, rawPart := range parts {
+		part, _ := rawPart.(map[string]any)
+		switch part["type"] {
+		case "text", "reasoning":
+			t.Fatalf("expected final UIMessage to omit textual parts, got %#v", part)
+		}
+	}
+}
+
+func TestBuildFinalEditTopLevelExtra_KeepsMatrixFallbackFields(t *testing.T) {
+	uiMessage := map[string]any{
+		"id":   "turn-3",
+		"role": "assistant",
+	}
+	relatesTo := map[string]any{
+		"rel_type": "m.replace",
+		"event_id": "$orig",
+	}
+
+	extra := buildFinalEditTopLevelExtra(uiMessage, nil, relatesTo)
+
+	if _, ok := extra["body"]; ok {
+		t.Fatalf("expected body fallback to come from Matrix edit content, got %#v", extra["body"])
+	}
+	if _, ok := extra["format"]; ok {
+		t.Fatalf("expected format fallback to come from Matrix edit content, got %#v", extra["format"])
+	}
+	if _, ok := extra["formatted_body"]; ok {
+		t.Fatalf("expected formatted_body fallback to come from Matrix edit content, got %#v", extra["formatted_body"])
+	}
+	gotUIMessage, ok := extra[BeeperAIKey].(map[string]any)
+	if !ok {
+		t.Fatalf("expected UIMessage payload map, got %T", extra[BeeperAIKey])
+	}
+	if got := gotUIMessage["id"]; got != "turn-3" {
+		t.Fatalf("expected UIMessage id, got %#v", got)
+	}
+	gotRelatesTo, ok := extra["m.relates_to"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected relates_to map, got %T", extra["m.relates_to"])
+	}
+	if got := gotRelatesTo["rel_type"]; got != "m.replace" {
+		t.Fatalf("expected m.replace relation type, got %#v", got)
+	}
+	if got := gotRelatesTo["event_id"]; got != "$orig" {
+		t.Fatalf("expected relation event id, got %#v", got)
+	}
+	if _, ok := extra["m.mentions"]; !ok {
+		t.Fatalf("expected m.mentions to be present")
 	}
 }

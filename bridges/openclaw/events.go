@@ -21,6 +21,7 @@ type OpenClawSessionResyncEvent struct {
 
 var (
 	_ bridgev2.RemoteChatResyncWithInfo       = (*OpenClawSessionResyncEvent)(nil)
+	_ bridgev2.RemoteChatResyncBackfill       = (*OpenClawSessionResyncEvent)(nil)
 	_ bridgev2.RemoteEventThatMayCreatePortal = (*OpenClawSessionResyncEvent)(nil)
 )
 
@@ -44,11 +45,22 @@ func (evt *OpenClawSessionResyncEvent) GetSender() bridgev2.EventSender {
 	return bridgev2.EventSender{}
 }
 
+func (evt *OpenClawSessionResyncEvent) CheckNeedsBackfill(_ context.Context, latestMessage *database.Message) (bool, error) {
+	latestSessionTS := openClawSessionTimestamp(evt.session)
+	if latestMessage == nil {
+		return !latestSessionTS.IsZero() || strings.TrimSpace(evt.session.LastMessagePreview) != "", nil
+	} else if latestSessionTS.IsZero() {
+		return false, nil
+	}
+	return latestSessionTS.After(latestMessage.Timestamp), nil
+}
+
 func (evt *OpenClawSessionResyncEvent) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	if portal == nil {
 		return nil, fmt.Errorf("missing portal")
 	}
 	meta := portalMeta(portal)
+	previous := *meta
 	meta.IsOpenClawRoom = true
 	meta.OpenClawGatewayID = evt.client.gatewayID()
 	meta.OpenClawSessionID = evt.session.SessionID
@@ -134,10 +146,12 @@ func (evt *OpenClawSessionResyncEvent) GetChatInfo(ctx context.Context, portal *
 		UserInfo:    evt.client.userInfoForAgentProfile(profile),
 	}
 	roomType := openClawRoomType(meta)
+	evt.client.maybeRefreshPortalCapabilities(ctx, portal, &previous)
 	return &bridgev2.ChatInfo{
-		Type:  ptr.Ptr(roomType),
-		Name:  ptr.Ptr(title),
-		Topic: ptr.NonZero(evt.client.topicForPortal(meta)),
+		Type:        ptr.Ptr(roomType),
+		Name:        ptr.Ptr(title),
+		Topic:       ptr.NonZero(evt.client.topicForPortal(meta)),
+		CanBackfill: true,
 		Members: &bridgev2.ChatMemberList{
 			IsFull:    true,
 			MemberMap: memberMap,

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -199,6 +200,9 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	if responseMode == agents.ResponseModeSimple {
 		// Simple mode: send content directly without directive processing
 		cleanedRaw := airuntime.SanitizeChatMessageForDisplay(rawContent, false)
+		if strings.TrimSpace(cleanedRaw) == "" {
+			cleanedRaw = finalRenderedBodyFallback(state)
+		}
 		rendered := format.RenderMarkdown(cleanedRaw, true, true)
 		oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, rendered, nil, "simple")
 		return
@@ -219,6 +223,9 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 
 	// Use cleaned content (directives stripped)
 	cleanedContent := airuntime.SanitizeChatMessageForDisplay(directives.Text, false)
+	if strings.TrimSpace(cleanedContent) == "" {
+		cleanedContent = finalRenderedBodyFallback(state)
+	}
 
 	finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, &directives)
 	rendered := format.RenderMarkdown(cleanedContent, true, true)
@@ -583,7 +590,35 @@ func buildSourceParts(cits []citations.SourceCitation, documents []citations.Sou
 }
 
 func (oc *AIClient) buildFinalEditUIMessage(state *streamingState, meta *PortalMetadata, linkPreviews []*event.BeeperLinkPreview) map[string]any {
-	return oc.buildStreamUIMessage(state, meta, linkPreviews)
+	return buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
+}
+
+func finalRenderedBodyFallback(state *streamingState) string {
+	if state == nil {
+		return "..."
+	}
+	if body := strings.TrimSpace(state.visibleAccumulated.String()); body != "" {
+		return body
+	}
+	if body := strings.TrimSpace(state.accumulated.String()); body != "" {
+		return body
+	}
+	if reasoning := strings.TrimSpace(state.reasoning.String()); reasoning != "" {
+		return "..."
+	}
+	return "..."
+}
+
+func (oc *AIClient) persistTerminalAssistantTurn(ctx context.Context, log zerolog.Logger, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
+	if state == nil {
+		return
+	}
+	if state.hasInitialMessageTarget() || state.heartbeat != nil {
+		oc.sendFinalAssistantTurn(ctx, portal, state, meta)
+	}
+	if state.hasInitialMessageTarget() && !state.suppressSave {
+		oc.saveAssistantMessage(ctx, log, portal, state, meta)
+	}
 }
 
 // sendFinalAssistantTurnContent is a helper for simple mode that sends content without directive processing.
@@ -614,20 +649,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 
 	uiMessage := oc.buildFinalEditUIMessage(state, meta, linkPreviews)
 
-	topLevelExtra := map[string]any{
-		"body":                          rendered.Body,
-		"com.beeper.dont_render_edited": true,
-		"com.beeper.ai":                 uiMessage,
-		"format":                        rendered.Format,
-		"formatted_body":                rendered.FormattedBody,
-		"m.mentions":                    map[string]any{},
-	}
-	if len(linkPreviews) > 0 {
-		topLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
-	}
-	if relatesTo != nil {
-		topLevelExtra["m.relates_to"] = relatesTo
-	}
+	topLevelExtra := buildFinalEditTopLevelExtra(uiMessage, linkPreviews, relatesTo)
 	sender := oc.senderForPortal(ctx, portal)
 	editContent := &bridgev2.ConvertedEdit{
 		ModifiedParts: []*bridgev2.ConvertedEditPart{{
@@ -674,6 +696,21 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 		chunk, continuationBody = streamtransport.SplitAtMarkdownBoundary(continuationBody, streamtransport.MaxMatrixEventBodyBytes)
 		oc.sendContinuationMessage(ctx, portal, chunk)
 	}
+}
+
+func buildFinalEditTopLevelExtra(uiMessage map[string]any, linkPreviews []*event.BeeperLinkPreview, relatesTo map[string]any) map[string]any {
+	topLevelExtra := map[string]any{
+		"com.beeper.dont_render_edited": true,
+		"com.beeper.ai":                 uiMessage,
+		"m.mentions":                    map[string]any{},
+	}
+	if len(linkPreviews) > 0 {
+		topLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
+	}
+	if relatesTo != nil {
+		topLevelExtra["m.relates_to"] = relatesTo
+	}
+	return topLevelExtra
 }
 
 // generateOutboundLinkPreviews extracts URLs from AI response text, generates link previews, and uploads images to Matrix.

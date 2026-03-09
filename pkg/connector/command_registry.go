@@ -32,6 +32,16 @@ func isUserFacingCommand(name string) bool {
 	return ok
 }
 
+func markCommandFailure(ce *commands.Event, message string, reason event.MessageStatusReason) {
+	if ce == nil || ce.MessageStatus == nil {
+		return
+	}
+	ce.MessageStatus.Status = event.MessageStatusFail
+	ce.MessageStatus.ErrorReason = reason
+	ce.MessageStatus.Message = strings.TrimSpace(message)
+	ce.MessageStatus.IsCertain = true
+}
+
 func registerAICommand(def commandregistry.Definition) *commands.FullHandler {
 	return aiCommandRegistry.Register(def)
 }
@@ -73,6 +83,7 @@ func registerModuleCommands(defs []integrationruntime.CommandDefinition) {
 				}
 				if adminOnly {
 					if ce.User == nil || !ce.User.Permissions.Admin {
+						markCommandFailure(ce, "Only bridge admins can use this command.", event.MessageStatusNoPermission)
 						ce.Reply("Only bridge admins can use this command.")
 						return
 					}
@@ -88,10 +99,12 @@ func registerModuleCommands(defs []integrationruntime.CommandDefinition) {
 					ce.Reply,
 				)
 				if err != nil {
+					markCommandFailure(ce, "Command failed: "+err.Error(), event.MessageStatusGenericError)
 					ce.Reply("Command failed: %s", err.Error())
 					return
 				}
 				if !handled {
+					markCommandFailure(ce, "Command unavailable.", event.MessageStatusUnsupported)
 					ce.Reply("Command unavailable.")
 				}
 			},
@@ -123,6 +136,7 @@ func registerCommandsWithOwnerGuard(proc *commands.Processor, cfg *Config, log *
 				}
 				if !isOwnerAllowed(cfg, senderID) {
 					if ce != nil {
+						markCommandFailure(ce, "Only configured owners can use that command.", event.MessageStatusNoPermission)
 						ce.Reply("Only configured owners can use that command.")
 					}
 					return

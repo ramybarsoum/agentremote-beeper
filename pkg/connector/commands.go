@@ -7,6 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
 )
@@ -96,6 +97,11 @@ var _ = registerAICommand(commandregistry.Definition{
 func fnNew(ce *commands.Event) {
 	client, meta, ok := requireClientMeta(ce)
 	if !ok {
+		return
+	}
+	if err := client.validateNewChatCommand(ce.Ctx, ce.Portal, meta, ce.Args); err != nil {
+		markCommandFailure(ce, err.Error(), event.MessageStatusUnsupported)
+		ce.Reply("%s", err.Error())
 		return
 	}
 	go client.handleNewChat(ce.Ctx, nil, ce.Portal, meta, ce.Args)

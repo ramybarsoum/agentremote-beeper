@@ -288,9 +288,10 @@ func (oc *OpenClawClient) syntheticDMPortalInfo(agentID, displayName string) *br
 		},
 	}
 	return &bridgev2.ChatInfo{
-		Name:  ptr.Ptr(displayName),
-		Topic: ptr.Ptr("OpenClaw agent DM"),
-		Type:  ptr.Ptr(database.RoomTypeDM),
+		Name:        ptr.Ptr(displayName),
+		Topic:       ptr.Ptr("OpenClaw agent DM"),
+		Type:        ptr.Ptr(database.RoomTypeDM),
+		CanBackfill: true,
 		Members: &bridgev2.ChatMemberList{
 			IsFull:      true,
 			OtherUserID: openClawGhostUserID(agentID),

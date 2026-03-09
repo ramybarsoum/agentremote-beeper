@@ -37,14 +37,7 @@ func (oc *AIClient) finalizeResponsesStream(
 	}
 	oc.finalizeStreamingReplyAccumulator(state)
 	oc.emitUIFinish(ctx, portal, state, meta)
-
-	// Persist final assistant turn with complete content and metadata.
-	if state.hasInitialMessageTarget() || state.heartbeat != nil {
-		oc.sendFinalAssistantTurn(ctx, portal, state, meta)
-		if state.hasInitialMessageTarget() && !state.suppressSave {
-			oc.saveAssistantMessage(ctx, log, portal, state, meta)
-		}
-	}
+	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
 
 	log.Info().
 		Str("turn_id", state.turnID).

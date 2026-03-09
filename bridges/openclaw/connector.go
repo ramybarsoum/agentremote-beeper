@@ -52,7 +52,10 @@ func (oc *OpenClawConnector) Stop(_ context.Context) {
 }
 
 func (oc *OpenClawConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return bridgeadapter.DefaultNetworkCapabilities()
+	caps := bridgeadapter.DefaultNetworkCapabilities()
+	// OpenClaw supports session reset/delete, but not timer-backed disappearing messages.
+	caps.DisappearingMessages = false
+	return caps
 }
 
 func (oc *OpenClawConnector) GetBridgeInfoVersion() (info, capabilities int) {

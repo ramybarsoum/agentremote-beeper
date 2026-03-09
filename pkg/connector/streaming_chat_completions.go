@@ -223,11 +223,10 @@ func (oc *AIClient) streamChatCompletions(
 		if err := stream.Err(); err != nil {
 			if errors.Is(err, context.Canceled) {
 				state.finishReason = "cancelled"
-				if state.hasInitialMessageTarget() && state.accumulated.Len() > 0 {
-					oc.flushPartialStreamingMessage(context.Background(), portal, state, meta)
-				}
+				state.completedAtMs = time.Now().UnixMilli()
 				oc.uiEmitter(state).EmitUIAbort(ctx, portal, "cancelled")
 				oc.emitUIFinish(ctx, portal, state, meta)
+				oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
 				return false, nil, streamFailureError(state, err)
 			}
 			if cle := ParseContextLengthError(err); cle != nil {
@@ -235,8 +234,10 @@ func (oc *AIClient) streamChatCompletions(
 			}
 			logChatCompletionsFailure(log, err, params, meta, currentMessages, "stream_err")
 			state.finishReason = "error"
+			state.completedAtMs = time.Now().UnixMilli()
 			oc.uiEmitter(state).EmitUIError(ctx, portal, err.Error())
 			oc.emitUIFinish(ctx, portal, state, meta)
+			oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
 			return false, nil, streamFailureError(state, err)
 		}
 
@@ -392,14 +393,7 @@ func (oc *AIClient) streamChatCompletions(
 	}
 	oc.finalizeStreamingReplyAccumulator(state)
 	oc.emitUIFinish(ctx, portal, state, meta)
-
-	// Send final edit and save to database.
-	if state.hasInitialMessageTarget() {
-		oc.sendFinalAssistantTurn(ctx, portal, state, meta)
-		if !state.suppressSave {
-			oc.saveAssistantMessage(ctx, log, portal, state, meta)
-		}
-	}
+	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
 
 	log.Info().
 		Str("turn_id", state.turnID).

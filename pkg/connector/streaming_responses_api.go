@@ -250,8 +250,10 @@ func (oc *AIClient) processResponseStreamEvent(
 	case "error":
 		apiErr := fmt.Errorf("API error: %s", streamEvent.Message)
 		state.finishReason = "error"
+		state.completedAtMs = time.Now().UnixMilli()
 		oc.uiEmitter(state).EmitUIError(ctx, portal, streamEvent.Message)
 		oc.emitUIFinish(ctx, portal, state, meta)
+		oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
 		// Check for context length error (only on initial stream, not continuation)
 		if !isContinuation {
 			if strings.Contains(streamEvent.Message, "context_length") || strings.Contains(streamEvent.Message, "token") {

@@ -9,7 +9,6 @@ import (
 func TestBuildDebouncedEditContent_WithoutEventID(t *testing.T) {
 	content := BuildDebouncedEditContent(DebouncedEditParams{
 		PortalMXID:  "test-room",
-		Force:       true,
 		VisibleBody: "hello",
 	})
 	if content == nil {
@@ -20,7 +19,21 @@ func TestBuildDebouncedEditContent_WithoutEventID(t *testing.T) {
 	}
 }
 
-func TestBuildConvertedEdit_PopulatesTopLevelRenderedFallback(t *testing.T) {
+func TestBuildDebouncedEditContent_NotForcedStillRenders(t *testing.T) {
+	content := BuildDebouncedEditContent(DebouncedEditParams{
+		PortalMXID:  "test-room",
+		Force:       false,
+		VisibleBody: "**hello**",
+	})
+	if content == nil {
+		t.Fatal("expected debounced edit content for non-forced update")
+	}
+	if content.FormattedBody == "" {
+		t.Fatal("expected formatted html body")
+	}
+}
+
+func TestBuildConvertedEdit_KeepsOnlyCustomTopLevelFields(t *testing.T) {
 	edit := BuildConvertedEdit(&event.MessageEventContent{
 		MsgType:       event.MsgText,
 		Body:          "Hello",
@@ -33,13 +46,16 @@ func TestBuildConvertedEdit_PopulatesTopLevelRenderedFallback(t *testing.T) {
 		t.Fatal("expected single modified part")
 	}
 	extra := edit.ModifiedParts[0].TopLevelExtra
-	if extra["body"] != "Hello" {
-		t.Fatalf("expected top-level body fallback, got %#v", extra["body"])
+	if extra["com.beeper.dont_render_edited"] != true {
+		t.Fatalf("expected custom top-level flag, got %#v", extra["com.beeper.dont_render_edited"])
 	}
-	if extra["format"] != event.FormatHTML {
-		t.Fatalf("expected top-level format fallback, got %#v", extra["format"])
+	if _, ok := extra["body"]; ok {
+		t.Fatalf("expected body fallback to be synthesized from Content, got %#v", extra["body"])
 	}
-	if extra["formatted_body"] != "<p>Hello</p>" {
-		t.Fatalf("expected top-level formatted_body fallback, got %#v", extra["formatted_body"])
+	if _, ok := extra["format"]; ok {
+		t.Fatalf("expected format fallback to be synthesized from Content, got %#v", extra["format"])
+	}
+	if _, ok := extra["formatted_body"]; ok {
+		t.Fatalf("expected formatted_body fallback to be synthesized from Content, got %#v", extra["formatted_body"])
 	}
 }

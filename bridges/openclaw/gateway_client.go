@@ -140,6 +140,18 @@ type gatewayResolveSessionResponse struct {
 	Key string `json:"key,omitempty"`
 }
 
+type gatewaySessionsPatchResponse struct {
+	OK bool `json:"ok,omitempty"`
+}
+
+type gatewaySessionsResetResponse struct {
+	OK bool `json:"ok,omitempty"`
+}
+
+type gatewaySessionsDeleteResponse struct {
+	OK bool `json:"ok,omitempty"`
+}
+
 type gatewayApprovalRequestEvent struct {
 	ID          string         `json:"id"`
 	Request     map[string]any `json:"request"`
@@ -159,6 +171,7 @@ type gatewayChatEvent struct {
 	RunID        string         `json:"runId,omitempty"`
 	SessionKey   string         `json:"sessionKey,omitempty"`
 	Seq          int64          `json:"seq,omitempty"`
+	TS           int64          `json:"ts,omitempty"`
 	State        string         `json:"state,omitempty"`
 	StopReason   string         `json:"stopReason,omitempty"`
 	ErrorMessage string         `json:"errorMessage,omitempty"`
@@ -517,6 +530,29 @@ func (c *gatewayWSClient) ResolveSessionKey(ctx context.Context, key string) (st
 		return "", err
 	}
 	return strings.TrimSpace(resp.Key), nil
+}
+
+func (c *gatewayWSClient) PatchSession(ctx context.Context, key string, patch map[string]any) error {
+	var resp gatewaySessionsPatchResponse
+	return c.Request(ctx, "sessions.patch", map[string]any{
+		"key":   strings.TrimSpace(key),
+		"patch": patch,
+	}, &resp)
+}
+
+func (c *gatewayWSClient) ResetSession(ctx context.Context, key string) error {
+	var resp gatewaySessionsResetResponse
+	return c.Request(ctx, "sessions.reset", map[string]any{
+		"key": strings.TrimSpace(key),
+	}, &resp)
+}
+
+func (c *gatewayWSClient) DeleteSession(ctx context.Context, key string, deleteTranscript bool) error {
+	var resp gatewaySessionsDeleteResponse
+	return c.Request(ctx, "sessions.delete", map[string]any{
+		"key":              strings.TrimSpace(key),
+		"deleteTranscript": deleteTranscript,
+	}, &resp)
 }
 
 func (c *gatewayWSClient) ListAgents(ctx context.Context) (*gatewayAgentsListResponse, error) {

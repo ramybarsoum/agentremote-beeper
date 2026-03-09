@@ -588,6 +588,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	if turnID == "" {
 		turnID = "turn_unknown"
 	}
+	cc.markMessageSendSuccess(ctx, portal, sourceEvent, state)
 
 	turnCh := cc.subscribeTurn(threadID, turnID)
 	defer cc.unsubscribeTurn(threadID, turnID)
@@ -657,7 +658,6 @@ done:
 	cc.emitUIFinish(ctx, portal, state, model, finishStatus)
 	cc.sendFinalAssistantTurn(ctx, portal, state, model, finishStatus)
 	cc.saveAssistantMessage(ctx, portal, state, model, finishStatus)
-	cc.markMessageSendSuccess(ctx, portal, sourceEvent, state)
 }
 
 func (cc *CodexClient) appendCodexToolOutput(state *streamingState, toolCallID, delta string) string {

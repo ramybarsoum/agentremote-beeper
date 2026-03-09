@@ -26,3 +26,20 @@ func TestFillPortalBridgeInfoSetsAIRoomType(t *testing.T) {
 		t.Fatalf("expected ai room type for non-openclaw room, got %q", content.BeeperRoomTypeV2)
 	}
 }
+
+func TestGetCapabilitiesDisablesDisappearingMessages(t *testing.T) {
+	conn := &OpenClawConnector{}
+	caps := conn.GetCapabilities()
+	if caps.DisappearingMessages {
+		t.Fatal("expected disappearing messages to be disabled")
+	}
+	if !caps.Provisioning.ResolveIdentifier.CreateDM {
+		t.Fatal("expected create DM provisioning to remain enabled")
+	}
+	if !caps.Provisioning.ResolveIdentifier.ContactList {
+		t.Fatal("expected contact list provisioning to remain enabled")
+	}
+	if !caps.Provisioning.ResolveIdentifier.Search {
+		t.Fatal("expected search provisioning to remain enabled")
+	}
+}

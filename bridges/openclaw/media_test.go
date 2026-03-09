@@ -2,10 +2,12 @@ package openclaw
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -255,7 +257,7 @@ func TestTopicForPortalWithPreviewAndCatalogCounts(t *testing.T) {
 		OpenClawToolCount:       3,
 		OpenClawKnownModelCount: 7,
 	})
-	want := "group | discord | Origin: {\"provider\":\"discord\",\"channel\":\"123\"} | Recent: preview text | History: recent_only | Tools: 3 (default) | Models: 7"
+	want := "group | discord | Origin: Channel 123 | Recent: preview text | History: recent_only | Tools: 3 (default) | Models: 7"
 	if topic != want {
 		t.Fatalf("unexpected topic: %q", topic)
 	}
@@ -315,6 +317,14 @@ func TestDisplayNameForSessionUsesSourceLabel(t *testing.T) {
 	}
 }
 
+func TestSummarizeOpenClawOriginStructured(t *testing.T) {
+	got := summarizeOpenClawOrigin(`{"provider":"discord","label":"Support","threadId":"42","accountId":"acct-1"}`, "discord")
+	want := "Origin: Support • Thread 42 • Account acct-1"
+	if got != want {
+		t.Fatalf("unexpected origin summary: %q", got)
+	}
+}
+
 func TestOpenClawGetCapabilitiesUsesSelectedModelModalities(t *testing.T) {
 	oc := &OpenClawClient{
 		modelCatalog: []gatewayModelChoice{
@@ -339,6 +349,12 @@ func TestOpenClawGetCapabilitiesUsesSelectedModelModalities(t *testing.T) {
 	caps := oc.GetCapabilities(context.Background(), portal)
 	if caps.ID != openClawCapabilityBaseID+"+reasoning+vision" {
 		t.Fatalf("unexpected capability id: %q", caps.ID)
+	}
+	if caps.Thread != event.CapLevelRejected {
+		t.Fatalf("expected thread support to be rejected, got %v", caps.Thread)
+	}
+	if !caps.DeleteChat {
+		t.Fatal("expected delete chat to be enabled")
 	}
 	if caps.File[event.MsgImage].MimeTypes["*/*"] != event.CapLevelFullySupported {
 		t.Fatalf("expected images to be supported, got %#v", caps.File[event.MsgImage])
@@ -414,6 +430,74 @@ func TestOpenClawGetCapabilitiesFallsBackWhenModelSupportUnknown(t *testing.T) {
 		if caps.File[msgType].MimeTypes["*/*"] != event.CapLevelFullySupported {
 			t.Fatalf("expected %s to use fallback support, got %#v", msgType, caps.File[msgType])
 		}
+	}
+}
+
+func TestOpenClawSessionResyncProjectsTypeTopicAndCapabilities(t *testing.T) {
+	oc := &OpenClawClient{
+		UserLogin: &bridgev2.UserLogin{
+			UserLogin: &database.UserLogin{
+				ID: networkid.UserLoginID("login-1"),
+			},
+		},
+		modelCatalog: []gatewayModelChoice{
+			{
+				ID:        "gpt-5",
+				Provider:  "openai",
+				Reasoning: true,
+				Input:     []string{"text", "image"},
+			},
+		},
+	}
+	evt := &OpenClawSessionResyncEvent{
+		client: oc,
+		session: gatewaySessionRow{
+			Key:                "agent:main:discord:channel:123",
+			SessionID:          "sess-1",
+			DerivedTitle:       "Support Inbox",
+			LastMessagePreview: "hello there",
+			Channel:            "discord",
+			Space:              "Acme",
+			GroupChannel:       "support",
+			ChatType:           "channel",
+			Origin:             []byte(`{"provider":"discord","channel":"123"}`),
+			ModelProvider:      "openai",
+			Model:              "gpt-5",
+		},
+	}
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			Metadata: &PortalMetadata{},
+		},
+	}
+
+	info, err := evt.GetChatInfo(context.Background(), portal)
+	if err != nil {
+		t.Fatalf("GetChatInfo returned error: %v", err)
+	}
+	if info.Type == nil || *info.Type != database.RoomTypeDefault {
+		t.Fatalf("unexpected room type: %#v", info.Type)
+	}
+	if info.Topic == nil {
+		t.Fatal("expected topic")
+	}
+	wantTopic := "channel | discord | Acme#support | Origin: Channel 123 | openai | gpt-5 | Recent: hello there | History: recent_only | Models: 1"
+	if *info.Topic != wantTopic {
+		t.Fatalf("unexpected topic: %q", *info.Topic)
+	}
+
+	caps := oc.GetCapabilities(context.Background(), portal)
+	if caps.ID != openClawCapabilityBaseID+"+reasoning+vision" {
+		t.Fatalf("unexpected capability id: %q", caps.ID)
+	}
+	if caps.File[event.MsgImage].MimeTypes["*/*"] != event.CapLevelFullySupported {
+		t.Fatalf("expected images to be supported, got %#v", caps.File[event.MsgImage])
+	}
+	if caps.File[event.MsgAudio].MimeTypes["*/*"] != event.CapLevelRejected {
+		t.Fatalf("expected audio to be rejected, got %#v", caps.File[event.MsgAudio])
+	}
+	if !strings.Contains(*info.Topic, "Origin: Channel 123") {
+		t.Fatalf("expected structured origin summary, got %q", *info.Topic)
 	}
 }
 
