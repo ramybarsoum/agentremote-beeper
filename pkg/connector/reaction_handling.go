@@ -3,18 +3,15 @@ package connector
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"time"
 
 	"go.mau.fi/util/variationselector"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func (oc *AIClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
@@ -35,35 +32,20 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 		return &database.Reaction{}, nil
 	}
 
-	content := ensureReactionContent(msg)
-
-	emoji := ""
-	if msg.PreHandleResp != nil {
-		emoji = msg.PreHandleResp.Emoji
-	}
-	if emoji == "" && content != nil {
-		emoji = variationselector.Remove(content.RelatesTo.Key)
-	}
-
-	targetEventID := id.EventID("")
-	if msg.TargetMessage != nil && msg.TargetMessage.MXID != "" {
-		targetEventID = msg.TargetMessage.MXID
-	} else if content != nil && content.RelatesTo.EventID != "" {
-		targetEventID = content.RelatesTo.EventID
-	}
-	if oc.handleApprovalPromptReaction(ctx, msg, targetEventID, emoji) {
+	rc := bridgeadapter.ExtractReactionContext(msg)
+	if oc.approvalPrompts.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji) {
 		return &database.Reaction{}, nil
 	}
 
 	messageID := ""
 	if msg.TargetMessage != nil && msg.TargetMessage.MXID != "" {
 		messageID = msg.TargetMessage.MXID.String()
-	} else if targetEventID != "" {
-		messageID = targetEventID.String()
+	} else if rc.TargetEventID != "" {
+		messageID = rc.TargetEventID.String()
 	}
 
 	feedback := ReactionFeedback{
-		Emoji:     emoji,
+		Emoji:     rc.Emoji,
 		Timestamp: time.UnixMilli(msg.Event.Timestamp),
 		Sender:    oc.matrixDisplayName(ctx, msg.Portal.MXID, msg.Event.Sender),
 		MessageID: messageID,
@@ -73,55 +55,6 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 	EnqueueReactionFeedback(msg.Portal.MXID, feedback)
 
 	return &database.Reaction{}, nil
-}
-
-func (oc *AIClient) handleApprovalPromptReaction(
-	ctx context.Context,
-	msg *bridgev2.MatrixReaction,
-	targetEventID id.EventID,
-	emoji string,
-) bool {
-	if oc == nil || oc.approvalPrompts == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
-		return false
-	}
-	match := oc.approvalPrompts.MatchReaction(targetEventID, msg.Event.Sender, emoji, time.Now())
-	if !match.KnownPrompt {
-		return false
-	}
-	keepEventID := id.EventID("")
-	if match.ShouldResolve {
-		state := airuntime.ToolApprovalDenied
-		if match.Decision.Approved {
-			state = airuntime.ToolApprovalApproved
-		}
-		err := oc.resolveToolApproval(
-			msg.Portal.MXID,
-			match.ApprovalID,
-			airuntime.ToolApprovalDecision{State: state, Reason: match.Decision.Reason},
-			match.Decision.Always,
-			msg.Event.Sender,
-		)
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).
-				Str("approval_id", match.ApprovalID).
-				Msg("approval reaction: failed to resolve")
-			oc.sendApprovalRejectionEvent(ctx, msg.Portal, match.ApprovalID, err, targetEventID)
-		} else {
-			keepEventID = msg.Event.ID
-		}
-	} else if match.RejectReason == "expired" {
-		oc.sendApprovalRejectionEvent(ctx, msg.Portal, match.ApprovalID, bridgeadapter.ErrApprovalExpired, targetEventID)
-	}
-	_ = bridgeadapter.RedactApprovalPromptReactions(
-		ctx,
-		oc.UserLogin,
-		msg.Portal,
-		oc.senderForPortal(ctx, msg.Portal),
-		msg.TargetMessage,
-		msg.Event.ID,
-		keepEventID,
-	)
-	return true
 }
 
 func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {

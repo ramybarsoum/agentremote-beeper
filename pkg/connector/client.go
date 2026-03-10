@@ -429,7 +429,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		OnError: func(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error) {
 			oc.sendApprovalRejectionEvent(ctx, portal, approvalID, err, "")
 		},
-		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) database.MessageMetadata {
+		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) any {
 			return &MessageMetadata{
 				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
 					Role:               "assistant",

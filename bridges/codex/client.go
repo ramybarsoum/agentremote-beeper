@@ -150,7 +150,7 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		OnError: func(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error) {
 			cc.sendSystemNotice(ctx, portal, bridgeadapter.ApprovalErrorToastText(err))
 		},
-		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) database.MessageMetadata {
+		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) any {
 			return &MessageMetadata{
 				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
 					Role:               "assistant",

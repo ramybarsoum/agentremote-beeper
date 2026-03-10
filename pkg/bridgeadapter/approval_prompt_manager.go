@@ -8,7 +8,6 @@ import (
 
 	"go.mau.fi/util/variationselector"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -35,9 +34,10 @@ type ApprovalPromptManagerConfig struct {
 	// Bridges typically send a system notice or rejection event here.
 	OnError func(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error)
 
-	// DBMetadata produces the bridge-specific database.MessageMetadata for the
-	// approval prompt message. If nil, a default BaseMessageMetadata is used.
-	DBMetadata func(prompt ApprovalPromptMessage) database.MessageMetadata
+	// DBMetadata produces the bridge-specific metadata for the approval prompt
+	// message part. The return value is stored in ConvertedMessagePart.DBMetadata
+	// (which is typed as any upstream). If nil, a default *BaseMessageMetadata is used.
+	DBMetadata func(prompt ApprovalPromptMessage) any
 
 	// IDPrefix is used when SendMsg is nil to generate message IDs (e.g. "codex", "openclaw").
 	IDPrefix string
@@ -63,7 +63,7 @@ type ApprovalPromptManager struct {
 	sendMsg       func(ctx context.Context, portal *bridgev2.Portal, converted *bridgev2.ConvertedMessage) (id.EventID, networkid.MessageID, error)
 	resolve       func(ctx context.Context, roomID id.RoomID, match ApprovalPromptReactionMatch) error
 	onError       func(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error)
-	dbMetadata    func(prompt ApprovalPromptMessage) database.MessageMetadata
+	dbMetadata    func(prompt ApprovalPromptMessage) any
 	idPrefix      string
 	logKey        string
 	sendTimeout   time.Duration
@@ -131,7 +131,7 @@ func (m *ApprovalPromptManager) SendPrompt(ctx context.Context, portal *bridgev2
 		Options:    prompt.Options,
 	})
 
-	var dbMeta database.MessageMetadata
+	var dbMeta any
 	if m.dbMetadata != nil {
 		dbMeta = m.dbMetadata(prompt)
 	} else {

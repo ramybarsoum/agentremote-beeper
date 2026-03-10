@@ -149,8 +149,8 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		IDPrefix: "openclaw",
 		LogKey:   "openclaw_msg_id",
 		Resolve: func(ctx context.Context, roomID id.RoomID, match bridgeadapter.ApprovalPromptReactionMatch) error {
-			portal := client.UserLogin.Bridge.GetPortalByMXID(roomID)
-			if portal == nil {
+			portal, err := client.UserLogin.Bridge.GetPortalByMXID(ctx, roomID)
+			if err != nil || portal == nil {
 				return bridgeadapter.ErrApprovalWrongRoom
 			}
 			return client.manager.ResolveApprovalDecision(ctx, portal, match.Decision)
@@ -158,7 +158,7 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		OnError: func(ctx context.Context, portal *bridgev2.Portal, _ string, err error) {
 			client.sendSystemNoticeViaPortal(ctx, portal, bridgeadapter.ApprovalErrorToastText(err))
 		},
-		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) database.MessageMetadata {
+		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) any {
 			return &MessageMetadata{
 				Role:               "assistant",
 				ExcludeFromHistory: true,

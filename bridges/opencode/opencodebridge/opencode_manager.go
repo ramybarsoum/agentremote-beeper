@@ -13,9 +13,6 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/bridges/opencode/opencode"
@@ -90,7 +87,7 @@ func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {
 				bridge.host.SendSystemNotice(ctx, portal, bridgeadapter.ApprovalErrorToastText(err))
 			}
 		},
-		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) database.MessageMetadata {
+		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) any {
 			return &MessageMetadata{
 				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
 					Role:               "assistant",
