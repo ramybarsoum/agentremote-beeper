@@ -150,16 +150,6 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		OnError: func(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error) {
 			cc.sendSystemNotice(ctx, portal, bridgeadapter.ApprovalErrorToastText(err))
 		},
-		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) any {
-			return &MessageMetadata{
-				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
-					Role:               "assistant",
-					CanonicalSchema:    "ai-sdk-ui-message-v1",
-					CanonicalUIMessage: prompt.UIMessage,
-				},
-				ExcludeFromHistory: true,
-			}
-		},
 	})
 	cc.startDispatching = sync.OnceFunc(func() {
 		go cc.dispatchNotifications()

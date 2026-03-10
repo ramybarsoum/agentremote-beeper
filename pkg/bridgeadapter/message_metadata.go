@@ -20,6 +20,7 @@ type BaseMessageMetadata struct {
 	ThinkingContent         string             `json:"thinking_content,omitempty"`
 	ToolCalls               []ToolCallMetadata `json:"tool_calls,omitempty"`
 	GeneratedFiles          []GeneratedFileRef `json:"generated_files,omitempty"`
+	ExcludeFromHistory      bool               `json:"exclude_from_history,omitempty"`
 }
 
 // CopyFromBase copies non-zero common fields from src into the receiver.
@@ -97,6 +98,9 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 	if len(src.GeneratedFiles) > 0 {
 		b.GeneratedFiles = make([]GeneratedFileRef, len(src.GeneratedFiles))
 		copy(b.GeneratedFiles, src.GeneratedFiles)
+	}
+	if src.ExcludeFromHistory {
+		b.ExcludeFromHistory = true
 	}
 }
 

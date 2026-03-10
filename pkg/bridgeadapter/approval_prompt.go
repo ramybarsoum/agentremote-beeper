@@ -94,9 +94,8 @@ func BuildApprovalPromptBody(toolName string, options []ApprovalOption) string {
 	if toolName == "" {
 		toolName = "tool"
 	}
-	resolved := normalizeApprovalOptions(options)
-	actionHints := make([]string, 0, len(resolved))
-	for _, opt := range resolved {
+	actionHints := make([]string, 0, len(options))
+	for _, opt := range options {
 		key := strings.TrimSpace(opt.Key)
 		if key == "" {
 			key = strings.TrimSpace(opt.FallbackKey)
@@ -238,7 +237,9 @@ func (s *ApprovalPromptStore) Register(reg ApprovalPromptRegistration) {
 	reg.ToolCallID = strings.TrimSpace(reg.ToolCallID)
 	reg.ToolName = strings.TrimSpace(reg.ToolName)
 	reg.TurnID = strings.TrimSpace(reg.TurnID)
-	reg.Options = normalizeApprovalOptions(reg.Options)
+	if len(reg.Options) == 0 {
+		reg.Options = normalizeApprovalOptions(reg.Options)
+	}
 
 	now := time.Now()
 	s.mu.Lock()

@@ -30,13 +30,14 @@ import (
 type openClawManager struct {
 	client *OpenClawClient
 
-	mu        sync.RWMutex
-	gateway   *gatewayWSClient
-	sessions  map[string]gatewaySessionRow
-	approvals *bridgeadapter.ApprovalManager[*openClawPendingApprovalData]
-	waiting   map[string]struct{}
-	started   map[string]struct{}
-	resyncing map[string]time.Time
+	mu                 sync.RWMutex
+	gateway            *gatewayWSClient
+	sessions           map[string]gatewaySessionRow
+	approvals          *bridgeadapter.ApprovalManager[*openClawPendingApprovalData]
+	waiting            map[string]struct{}
+	started            map[string]struct{}
+	resyncing          map[string]time.Time
+	lastEmittedUserMsg map[string]networkid.MessageID
 
 	cancel context.CancelFunc
 }
@@ -54,12 +55,13 @@ type openClawPendingApprovalData struct {
 
 func newOpenClawManager(client *OpenClawClient) *openClawManager {
 	return &openClawManager{
-		client:    client,
-		sessions:  make(map[string]gatewaySessionRow),
-		approvals: bridgeadapter.NewApprovalManager[*openClawPendingApprovalData](),
-		waiting:   make(map[string]struct{}),
-		started:   make(map[string]struct{}),
-		resyncing: make(map[string]time.Time),
+		client:             client,
+		sessions:           make(map[string]gatewaySessionRow),
+		approvals:          bridgeadapter.NewApprovalManager[*openClawPendingApprovalData](),
+		waiting:            make(map[string]struct{}),
+		started:            make(map[string]struct{}),
+		resyncing:          make(map[string]time.Time),
+		lastEmittedUserMsg: make(map[string]networkid.MessageID),
 	}
 }
 
@@ -1053,7 +1055,8 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		m.handleDirectChatEvent(ctx, portal, meta, payload, eventTS)
 		return
 	}
-	if openClawIsTerminalChatState(payload.State) {
+	isTerminal := openClawIsTerminalChatState(payload.State)
+	if isTerminal {
 		m.emitLatestUserMessageFromHistory(ctx, portal, meta, payload)
 	}
 	agentID := resolveOpenClawAgentID(meta, payload.SessionKey, payload.Message)
@@ -1075,7 +1078,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 		}
 		return
 	}
-	if openClawIsTerminalChatState(payload.State) {
+	if isTerminal {
 		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata)
 		if usage := normalizeOpenClawUsage(payload.Usage); len(usage) > 0 {
 			reasoningTokens := int64(0)
@@ -1179,6 +1182,13 @@ func (m *openClawManager) emitLatestUserMessageFromHistory(ctx context.Context, 
 		if converted == nil || messageID == "" {
 			return
 		}
+		m.mu.Lock()
+		if m.lastEmittedUserMsg[payload.SessionKey] == messageID {
+			m.mu.Unlock()
+			return
+		}
+		m.lastEmittedUserMsg[payload.SessionKey] = messageID
+		m.mu.Unlock()
 		eventTS := extractOpenClawEventTimestamp(payload.TS, message)
 		m.client.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
 			portal:    portal.PortalKey,

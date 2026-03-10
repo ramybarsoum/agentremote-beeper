@@ -431,16 +431,6 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		OnError: func(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error) {
 			oc.sendApprovalRejectionEvent(ctx, portal, approvalID, err, "")
 		},
-		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) any {
-			return &MessageMetadata{
-				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
-					Role:               "assistant",
-					CanonicalSchema:    "ai-sdk-ui-message-v1",
-					CanonicalUIMessage: prompt.UIMessage,
-				},
-				ExcludeFromHistory: true,
-			}
-		},
 	})
 
 	// Initialize inbound message processing with config values

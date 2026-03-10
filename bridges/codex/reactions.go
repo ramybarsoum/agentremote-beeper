@@ -14,15 +14,10 @@ func (cc *CodexClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.
 }
 
 func (cc *CodexClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
-	if cc == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
+	if cc == nil || msg == nil || msg.Event == nil {
 		return &database.Reaction{}, nil
 	}
-	if bridgeadapter.IsMatrixBotUser(ctx, cc.UserLogin.Bridge, msg.Event.Sender) {
-		return &database.Reaction{}, nil
-	}
-	rc := bridgeadapter.ExtractReactionContext(msg)
-	cc.approvalPrompts.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji)
-	return &database.Reaction{}, nil
+	return bridgeadapter.HandleApprovalMatrixReaction(ctx, cc.UserLogin.Bridge, msg.Event.Sender, msg, cc.approvalPrompts)
 }
 
 func (cc *CodexClient) HandleMatrixReactionRemove(_ context.Context, _ *bridgev2.MatrixReactionRemove) error {

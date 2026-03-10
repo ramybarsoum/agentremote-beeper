@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -138,6 +139,7 @@ func (m *ApprovalPromptManager) SendPrompt(ctx context.Context, portal *bridgev2
 			Role:               "assistant",
 			CanonicalSchema:    "ai-sdk-ui-message-v1",
 			CanonicalUIMessage: prompt.UIMessage,
+			ExcludeFromHistory: true,
 		}
 	}
 
@@ -173,19 +175,39 @@ func (m *ApprovalPromptManager) HandleReaction(ctx context.Context, msg *bridgev
 		return false
 	}
 
-	keepEventID := id.EventID("")
-	if match.ShouldResolve {
-		if m.resolve != nil {
-			if err := m.resolve(ctx, msg.Portal.MXID, match); err != nil {
-				if m.onError != nil {
-					m.onError(ctx, msg.Portal, match.ApprovalID, err)
-				}
-			} else {
-				keepEventID = msg.Event.ID
-			}
+	if !match.ShouldResolve {
+		// Rejected: redact only the invalid user's reaction and notify.
+		if match.RejectReason == RejectReasonExpired && m.onError != nil {
+			m.onError(ctx, msg.Portal, match.ApprovalID, ErrApprovalExpired)
+		} else if match.RejectReason == RejectReasonOwnerOnly && m.onError != nil {
+			m.onError(ctx, msg.Portal, match.ApprovalID, ErrApprovalOnlyOwner)
 		}
-	} else if match.RejectReason == "expired" && m.onError != nil {
-		m.onError(ctx, msg.Portal, match.ApprovalID, ErrApprovalExpired)
+		redactLogin := m.loginOrNil()
+		sender := bridgev2.EventSender{}
+		if m.sender != nil {
+			sender = m.sender(msg.Portal)
+		}
+		triggerID := msg.Event.ID
+		redactPortal := msg.Portal
+		go func() {
+			redactCtx := context.Background()
+			if m.backgroundCtx != nil {
+				redactCtx = m.backgroundCtx(redactCtx)
+			}
+			_ = RedactEventAsSender(redactCtx, redactLogin, redactPortal, sender, triggerID)
+		}()
+		return true
+	}
+
+	keepEventID := id.EventID("")
+	if m.resolve != nil {
+		if err := m.resolve(ctx, msg.Portal.MXID, match); err != nil {
+			if m.onError != nil {
+				m.onError(ctx, msg.Portal, match.ApprovalID, err)
+			}
+		} else {
+			keepEventID = msg.Event.ID
+		}
 	}
 
 	sender := bridgev2.EventSender{}
@@ -221,6 +243,26 @@ func (m *ApprovalPromptManager) MatchReaction(targetEventID id.EventID, sender i
 		return ApprovalPromptReactionMatch{}
 	}
 	return m.store.MatchReaction(targetEventID, sender, key, now)
+}
+
+// HandleApprovalMatrixReaction encapsulates the common HandleMatrixReaction body
+// shared by bridges that only need approval prompt reaction handling.
+func HandleApprovalMatrixReaction(
+	ctx context.Context,
+	bridge *bridgev2.Bridge,
+	sender id.UserID,
+	msg *bridgev2.MatrixReaction,
+	prompts *ApprovalPromptManager,
+) (*database.Reaction, error) {
+	if msg == nil || msg.Event == nil || msg.Portal == nil {
+		return &database.Reaction{}, nil
+	}
+	if IsMatrixBotUser(ctx, bridge, sender) {
+		return &database.Reaction{}, nil
+	}
+	rc := ExtractReactionContext(msg)
+	prompts.HandleReaction(ctx, msg, rc.TargetEventID, rc.Emoji)
+	return &database.Reaction{}, nil
 }
 
 func (m *ApprovalPromptManager) loginOrNil() *bridgev2.UserLogin {

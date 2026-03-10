@@ -55,7 +55,7 @@ func TestApprovalPromptStore_MatchReactionOwnerOnly(t *testing.T) {
 	if !otherMatch.KnownPrompt || otherMatch.ShouldResolve {
 		t.Fatalf("expected non-owner reaction to be rejected, got %#v", otherMatch)
 	}
-	if otherMatch.RejectReason != "only_owner" {
-		t.Fatalf("expected reject reason only_owner, got %q", otherMatch.RejectReason)
+	if otherMatch.RejectReason != RejectReasonOwnerOnly {
+		t.Fatalf("expected reject reason %s, got %q", RejectReasonOwnerOnly, otherMatch.RejectReason)
 	}
 }

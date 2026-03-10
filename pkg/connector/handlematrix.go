@@ -1138,13 +1138,14 @@ func (oc *AIClient) sendAckReaction(ctx context.Context, portal *bridgev2.Portal
 
 	sender := oc.senderForPortal(ctx, portal)
 	emojiID := networkid.EmojiID(emoji)
-	result := oc.UserLogin.QueueRemoteEvent(&AIRemoteReaction{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: targetPart.ID,
-		emoji:         emoji,
-		emojiID:       emojiID,
-		timestamp:     time.Now(),
+	result := oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteReaction{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: targetPart.ID,
+		Emoji:         emoji,
+		EmojiID:       emojiID,
+		Timestamp:     time.Now(),
+		LogKey:        "ai_reaction_target",
 	})
 	if !result.Success {
 		oc.loggerForContext(ctx).Warn().
@@ -1203,11 +1204,12 @@ func (oc *AIClient) removeAckReaction(ctx context.Context, portal *bridgev2.Port
 	}
 
 	sender := oc.senderForPortal(ctx, portal)
-	oc.UserLogin.QueueRemoteEvent(&AIRemoteReactionRemove{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: entry.targetNetworkID,
-		emojiID:       networkid.EmojiID(entry.emoji),
+	oc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteReactionRemove{
+		Portal:        portal.PortalKey,
+		Sender:        sender,
+		TargetMessage: entry.targetNetworkID,
+		EmojiID:       networkid.EmojiID(entry.emoji),
+		LogKey:        "ai_reaction_remove_target",
 	})
 
 	oc.loggerForContext(ctx).Debug().

@@ -14,7 +14,7 @@ func (oc *OpenCodeClient) PreHandleMatrixReaction(_ context.Context, msg *bridge
 }
 
 func (oc *OpenCodeClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
-	if oc == nil || msg == nil || msg.Event == nil || msg.Portal == nil || oc.bridge == nil {
+	if oc == nil || msg == nil || msg.Event == nil || oc.bridge == nil {
 		return &database.Reaction{}, nil
 	}
 	if bridgeadapter.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
