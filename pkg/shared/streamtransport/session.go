@@ -401,8 +401,17 @@ func (s *StreamSession) sendDebounced(ctx context.Context, force bool) error {
 
 func debouncedPartMode(partType string) (eligible bool, force bool) {
 	switch partType {
-	case "text-delta", "reasoning-delta", "text-end", "reasoning-end":
+	case "text-delta", "reasoning-delta", "tool-input-delta":
 		return true, false
+	case "text-end", "reasoning-end":
+		return true, false
+	case "start", "start-step", "finish-step", "message-metadata",
+		"source-url", "source-document", "file":
+		return true, false
+	case "tool-input-start", "tool-input-available", "tool-input-error",
+		"tool-output-available", "tool-output-error", "tool-output-denied",
+		"tool-approval-request", "tool-approval-response":
+		return true, true
 	case "finish", "abort", "error":
 		return true, true
 	default:

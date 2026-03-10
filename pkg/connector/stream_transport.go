@@ -6,6 +6,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 func (oc *AIClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *streamingState, force bool) error {
@@ -22,5 +23,6 @@ func (oc *AIClient) sendDebouncedStreamEdit(ctx context.Context, portal *bridgev
 		FallbackBody:     state.accumulated.String(),
 		LogKey:           "ai_edit_target",
 		Force:            force,
+		UIMessage:        streamui.SnapshotCanonicalUIMessage(&state.ui),
 	})
 }

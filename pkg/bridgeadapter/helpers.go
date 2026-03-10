@@ -56,6 +56,7 @@ type SendDebouncedStreamEditParams struct {
 	FallbackBody     string
 	LogKey           string
 	Force            bool
+	UIMessage        map[string]any
 }
 
 // SendDebouncedStreamEdit builds and queues a debounced stream edit via the bridge pipeline.
@@ -73,6 +74,13 @@ func SendDebouncedStreamEdit(p SendDebouncedStreamEditParams) error {
 	if content == nil || p.NetworkMessageID == "" {
 		return nil
 	}
+	topLevelExtra := map[string]any{
+		"com.beeper.dont_render_edited": true,
+		"m.mentions":                    map[string]any{},
+	}
+	if len(p.UIMessage) > 0 {
+		topLevelExtra[matrixevents.BeeperAIKey] = p.UIMessage
+	}
 	p.Login.QueueRemoteEvent(&RemoteEdit{
 		Portal:        p.Portal.PortalKey,
 		Sender:        p.Sender,
@@ -83,10 +91,7 @@ func SendDebouncedStreamEdit(p SendDebouncedStreamEditParams) error {
 			Body:          content.Body,
 			Format:        content.Format,
 			FormattedBody: content.FormattedBody,
-		}, map[string]any{
-			"com.beeper.dont_render_edited": true,
-			"m.mentions":                    map[string]any{},
-		}),
+		}, topLevelExtra),
 	})
 	return nil
 }

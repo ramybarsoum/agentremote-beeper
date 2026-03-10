@@ -33,6 +33,36 @@ func TestBuildDebouncedEditContent_NotForcedStillRenders(t *testing.T) {
 	}
 }
 
+func TestDebouncedPartMode_ToolEventsEligible(t *testing.T) {
+	toolForceEvents := []string{
+		"tool-input-start", "tool-input-available", "tool-input-error",
+		"tool-output-available", "tool-output-error", "tool-output-denied",
+		"tool-approval-request", "tool-approval-response",
+	}
+	for _, partType := range toolForceEvents {
+		eligible, force := debouncedPartMode(partType)
+		if !eligible {
+			t.Errorf("expected %q to be debounce-eligible", partType)
+		}
+		if !force {
+			t.Errorf("expected %q to force immediate debounced send", partType)
+		}
+	}
+
+	eligible, force := debouncedPartMode("tool-input-delta")
+	if !eligible {
+		t.Error("expected tool-input-delta to be debounce-eligible")
+	}
+	if force {
+		t.Error("expected tool-input-delta to NOT force immediate send")
+	}
+
+	eligible, _ = debouncedPartMode("unknown-part-type")
+	if eligible {
+		t.Error("expected unknown part type to be ineligible")
+	}
+}
+
 func TestBuildConvertedEdit_KeepsOnlyCustomTopLevelFields(t *testing.T) {
 	edit := BuildConvertedEdit(&event.MessageEventContent{
 		MsgType:       event.MsgText,
