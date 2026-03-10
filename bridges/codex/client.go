@@ -97,8 +97,7 @@ type CodexClient struct {
 	loadedMu      sync.Mutex
 	loadedThreads map[string]bool // threadId -> loaded via thread/start|thread/resume
 
-	approvals       *bridgeadapter.ApprovalManager[ToolApprovalDecisionCodex]
-	approvalPrompts *bridgeadapter.ApprovalPromptManager
+	approvalFlow *bridgeadapter.ApprovalFlow[*pendingToolApprovalDataCodex]
 
 	scheduleBootstrapOnce func() // starts bootstrap goroutine exactly once
 
@@ -127,30 +126,27 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		log:             log,
 		notifCh:         make(chan codexNotif, 4096),
 		notifDone:       make(chan struct{}),
-		approvals:       bridgeadapter.NewApprovalManager[ToolApprovalDecisionCodex](),
-		loadedThreads:   make(map[string]bool),
+		loadedThreads: make(map[string]bool),
 		activeTurns:     make(map[string]*codexActiveTurn),
 		turnSubs:        make(map[string]chan codexNotif),
 		activeRooms:     make(map[id.RoomID]bool),
 		pendingMessages: make(map[id.RoomID]codexPendingQueue),
 	}
 	cc.BaseReactionHandler.Target = cc
-	cc.approvalPrompts = bridgeadapter.NewApprovalPromptManager(bridgeadapter.ApprovalPromptManagerConfig{
+	cc.approvalFlow = bridgeadapter.NewApprovalFlow(bridgeadapter.ApprovalFlowConfig[*pendingToolApprovalDataCodex]{
 		Login:             func() *bridgev2.UserLogin { return cc.UserLogin },
 		Sender:            func(_ *bridgev2.Portal) bridgev2.EventSender { return cc.senderForPortal() },
 		BackgroundContext: cc.backgroundContext,
 		IDPrefix:          "codex",
 		LogKey:            "codex_msg_id",
-		Resolve: func(ctx context.Context, roomID id.RoomID, match bridgeadapter.ApprovalPromptReactionMatch) error {
-			return cc.resolveToolApproval(roomID, match.ApprovalID, ToolApprovalDecisionCodex{
-				Approve:   match.Decision.Approved,
-				Reason:    match.Decision.Reason,
-				DecidedAt: time.Now(),
-				DecidedBy: id.UserID(match.Prompt.OwnerMXID),
-			})
+		RoomIDFromData: func(data *pendingToolApprovalDataCodex) id.RoomID {
+			if data == nil {
+				return ""
+			}
+			return data.RoomID
 		},
-		OnError: func(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error) {
-			cc.sendSystemNotice(ctx, portal, bridgeadapter.ApprovalErrorToastText(err))
+		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
+			cc.sendSystemNotice(ctx, portal, msg)
 		},
 	})
 	cc.startDispatching = sync.OnceFunc(func() {
@@ -247,8 +243,8 @@ func (cc *CodexClient) IsLoggedIn() bool {
 
 func (cc *CodexClient) GetUserLogin() *bridgev2.UserLogin { return cc.UserLogin }
 
-func (cc *CodexClient) GetApprovalPrompts() *bridgeadapter.ApprovalPromptManager {
-	return cc.approvalPrompts
+func (cc *CodexClient) GetApprovalHandler() bridgeadapter.ApprovalReactionHandler {
+	return cc.approvalFlow
 }
 
 func (cc *CodexClient) LogoutRemote(ctx context.Context) {
@@ -1745,7 +1741,7 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 	if state == nil {
 		return
 	}
-	cc.approvalPrompts.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+	cc.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
 		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
 			ApprovalID:     approvalID,
 			ToolCallID:     toolCallID,
@@ -2077,15 +2073,8 @@ func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev
 
 // --- Approvals ---
 
-type ToolApprovalDecisionCodex struct {
-	Approve   bool
-	Reason    string
-	DecidedAt time.Time
-	DecidedBy id.UserID
-}
-
 // pendingToolApprovalDataCodex holds codex-specific metadata stored in
-// ApprovalManager's PendingApproval.Data field.
+// ApprovalFlow's Pending.Data field.
 type pendingToolApprovalDataCodex struct {
 	ApprovalID string
 	RoomID     id.RoomID
@@ -2093,45 +2082,19 @@ type pendingToolApprovalDataCodex struct {
 	ToolName   string
 }
 
-func (cc *CodexClient) registerToolApproval(roomID id.RoomID, approvalID, toolCallID, toolName string, ttl time.Duration) (*bridgeadapter.PendingApproval[ToolApprovalDecisionCodex], bool) {
+func (cc *CodexClient) registerToolApproval(roomID id.RoomID, approvalID, toolCallID, toolName string, ttl time.Duration) (*bridgeadapter.Pending[*pendingToolApprovalDataCodex], bool) {
 	data := &pendingToolApprovalDataCodex{
 		ApprovalID: strings.TrimSpace(approvalID),
 		RoomID:     roomID,
 		ToolCallID: strings.TrimSpace(toolCallID),
 		ToolName:   strings.TrimSpace(toolName),
 	}
-	return cc.approvals.Register(approvalID, ttl, data)
+	return cc.approvalFlow.Register(approvalID, ttl, data)
 }
 
-func (cc *CodexClient) resolveToolApproval(roomID id.RoomID, approvalID string, decision ToolApprovalDecisionCodex) error {
-	if cc == nil || cc.UserLogin == nil {
-		return errors.New("bridge not available")
-	}
-	v, err := bridgeadapter.ValidateApprovalRequest(approvalID, roomID, decision.DecidedBy, cc.UserLogin.UserMXID)
-	if err != nil {
-		return err
-	}
-	approvalID = v.ApprovalID
-	p, err := bridgeadapter.CheckApprovalPending(cc.approvals, approvalID)
-	if err != nil {
-		return err
-	}
-	d, _ := p.Data.(*pendingToolApprovalDataCodex)
-	if d != nil {
-		if err := bridgeadapter.CheckApprovalRoomID(d.RoomID, roomID); err != nil {
-			return err
-		}
-	}
-	if err := cc.approvals.Resolve(approvalID, decision); err != nil {
-		return err
-	}
-	cc.approvalPrompts.Drop(approvalID)
-	return nil
-}
-
-func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) (ToolApprovalDecisionCodex, bool) {
-	defer cc.approvalPrompts.Drop(strings.TrimSpace(approvalID))
-	return cc.approvals.Wait(ctx, approvalID)
+func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) (bridgeadapter.ApprovalDecisionPayload, bool) {
+	defer cc.approvalFlow.Drop(strings.TrimSpace(approvalID))
+	return cc.approvalFlow.Wait(ctx, approvalID)
 }
 
 func (cc *CodexClient) handleApprovalRequest(
@@ -2181,8 +2144,8 @@ func (cc *CodexClient) handleApprovalRequest(
 		streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, false, "timeout")
 		return map[string]any{"decision": "decline"}, nil
 	}
-	streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, decision.Approve, decision.Reason)
-	if decision.Approve {
+	streamui.RecordApprovalResponse(&active.state.ui, approvalID, toolCallID, decision.Approved, decision.Reason)
+	if decision.Approved {
 		return map[string]any{"decision": "accept"}, nil
 	}
 	return map[string]any{"decision": "decline"}, nil

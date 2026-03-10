@@ -2,9 +2,6 @@ package opencodebridge
 
 import (
 	"context"
-	"time"
-
-	"maunium.net/go/mautrix/id"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -91,38 +88,12 @@ func (b *Bridge) AbortSession(ctx context.Context, instanceID, sessionID string)
 	return b.manager.AbortSession(ctx, instanceID, sessionID)
 }
 
-func (b *Bridge) ResolveApprovalDecision(ctx context.Context, roomID id.RoomID, approvalID string, approved, always bool, reason string, decidedBy id.UserID) error {
-	if b == nil || b.manager == nil {
-		return ErrUnavailable
-	}
-	response := "reject"
-	if approved {
-		response = "once"
-		if always {
-			response = "always"
-		}
-	}
-	return b.manager.resolvePermissionDecision(ctx, roomID, approvalID, permissionDecision{
-		Response:  response,
-		Reason:    reason,
-		DecidedAt: time.Now(),
-		DecidedBy: decidedBy,
-	})
-}
-
-func (b *Bridge) HandleApprovalPromptReaction(ctx context.Context, msg *bridgev2.MatrixReaction, targetEventID id.EventID, emoji string) bool {
-	if b == nil || b.manager == nil {
-		return false
-	}
-	return b.manager.handleApprovalPromptReaction(ctx, msg, targetEventID, emoji)
-}
-
-// ApprovalPrompts returns the manager's ApprovalPromptManager, or nil if unavailable.
-func (b *Bridge) ApprovalPrompts() *bridgeadapter.ApprovalPromptManager {
+// ApprovalHandler returns the manager's ApprovalFlow as an ApprovalReactionHandler, or nil if unavailable.
+func (b *Bridge) ApprovalHandler() bridgeadapter.ApprovalReactionHandler {
 	if b == nil || b.manager == nil {
 		return nil
 	}
-	return b.manager.approvalPrompts
+	return b.manager.approvalFlow
 }
 
 func (b *Bridge) RestoreConnections(ctx context.Context) error {

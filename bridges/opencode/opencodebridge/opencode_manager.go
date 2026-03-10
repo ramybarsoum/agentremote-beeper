@@ -22,11 +22,10 @@ import (
 // OpenCodeManager coordinates connections to OpenCode server instances,
 // dispatches SSE events, and manages session lifecycle.
 type OpenCodeManager struct {
-	bridge          *Bridge
-	mu              sync.RWMutex
-	instances       map[string]*openCodeInstance
-	approvals       *bridgeadapter.ApprovalManager[permissionDecision]
-	approvalPrompts *bridgeadapter.ApprovalPromptManager
+	bridge       *Bridge
+	mu           sync.RWMutex
+	instances    map[string]*openCodeInstance
+	approvalFlow *bridgeadapter.ApprovalFlow[*permissionApprovalRef]
 }
 
 type permissionApprovalRef struct {
@@ -38,20 +37,12 @@ type permissionApprovalRef struct {
 	PermissionID string
 }
 
-type permissionDecision struct {
-	Response  string
-	Reason    string
-	DecidedAt time.Time
-	DecidedBy id.UserID
-}
-
 func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {
 	mgr := &OpenCodeManager{
 		bridge:    bridge,
 		instances: make(map[string]*openCodeInstance),
-		approvals: bridgeadapter.NewApprovalManager[permissionDecision](),
 	}
-	mgr.approvalPrompts = bridgeadapter.NewApprovalPromptManager(bridgeadapter.ApprovalPromptManagerConfig{
+	mgr.approvalFlow = bridgeadapter.NewApprovalFlow(bridgeadapter.ApprovalFlowConfig[*permissionApprovalRef]{
 		Login: func() *bridgev2.UserLogin {
 			if bridge != nil && bridge.host != nil {
 				return bridge.host.Login()
@@ -65,28 +56,67 @@ func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {
 			meta := bridge.portalMeta(portal)
 			return bridge.host.SenderForOpenCode(meta.InstanceID, false)
 		},
-		IDPrefix: "opencode",
-		LogKey:   "opencode_msg_id",
-		Resolve: func(ctx context.Context, roomID id.RoomID, match bridgeadapter.ApprovalPromptReactionMatch) error {
+		BackgroundContext: func(ctx context.Context) context.Context {
+			if bridge != nil && bridge.host != nil {
+				return bridge.host.BackgroundContext(ctx)
+			}
+			return ctx
+		},
+		RoomIDFromData: func(data *permissionApprovalRef) id.RoomID {
+			if data == nil {
+				return ""
+			}
+			return data.RoomID
+		},
+		DeliverDecision: func(ctx context.Context, portal *bridgev2.Portal, pending *bridgeadapter.Pending[*permissionApprovalRef], decision bridgeadapter.ApprovalDecisionPayload) error {
+			ref := pending.Data
+			if ref == nil {
+				return bridgeadapter.ErrApprovalUnknown
+			}
 			response := "reject"
-			if match.Decision.Approved {
+			if decision.Approved {
 				response = "once"
-				if match.Decision.Always {
+				if decision.Always {
 					response = "always"
 				}
 			}
-			return mgr.resolvePermissionDecision(ctx, roomID, match.ApprovalID, permissionDecision{
-				Response:  response,
-				Reason:    strings.TrimSpace(match.Decision.Reason),
-				DecidedAt: time.Now(),
-				DecidedBy: id.UserID(match.Prompt.OwnerMXID),
-			})
+			inst, err := mgr.requireConnectedInstance(ref.InstanceID)
+			if err != nil {
+				return err
+			}
+			if err := inst.client.RespondPermission(ctx, ref.SessionID, ref.PermissionID, response); err != nil {
+				if opencode.IsAuthError(err) {
+					mgr.setConnected(inst, false)
+				}
+				return fmt.Errorf("respond to permission: %w", err)
+			}
+			turnID := opencodeMessageStreamTurnID(ref.SessionID, ref.MessageID)
+			approved := response != "reject"
+			if portal != nil {
+				mgr.ensureStepStarted(ctx, inst, portal, ref.SessionID, ref.MessageID)
+				mgr.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, mgr.bridge.portalAgentID(portal), map[string]any{
+					"type":       "tool-approval-response",
+					"approvalId": strings.TrimSpace(decision.ApprovalID),
+					"toolCallId": ref.ToolCallID,
+					"approved":   approved,
+					"reason":     strings.TrimSpace(decision.Reason),
+				})
+			}
+			if response == "reject" && portal != nil {
+				mgr.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, mgr.bridge.portalAgentID(portal), map[string]any{
+					"type":       "tool-output-denied",
+					"toolCallId": ref.ToolCallID,
+				})
+			}
+			return nil
 		},
-		OnError: func(ctx context.Context, portal *bridgev2.Portal, _ string, err error) {
+		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
 			if bridge != nil && bridge.host != nil {
-				bridge.host.SendSystemNotice(ctx, portal, bridgeadapter.ApprovalErrorToastText(err))
+				bridge.host.SendSystemNotice(ctx, portal, msg)
 			}
 		},
+		IDPrefix: "opencode",
+		LogKey:   "opencode_msg_id",
 	})
 	return mgr
 }
@@ -804,7 +834,7 @@ func (m *OpenCodeManager) handlePermissionAskedEvent(ctx context.Context, inst *
 		return
 	}
 	approvalID := strings.TrimSpace(req.ID)
-	_, created := m.approvals.Register(approvalID, 10*time.Minute, &permissionApprovalRef{
+	_, created := m.approvalFlow.Register(approvalID, 10*time.Minute, &permissionApprovalRef{
 		RoomID:       portal.MXID,
 		InstanceID:   inst.cfg.ID,
 		SessionID:    req.SessionID,
@@ -833,13 +863,13 @@ func (m *OpenCodeManager) handlePermissionAskedEvent(ctx context.Context, inst *
 			ownerMXID = login.UserMXID
 		}
 	}
-	m.approvalPrompts.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+	m.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
 		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
 			ApprovalID: approvalID,
 			ToolCallID: toolCallID,
 			ToolName:   toolName,
 			TurnID:     turnID,
-			ExpiresAt: time.Now().Add(10 * time.Minute),
+			ExpiresAt:  time.Now().Add(10 * time.Minute),
 		},
 		RoomID:    portal.MXID,
 		OwnerMXID: ownerMXID,
@@ -856,14 +886,13 @@ func (m *OpenCodeManager) handlePermissionRepliedEvent(ctx context.Context, inst
 		m.log().Warn().Err(err).Msg("Failed to decode permission reply event")
 		return
 	}
-	pending := m.approvals.Get(strings.TrimSpace(payload.RequestID))
+	pending := m.approvalFlow.Get(strings.TrimSpace(payload.RequestID))
 	if pending == nil {
 		return
 	}
-	ref, _ := pending.Data.(*permissionApprovalRef)
+	ref := pending.Data
 	if ref == nil {
-		m.approvals.Drop(payload.RequestID)
-		m.approvalPrompts.Drop(payload.RequestID)
+		m.approvalFlow.Drop(payload.RequestID)
 		return
 	}
 	reply := strings.ToLower(strings.TrimSpace(payload.Reply))
@@ -888,8 +917,7 @@ func (m *OpenCodeManager) handlePermissionRepliedEvent(ctx context.Context, inst
 			})
 		}
 	}
-	m.approvals.Drop(payload.RequestID)
-	m.approvalPrompts.Drop(payload.RequestID)
+	m.approvalFlow.Drop(payload.RequestID)
 }
 
 func (m *OpenCodeManager) handleQuestionAskedEvent(ctx context.Context, inst *openCodeInstance, evt opencode.Event) {
@@ -923,75 +951,6 @@ func (m *OpenCodeManager) handleQuestionAskedEvent(ctx context.Context, inst *op
 	}
 }
 
-func (m *OpenCodeManager) resolvePermissionDecision(ctx context.Context, roomID id.RoomID, approvalID string, decision permissionDecision) error {
-	if m == nil || m.bridge == nil || m.bridge.host == nil {
-		return errors.New("bridge not available")
-	}
-	login := m.bridge.host.Login()
-	ownerMXID := id.UserID("")
-	if login != nil {
-		ownerMXID = login.UserMXID
-	}
-	v, err := bridgeadapter.ValidateApprovalRequest(approvalID, roomID, decision.DecidedBy, ownerMXID)
-	if err != nil {
-		return err
-	}
-	approvalID = v.ApprovalID
-	pending, err := bridgeadapter.CheckApprovalPending(m.approvals, approvalID)
-	if err != nil {
-		return err
-	}
-	ref, _ := pending.Data.(*permissionApprovalRef)
-	if ref == nil {
-		m.approvals.Drop(approvalID)
-		m.approvalPrompts.Drop(approvalID)
-		return fmt.Errorf("%w: %s", bridgeadapter.ErrApprovalUnknown, approvalID)
-	}
-	if err := bridgeadapter.CheckApprovalRoomID(ref.RoomID, roomID); err != nil {
-		return err
-	}
-	inst, err := m.requireConnectedInstance(ref.InstanceID)
-	if err != nil {
-		return err
-	}
-	if err := inst.client.RespondPermission(ctx, ref.SessionID, ref.PermissionID, decision.Response); err != nil {
-		if opencode.IsAuthError(err) {
-			m.setConnected(inst, false)
-		}
-		return fmt.Errorf("respond to permission: %w", err)
-	}
-	portal := m.bridge.findOpenCodePortal(ctx, ref.InstanceID, ref.SessionID)
-	turnID := opencodeMessageStreamTurnID(ref.SessionID, ref.MessageID)
-	approved := decision.Response != "reject"
-	if portal != nil {
-		m.ensureStepStarted(ctx, inst, portal, ref.SessionID, ref.MessageID)
-		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), map[string]any{
-			"type":       "tool-approval-response",
-			"approvalId": approvalID,
-			"toolCallId": ref.ToolCallID,
-			"approved":   approved,
-			"reason":     strings.TrimSpace(decision.Reason),
-		})
-	}
-	m.approvals.Drop(approvalID)
-	m.approvalPrompts.Drop(approvalID)
-	if decision.Response == "reject" {
-		if portal != nil {
-			m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), map[string]any{
-				"type":       "tool-output-denied",
-				"toolCallId": ref.ToolCallID,
-			})
-		}
-	}
-	return nil
-}
-
-func (m *OpenCodeManager) handleApprovalPromptReaction(ctx context.Context, msg *bridgev2.MatrixReaction, targetEventID id.EventID, emoji string) bool {
-	if m == nil || m.approvalPrompts == nil {
-		return false
-	}
-	return m.approvalPrompts.HandleReaction(ctx, msg, targetEventID, emoji)
-}
 
 // ---------- message/part processing ----------
 
