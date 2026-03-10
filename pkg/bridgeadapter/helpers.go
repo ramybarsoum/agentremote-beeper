@@ -210,10 +210,7 @@ func RedactEventAsSender(
 	_, err := intent.SendMessage(ctx, portal.MXID, event.EventRedaction, &event.Content{
 		Parsed: &event.RedactionEventContent{Redacts: targetEventID},
 	}, nil)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic string) *bridgev2.ChatInfo {

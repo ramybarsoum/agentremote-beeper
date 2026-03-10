@@ -28,7 +28,7 @@ type OpenCodeManager struct {
 	mu              sync.RWMutex
 	instances       map[string]*openCodeInstance
 	approvals       *bridgeadapter.ApprovalManager[permissionDecision]
-	approvalPrompts *bridgeadapter.ApprovalPromptStore
+	approvalPrompts *bridgeadapter.ApprovalPromptManager
 }
 
 type permissionApprovalRef struct {

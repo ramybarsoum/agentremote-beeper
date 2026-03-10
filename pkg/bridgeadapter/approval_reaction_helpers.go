@@ -3,7 +3,6 @@ package bridgeadapter
 import (
 	"context"
 	"errors"
-	"slices"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -11,7 +10,7 @@ import (
 )
 
 func ApprovalOptionPrefillKeys(option ApprovalOption) []string {
-	return slices.Clone(option.prefillKeys())
+	return option.prefillKeys()
 }
 
 // RedactApprovalPromptReactions redacts all reactions on targetMessage except keepEventID.

@@ -1032,7 +1032,7 @@ func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload ga
 	} else {
 		m.client.sendSystemNoticeViaPortal(ctx, portal, openClawApprovalResolvedText(payload.Decision))
 	}
-	if m.client != nil && m.client.approvalPrompts != nil {
+	if m.client != nil {
 		m.client.approvalPrompts.Drop(approvalID)
 	}
 	m.approvals.Drop(approvalID)

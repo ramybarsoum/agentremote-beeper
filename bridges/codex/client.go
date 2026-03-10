@@ -97,7 +97,7 @@ type CodexClient struct {
 	loadedThreads map[string]bool // threadId -> loaded via thread/start|thread/resume
 
 	approvals       *bridgeadapter.ApprovalManager[ToolApprovalDecisionCodex]
-	approvalPrompts *bridgeadapter.ApprovalPromptStore
+	approvalPrompts *bridgeadapter.ApprovalPromptManager
 
 	scheduleBootstrapOnce func() // starts bootstrap goroutine exactly once
 
@@ -127,13 +127,40 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		notifCh:         make(chan codexNotif, 4096),
 		notifDone:       make(chan struct{}),
 		approvals:       bridgeadapter.NewApprovalManager[ToolApprovalDecisionCodex](),
-		approvalPrompts: bridgeadapter.NewApprovalPromptStore(),
 		loadedThreads:   make(map[string]bool),
 		activeTurns:     make(map[string]*codexActiveTurn),
 		turnSubs:        make(map[string]chan codexNotif),
 		activeRooms:     make(map[id.RoomID]bool),
 		pendingMessages: make(map[id.RoomID]codexPendingQueue),
 	}
+	cc.approvalPrompts = bridgeadapter.NewApprovalPromptManager(bridgeadapter.ApprovalPromptManagerConfig{
+		Login:             func() *bridgev2.UserLogin { return cc.UserLogin },
+		Sender:            func(_ *bridgev2.Portal) bridgev2.EventSender { return cc.senderForPortal() },
+		BackgroundContext: cc.backgroundContext,
+		IDPrefix:          "codex",
+		LogKey:            "codex_msg_id",
+		Resolve: func(ctx context.Context, roomID id.RoomID, match bridgeadapter.ApprovalPromptReactionMatch) error {
+			return cc.resolveToolApproval(roomID, match.ApprovalID, ToolApprovalDecisionCodex{
+				Approve:   match.Decision.Approved,
+				Reason:    match.Decision.Reason,
+				DecidedAt: time.Now(),
+				DecidedBy: id.UserID(match.Prompt.OwnerMXID),
+			})
+		},
+		OnError: func(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error) {
+			cc.sendSystemNotice(ctx, portal, bridgeadapter.ApprovalErrorToastText(err))
+		},
+		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) database.MessageMetadata {
+			return &MessageMetadata{
+				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+					Role:               "assistant",
+					CanonicalSchema:    "ai-sdk-ui-message-v1",
+					CanonicalUIMessage: prompt.UIMessage,
+				},
+				ExcludeFromHistory: true,
+			}
+		},
+	})
 	cc.startDispatching = sync.OnceFunc(func() {
 		go cc.dispatchNotifications()
 	})
@@ -1717,88 +1744,26 @@ func (cc *CodexClient) sendApprovalRequestFallbackEvent(
 	toolName string,
 	ttlSeconds int,
 ) {
-	if portal == nil || portal.MXID == "" || state == nil {
+	if state == nil {
 		return
 	}
-	approvalID = strings.TrimSpace(approvalID)
-	toolCallID = strings.TrimSpace(toolCallID)
-	toolName = strings.TrimSpace(toolName)
-	if approvalID == "" || toolCallID == "" {
-		return
-	}
-	if toolName == "" {
-		toolName = "tool"
-	}
-	expiresAt := time.Now().Add(10 * time.Minute)
+	now := time.Now()
+	expiresAt := now.Add(10 * time.Minute)
 	if ttlSeconds > 0 {
-		expiresAt = time.Now().Add(time.Duration(ttlSeconds) * time.Second)
+		expiresAt = now.Add(time.Duration(ttlSeconds) * time.Second)
 	}
-	prompt := bridgeadapter.BuildApprovalPromptMessage(bridgeadapter.ApprovalPromptMessageParams{
-		ApprovalID:     approvalID,
-		ToolCallID:     toolCallID,
-		ToolName:       toolName,
-		TurnID:         state.turnID,
-		ReplyToEventID: state.initialEventID,
-		ExpiresAt:      expiresAt,
+	cc.approvalPrompts.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
+			ApprovalID:     approvalID,
+			ToolCallID:     toolCallID,
+			ToolName:       toolName,
+			TurnID:         state.turnID,
+			ReplyToEventID: state.initialEventID,
+			ExpiresAt:      expiresAt,
+		},
+		RoomID:    portal.MXID,
+		OwnerMXID: cc.UserLogin.UserMXID,
 	})
-	if cc.approvalPrompts != nil {
-		cc.approvalPrompts.Register(bridgeadapter.ApprovalPromptRegistration{
-			ApprovalID: approvalID,
-			RoomID:     portal.MXID,
-			OwnerMXID:  cc.UserLogin.UserMXID,
-			ToolCallID: toolCallID,
-			ToolName:   toolName,
-			TurnID:     state.turnID,
-			ExpiresAt:  expiresAt,
-			Options:    prompt.Options,
-		})
-	}
-
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:      networkid.PartID("0"),
-			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: prompt.Body},
-			Extra:   prompt.Raw,
-			DBMetadata: &MessageMetadata{
-				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
-					Role:               "assistant",
-					CanonicalSchema:    "ai-sdk-ui-message-v1",
-					CanonicalUIMessage: prompt.UIMessage,
-				},
-				ExcludeFromHistory: true,
-			},
-		}},
-	}
-	bg := cc.backgroundContext(ctx)
-	sendCtx, cancel := context.WithTimeout(bg, 10*time.Second)
-	defer cancel()
-	eventID, msgID, err := cc.sendViaPortal(sendCtx, portal, converted, "")
-	if err != nil {
-		cc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to send approval request fallback event")
-		return
-	}
-	if cc.approvalPrompts != nil {
-		cc.approvalPrompts.BindPromptEvent(approvalID, eventID)
-	}
-	seenKeys := map[string]struct{}{}
-	for _, option := range prompt.Options {
-		for _, key := range bridgeadapter.ApprovalOptionPrefillKeys(option) {
-			if _, exists := seenKeys[key]; exists || key == "" {
-				continue
-			}
-			seenKeys[key] = struct{}{}
-			cc.UserLogin.QueueRemoteEvent(&bridgeadapter.RemoteReaction{
-				Portal:        portal.PortalKey,
-				Sender:        cc.senderForPortal(),
-				TargetMessage: msgID,
-				Emoji:         key,
-				EmojiID:       networkid.EmojiID(key),
-				Timestamp:     time.Now(),
-				LogKey:        "codex_reaction_target",
-			})
-		}
-	}
 }
 
 func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
@@ -2203,16 +2168,12 @@ func (cc *CodexClient) resolveToolApproval(roomID id.RoomID, approvalID string, 
 	if err := cc.approvals.Resolve(approvalID, decision); err != nil {
 		return err
 	}
-	if cc.approvalPrompts != nil {
-		cc.approvalPrompts.Drop(approvalID)
-	}
+	cc.approvalPrompts.Drop(approvalID)
 	return nil
 }
 
 func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) (ToolApprovalDecisionCodex, bool) {
-	if cc != nil && cc.approvalPrompts != nil {
-		defer cc.approvalPrompts.Drop(strings.TrimSpace(approvalID))
-	}
+	defer cc.approvalPrompts.Drop(strings.TrimSpace(approvalID))
 	return cc.approvals.Wait(ctx, approvalID)
 }
 
