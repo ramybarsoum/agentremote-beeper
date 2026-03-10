@@ -21,7 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"maunium.net/go/mautrix"
 
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 const (

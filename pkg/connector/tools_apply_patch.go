@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/textfs"
+	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 func executeApplyPatch(ctx context.Context, args map[string]any) (string, error) {

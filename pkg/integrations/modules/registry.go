@@ -1,7 +1,7 @@
 package modules
 
 import (
-	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
 // BuiltinModules returns built-in integration modules in deterministic order.

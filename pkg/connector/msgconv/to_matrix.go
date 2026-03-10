@@ -10,9 +10,9 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 // ToolCallPart builds a single AI SDK UIMessage dynamic-tool part from tool call metadata.

@@ -3,7 +3,7 @@ package agents
 import (
 	"context"
 
-	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 // AgentStore interface for loading and saving agents.

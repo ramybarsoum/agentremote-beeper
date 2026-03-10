@@ -6,9 +6,9 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
-	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
+	agenttools "github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 type toolPolicyResolution struct {

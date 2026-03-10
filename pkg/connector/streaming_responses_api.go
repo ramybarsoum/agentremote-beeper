@@ -16,8 +16,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 // responseStreamContext holds loop-invariant parameters for processing a Responses API

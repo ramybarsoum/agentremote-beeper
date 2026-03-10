@@ -8,8 +8,8 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 // buildContinuationParams builds params for continuing a response after tool execution

@@ -25,10 +25,10 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 var (

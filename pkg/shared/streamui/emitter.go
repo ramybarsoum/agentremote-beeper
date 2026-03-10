@@ -7,7 +7,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 // UIState tracks AI SDK UIMessage stream state shared across bridges.

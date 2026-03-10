@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
+	"github.com/beeper/agentremote/pkg/connector/commandregistry"
 )
 
 // HelpSectionAI is the help section for AI-related commands.

@@ -5,7 +5,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *UserLoginMetadata) error {

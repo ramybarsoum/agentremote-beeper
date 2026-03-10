@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func TestApplyRuntimeDefaultsSetsPruningDefaults(t *testing.T) {

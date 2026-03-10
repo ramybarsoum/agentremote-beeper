@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents"
 )
 
 type heartbeatSessionResolution struct {

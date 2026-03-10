@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/fetch"
-	"github.com/beeper/ai-bridge/pkg/search"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/fetch"
+	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 // These helpers answer "is this tool actually usable/configured right now?"

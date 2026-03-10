@@ -12,7 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 // buildResponsesAPIParams creates common Responses API parameters for both streaming and non-streaming paths

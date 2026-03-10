@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 type StreamEventState struct {

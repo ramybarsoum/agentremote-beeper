@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 func TestStripOpenClawToolResults(t *testing.T) {

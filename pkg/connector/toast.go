@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 type aiToastType string

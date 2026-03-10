@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
 const moduleName = "cron"

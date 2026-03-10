@@ -23,14 +23,14 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/bridges/codex/codexrpc"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/connector/msgconv"
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 var _ bridgev2.NetworkAPI = (*CodexClient)(nil)

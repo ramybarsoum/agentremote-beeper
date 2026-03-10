@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/search"
-	"github.com/beeper/ai-bridge/pkg/shared/exa"
-	"github.com/beeper/ai-bridge/pkg/shared/httputil"
+	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/agentremote/pkg/shared/httputil"
 )
 
 func executeBeeperDocs(ctx context.Context, args map[string]any) (string, error) {

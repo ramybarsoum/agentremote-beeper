@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 func TestHistoryMessageBundle_LegacyAssistantFallback(t *testing.T) {

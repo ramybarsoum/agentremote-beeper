@@ -3,7 +3,7 @@ package connector
 import (
 	"strings"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 type queueResolveParams struct {

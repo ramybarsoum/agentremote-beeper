@@ -3,7 +3,7 @@ package opencodebridge
 import (
 	"strings"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/bridges/opencode/opencode"
 )
 
 func buildTurnStartMetadata(msg *opencode.MessageWithParts, agentID string) map[string]any {

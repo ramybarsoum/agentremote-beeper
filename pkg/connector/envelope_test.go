@@ -3,7 +3,7 @@ package connector
 import (
 	"testing"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
+	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func TestStripEnvelope(t *testing.T) {

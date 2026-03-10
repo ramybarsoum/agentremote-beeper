@@ -12,8 +12,8 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 func stableMCPApprovalID(toolCallID string, desc responseToolDescriptor) string {

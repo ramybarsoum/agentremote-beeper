@@ -12,11 +12,11 @@ import (
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
-	memorycore "github.com/beeper/ai-bridge/pkg/memory"
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
-	"github.com/beeper/ai-bridge/pkg/textfs"
+	"github.com/beeper/agentremote/pkg/agents"
+	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
+	memorycore "github.com/beeper/agentremote/pkg/memory"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
+	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 const moduleName = "memory"

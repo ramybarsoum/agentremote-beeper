@@ -5,7 +5,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 // sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.

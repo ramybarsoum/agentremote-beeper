@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
+	integrationcron "github.com/beeper/agentremote/pkg/integrations/cron"
 )
 
 type cronJob = integrationcron.Job

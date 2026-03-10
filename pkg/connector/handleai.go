@@ -12,7 +12,7 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/rs/zerolog"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"

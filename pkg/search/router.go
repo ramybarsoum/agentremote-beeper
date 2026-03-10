@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 // Search executes a search using the configured provider chain.

@@ -8,7 +8,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
 type fakeToolIntegration struct {

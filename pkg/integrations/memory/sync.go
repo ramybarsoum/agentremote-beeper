@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/textfs"
+	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 func (m *MemorySearchManager) warmSession(ctx context.Context, sessionKey string) {

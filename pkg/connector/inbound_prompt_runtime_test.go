@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func TestBuildPromptWithLinkContext_InboundRuntimeMetadata(t *testing.T) {

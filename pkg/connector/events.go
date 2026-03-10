@@ -6,8 +6,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	_ "maunium.net/go/mautrix/event/cmdschema"
 
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 // init registers custom AI event types with mautrix's TypeMap

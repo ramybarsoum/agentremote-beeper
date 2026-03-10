@@ -1,4 +1,4 @@
-module github.com/beeper/ai-bridge
+module github.com/beeper/agentremote
 
 go 1.25.0
 

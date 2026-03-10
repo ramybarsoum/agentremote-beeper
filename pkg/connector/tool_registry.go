@@ -3,8 +3,8 @@ package connector
 import (
 	"context"
 
-	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+	agenttools "github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 type toolExecutor func(ctx context.Context, args map[string]any) (string, error)

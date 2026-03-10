@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 // DefaultDebounceMs is the default debounce delay in milliseconds.

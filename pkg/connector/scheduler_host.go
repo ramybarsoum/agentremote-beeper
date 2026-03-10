@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
+	integrationcron "github.com/beeper/agentremote/pkg/integrations/cron"
 )
 
 func (h *runtimeIntegrationHost) CronStatus(ctx context.Context) (bool, string, int, *int64, error) {

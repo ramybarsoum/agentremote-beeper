@@ -3,7 +3,7 @@ package opencodebridge
 import (
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 type MessageMetadata struct {

@@ -14,7 +14,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 func toolsErrorResult(err error) (*tools.Result, error) {

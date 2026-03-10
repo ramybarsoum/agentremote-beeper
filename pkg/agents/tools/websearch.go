@@ -7,9 +7,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/beeper/ai-bridge/pkg/search"
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
-	"github.com/beeper/ai-bridge/pkg/shared/websearch"
+	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
+	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
 
 // WebSearch is the web search tool definition.

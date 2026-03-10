@@ -5,8 +5,8 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2/commands"
 
-	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/connector/commandregistry"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 var _ = registerAICommand(commandregistry.Definition{

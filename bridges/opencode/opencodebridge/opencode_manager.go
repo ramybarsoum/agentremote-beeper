@@ -15,8 +15,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 // OpenCodeManager coordinates connections to OpenCode server instances,

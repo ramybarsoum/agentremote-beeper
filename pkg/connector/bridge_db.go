@@ -4,7 +4,7 @@ import (
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/aidb"
+	"github.com/beeper/agentremote/pkg/aidb"
 )
 
 func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {

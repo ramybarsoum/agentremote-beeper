@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/shared/media"
+	"github.com/beeper/agentremote/pkg/shared/media"
 )
 
 // executeAnalyzeImage analyzes an image with a custom prompt using vision capabilities.

@@ -9,8 +9,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func newTestAIClient(owner id.UserID) *AIClient {

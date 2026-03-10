@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
+	agenttools "github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 type ToolCreateContext struct {

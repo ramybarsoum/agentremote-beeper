@@ -12,11 +12,11 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/connector/msgconv"
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 func openClawStreamPartTimestamp(part map[string]any) time.Time {

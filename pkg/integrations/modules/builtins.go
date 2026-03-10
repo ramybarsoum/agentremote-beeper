@@ -1,9 +1,9 @@
 package modules
 
 import (
-	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
-	integrationmemory "github.com/beeper/ai-bridge/pkg/integrations/memory"
-	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	integrationcron "github.com/beeper/agentremote/pkg/integrations/cron"
+	integrationmemory "github.com/beeper/agentremote/pkg/integrations/memory"
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
 // BuiltinFactories is the compile-time module selection list.

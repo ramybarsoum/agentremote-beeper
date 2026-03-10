@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
 // Boss tools for agent management.

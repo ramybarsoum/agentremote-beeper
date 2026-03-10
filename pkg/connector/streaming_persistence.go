@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 // saveAssistantMessage saves the completed assistant message to the database.
@@ -35,21 +35,21 @@ func (oc *AIClient) saveAssistantMessage(
 
 	fullMeta := &MessageMetadata{
 		BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
-			Role:               "assistant",
-			Body:               state.accumulated.String(),
-			FinishReason:       state.finishReason,
-			TurnID:             state.turnID,
-			AgentID:            state.agentID,
-			ToolCalls:          state.toolCalls,
-			StartedAtMs:        state.startedAtMs,
-			CompletedAtMs:      state.completedAtMs,
+			Role:                    "assistant",
+			Body:                    state.accumulated.String(),
+			FinishReason:            state.finishReason,
+			TurnID:                  state.turnID,
+			AgentID:                 state.agentID,
+			ToolCalls:               state.toolCalls,
+			StartedAtMs:             state.startedAtMs,
+			CompletedAtMs:           state.completedAtMs,
 			CanonicalPromptSchema:   canonicalPromptSchemaV1,
 			CanonicalPromptMessages: encodePromptMessages(assistantPromptMessagesFromState(state)),
-			GeneratedFiles:     genFiles,
-			ThinkingContent:    state.reasoning.String(),
-			PromptTokens:       state.promptTokens,
-			CompletionTokens:   state.completionTokens,
-			ReasoningTokens:    state.reasoningTokens,
+			GeneratedFiles:          genFiles,
+			ThinkingContent:         state.reasoning.String(),
+			PromptTokens:            state.promptTokens,
+			CompletionTokens:        state.completionTokens,
+			ReasoningTokens:         state.reasoningTokens,
 		},
 		CompletionID:       state.responseID,
 		Model:              modelID,

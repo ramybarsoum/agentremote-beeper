@@ -1,6 +1,6 @@
 package agents
 
-import "github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+import "github.com/beeper/agentremote/pkg/agents/toolpolicy"
 
 // BossAgent is the special agent that manages other agents and rooms.
 // This is the "Meta Chatter" - uses Claude Opus with medium thinking.

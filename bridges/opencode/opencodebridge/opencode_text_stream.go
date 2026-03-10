@@ -6,7 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/bridges/opencode/opencode"
 )
 
 func opencodeMessageStreamTurnID(sessionID, messageID string) string {

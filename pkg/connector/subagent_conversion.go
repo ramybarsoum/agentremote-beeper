@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 func subagentsToTools(cfg *agents.SubagentConfig) *tools.SubagentConfig {

@@ -15,12 +15,12 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
+	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/connector/msgconv"
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 var _ opencodebridge.Host = (*OpenCodeClient)(nil)

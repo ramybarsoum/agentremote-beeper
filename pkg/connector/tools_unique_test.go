@@ -3,7 +3,7 @@ package connector
 import (
 	"testing"
 
-	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
+	agenttools "github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 // Guard against provider errors like "tools: Tool names must be unique".

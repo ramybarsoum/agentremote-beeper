@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 )
 
 // -----------------------------------------------------------------------

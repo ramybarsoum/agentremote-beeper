@@ -3,7 +3,7 @@ package connector
 import (
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents"
 )
 
 func hasExplicitHeartbeatAgents(cfg *Config) bool {

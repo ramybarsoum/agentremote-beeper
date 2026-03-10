@@ -7,7 +7,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/bridges/opencode/opencode"
 )
 
 func (m *OpenCodeManager) syncAssistantMessagePart(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, msg *opencode.MessageWithParts, part opencode.Part) {

@@ -26,7 +26,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/citations"
 )
 
 type LinkPreviewConfig struct {

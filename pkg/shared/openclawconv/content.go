@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 var (

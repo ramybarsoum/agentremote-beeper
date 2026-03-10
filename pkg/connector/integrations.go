@@ -12,9 +12,9 @@ import (
 	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	integrationmodules "github.com/beeper/ai-bridge/pkg/integrations/modules"
-	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	integrationmodules "github.com/beeper/agentremote/pkg/integrations/modules"
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
 type toolIntegrationRegistry struct {

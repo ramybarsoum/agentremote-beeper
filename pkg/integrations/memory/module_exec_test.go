@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
 type mockManager struct {

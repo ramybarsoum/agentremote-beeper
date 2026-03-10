@@ -1,7 +1,7 @@
 package opencode
 
 import (
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 // OpenCodeRemoteMessage is a type alias for the shared RemoteMessage.

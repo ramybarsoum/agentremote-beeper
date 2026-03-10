@@ -5,7 +5,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
 func execUnavailable(name string) func(ctx context.Context, input map[string]any) (*Result, error) {

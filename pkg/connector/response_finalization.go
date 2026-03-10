@@ -13,12 +13,12 @@ import (
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/connector/msgconv"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 )
 
 const maxSafeEditPayloadBytes = 54 * 1024

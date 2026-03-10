@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	iruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
-	"github.com/beeper/ai-bridge/pkg/textfs"
+	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 const commandMaxBytes = 256 * 1024

@@ -15,8 +15,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 const openCodeMaxMediaMB = 50

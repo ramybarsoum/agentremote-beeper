@@ -14,9 +14,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	openCodeAPI "github.com/beeper/ai-bridge/bridges/opencode/opencode"
-	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	openCodeAPI "github.com/beeper/agentremote/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 var (

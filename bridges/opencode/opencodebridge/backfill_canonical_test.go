@@ -3,7 +3,7 @@ package opencodebridge
 import (
 	"testing"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/bridges/opencode/opencode"
 )
 
 func TestBackfillTotalTokensIncludesPartCacheTokens(t *testing.T) {

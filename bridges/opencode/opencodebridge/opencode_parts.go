@@ -11,9 +11,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
-	"github.com/beeper/ai-bridge/pkg/agents/tools"
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 )
 
 type openCodePartEvent struct {

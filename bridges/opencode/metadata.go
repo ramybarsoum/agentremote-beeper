@@ -4,9 +4,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
+	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
 )
 
 type UserLoginMetadata struct {

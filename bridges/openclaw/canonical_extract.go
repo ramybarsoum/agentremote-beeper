@@ -3,9 +3,9 @@ package openclaw
 import (
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 func openClawCanonicalReasoningText(uiMessage map[string]any) string {

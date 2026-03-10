@@ -3,7 +3,7 @@ package main
 import (
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 
-	"github.com/beeper/ai-bridge/bridges/opencode"
+	"github.com/beeper/agentremote/bridges/opencode"
 )
 
 var (
@@ -15,7 +15,7 @@ var (
 var m = mxmain.BridgeMain{
 	Name:        "opencode",
 	Description: "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
-	URL:         "https://github.com/beeper/ai-bridge",
+	URL:         "https://github.com/beeper/agentremote",
 	Version:     "0.1.0",
 	Connector:   opencode.NewConnector(),
 }

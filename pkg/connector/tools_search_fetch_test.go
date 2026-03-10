@@ -3,7 +3,7 @@ package connector
 import (
 	"testing"
 
-	"github.com/beeper/ai-bridge/pkg/search"
+	"github.com/beeper/agentremote/pkg/search"
 )
 
 func TestApplyLoginTokensToSearchConfig_MagicProxyForcesExa(t *testing.T) {

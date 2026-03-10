@@ -1,8 +1,8 @@
 package agents
 
 import (
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
 // BeeperSearchPrompt is the system prompt for the Beeper Search agent.

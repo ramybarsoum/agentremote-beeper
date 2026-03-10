@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
-	agenttools "github.com/beeper/ai-bridge/pkg/agents/tools"
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
+	agenttools "github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
 func (oc *AIClient) resolveToolPolicyModelContext(meta *PortalMetadata) (provider string, modelID string) {

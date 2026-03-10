@@ -3,7 +3,7 @@ package search
 import (
 	"context"
 
-	"github.com/beeper/ai-bridge/pkg/shared/registry"
+	"github.com/beeper/agentremote/pkg/shared/registry"
 )
 
 // Provider performs web searches for a given backend.

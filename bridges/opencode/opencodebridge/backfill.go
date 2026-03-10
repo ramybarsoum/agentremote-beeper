@@ -15,7 +15,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/bridges/opencode/opencode"
 )
 
 type backfillMessageEntry struct {

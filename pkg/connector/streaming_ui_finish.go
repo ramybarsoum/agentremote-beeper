@@ -6,7 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 )
 
 func (oc *AIClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {

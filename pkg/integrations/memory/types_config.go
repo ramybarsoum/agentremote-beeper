@@ -1,7 +1,7 @@
 package memory
 
 import (
-	memorycore "github.com/beeper/ai-bridge/pkg/memory"
+	memorycore "github.com/beeper/agentremote/pkg/memory"
 )
 
 type RemoteConfig = memorycore.RemoteConfig

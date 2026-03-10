@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"go.mau.fi/util/dbutil"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents"
 )
 
 type sessionEntry struct {

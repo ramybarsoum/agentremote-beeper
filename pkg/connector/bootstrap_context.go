@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/textfs"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 func (oc *AIClient) buildBootstrapContextFiles(ctx context.Context, agentID string, meta *PortalMetadata) []agents.EmbeddedContextFile {

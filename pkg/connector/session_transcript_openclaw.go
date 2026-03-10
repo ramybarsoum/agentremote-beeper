@@ -7,8 +7,8 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 const (
@@ -232,8 +232,8 @@ func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []o
 						"arguments": arguments,
 					})
 					call := openClawToolCall{
-						ID:   callID,
-						Name: toolName,
+						ID:    callID,
+						Name:  toolName,
 						Input: arguments,
 					}
 					if toolMeta, ok := toolCallByID[callID]; ok {

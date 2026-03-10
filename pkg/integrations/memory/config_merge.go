@@ -4,9 +4,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/shared/httputil"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/shared/httputil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 func MergeSearchConfig(defaults *agents.MemorySearchConfig, overrides *agents.MemorySearchConfig) *ResolvedConfig {

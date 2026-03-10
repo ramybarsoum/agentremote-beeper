@@ -17,9 +17,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/ai-bridge/bridges/codex/codexrpc"
-	"github.com/beeper/ai-bridge/pkg/aidb"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/bridges/codex/codexrpc"
+	"github.com/beeper/agentremote/pkg/aidb"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 var (

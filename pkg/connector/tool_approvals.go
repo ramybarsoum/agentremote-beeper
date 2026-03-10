@@ -10,9 +10,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 type ToolApprovalKind string

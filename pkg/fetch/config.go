@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/shared/exa"
+	"github.com/beeper/agentremote/pkg/shared/exa"
 )
 
 const (

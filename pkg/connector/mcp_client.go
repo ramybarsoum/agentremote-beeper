@@ -16,7 +16,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 const (

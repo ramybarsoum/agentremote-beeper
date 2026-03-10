@@ -7,7 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 func TestApplyStreamPlaceholderResultWithoutEventIDFallsBackToDebounced(t *testing.T) {

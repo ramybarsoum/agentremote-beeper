@@ -8,10 +8,10 @@ import (
 	"go.mau.fi/util/configupgrade"
 	"go.mau.fi/util/ptr"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
-	"github.com/beeper/ai-bridge/pkg/shared/bridgeconfig"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/bridgeconfig"
 )
 
 //go:embed integrations_example-config.yaml

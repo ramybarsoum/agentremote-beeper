@@ -8,7 +8,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func (oc *AIClient) buildStatusText(

@@ -3,7 +3,7 @@ package connector
 import (
 	"context"
 
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"

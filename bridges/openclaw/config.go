@@ -5,7 +5,7 @@ import (
 
 	"go.mau.fi/util/configupgrade"
 
-	"github.com/beeper/ai-bridge/pkg/shared/bridgeconfig"
+	"github.com/beeper/agentremote/pkg/shared/bridgeconfig"
 )
 
 const ProviderOpenClaw = "openclaw"

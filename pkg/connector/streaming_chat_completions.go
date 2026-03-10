@@ -16,9 +16,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
+	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 
-	"github.com/beeper/ai-bridge/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 func (oc *AIClient) streamChatCompletions(

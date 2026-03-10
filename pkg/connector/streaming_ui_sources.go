@@ -1,7 +1,7 @@
 package connector
 
 import (
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/citations"
 )
 
 func collectToolOutputCitations(state *streamingState, toolName, output string) {

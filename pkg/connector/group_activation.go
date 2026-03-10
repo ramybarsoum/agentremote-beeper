@@ -1,6 +1,6 @@
 package connector
 
-import "github.com/beeper/ai-bridge/pkg/shared/stringutil"
+import "github.com/beeper/agentremote/pkg/shared/stringutil"
 
 func (oc *AIClient) resolveGroupActivation(meta *PortalMetadata) string {
 	_ = meta

@@ -22,8 +22,8 @@ import (
 
 	_ "golang.org/x/image/webp"
 
-	"github.com/beeper/ai-bridge/pkg/shared/media"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/media"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 type imageGenProvider string

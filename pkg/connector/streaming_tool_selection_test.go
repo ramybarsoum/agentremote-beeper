@@ -2,8 +2,8 @@ package connector
 
 import (
 	"context"
-	"testing"
 	"strings"
+	"testing"
 )
 
 func TestSelectedBuiltinToolsForTurn_SimpleModeEnablesOnlyWebSearch(t *testing.T) {

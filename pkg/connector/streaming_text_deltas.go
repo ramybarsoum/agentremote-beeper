@@ -8,9 +8,9 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
+	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/citations"
 )
 
 func (oc *AIClient) ensureInitialStreamMessage(

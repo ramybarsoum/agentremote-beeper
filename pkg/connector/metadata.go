@@ -8,8 +8,8 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 // ModelCache stores available models (cached in UserLoginMetadata)

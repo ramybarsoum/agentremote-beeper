@@ -1,7 +1,7 @@
 package codex
 
 import (
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 // CodexRemoteMessage is a type alias for the shared RemoteMessage.

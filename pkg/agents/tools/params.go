@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
 )
 
 // ReadString reads a string parameter from input.

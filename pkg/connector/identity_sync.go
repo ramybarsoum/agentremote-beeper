@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/textfs"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 func maybeRefreshAgentIdentity(ctx context.Context, rawPath string) {

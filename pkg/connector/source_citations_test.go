@@ -3,7 +3,7 @@ package connector
 import (
 	"testing"
 
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/citations"
 )
 
 func TestExtractWebSearchCitationsFromToolOutput(t *testing.T) {

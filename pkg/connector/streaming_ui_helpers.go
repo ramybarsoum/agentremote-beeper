@@ -8,9 +8,9 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/connector/msgconv"
+	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMetadata, includeUsage bool) map[string]any {

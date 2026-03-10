@@ -8,7 +8,7 @@ import (
 
 	"go.mau.fi/util/dbutil"
 
-	integrationcron "github.com/beeper/ai-bridge/pkg/integrations/cron"
+	integrationcron "github.com/beeper/agentremote/pkg/integrations/cron"
 )
 
 type schedulerDBScope struct {

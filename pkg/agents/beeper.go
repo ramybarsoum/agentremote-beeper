@@ -1,6 +1,6 @@
 package agents
 
-import "github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+import "github.com/beeper/agentremote/pkg/agents/toolpolicy"
 
 // BeeperAIAgent is the default agent for all new chats.
 // It provides a simple, clean AI experience with sensible defaults.

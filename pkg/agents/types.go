@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 )
 
 // AgentDefinition is the persistent agent configuration.

@@ -1,6 +1,6 @@
 package agents
 
-import "github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+import "github.com/beeper/agentremote/pkg/agents/toolpolicy"
 
 // SimpleAgent provides direct model access without agent features.
 var SimpleAgent = &AgentDefinition{

@@ -1,6 +1,6 @@
 package tools
 
-import "github.com/beeper/ai-bridge/pkg/shared/toolspec"
+import "github.com/beeper/agentremote/pkg/shared/toolspec"
 
 // BeeperDocsTool is the Beeper help documentation search tool.
 var BeeperDocsTool = newConnectorOnlyTool(

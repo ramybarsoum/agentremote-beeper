@@ -9,11 +9,11 @@ import (
 
 	"go.mau.fi/util/ptr"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/agents/tools"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"

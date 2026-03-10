@@ -14,10 +14,10 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
-	"github.com/beeper/ai-bridge/pkg/textfs"
+	"github.com/beeper/agentremote/pkg/agents"
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 type runtimeIntegrationHost struct {

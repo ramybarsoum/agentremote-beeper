@@ -3,7 +3,7 @@ package memory
 import (
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
 )
 
 const (

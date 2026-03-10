@@ -3,7 +3,7 @@ package connector
 import (
 	"testing"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents"
 )
 
 func TestIsHeartbeatEnabledForAgent_DefaultFallback(t *testing.T) {

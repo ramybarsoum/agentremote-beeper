@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/beeper/ai-bridge/pkg/textfs"
+	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 const (

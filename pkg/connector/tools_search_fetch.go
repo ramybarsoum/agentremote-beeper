@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/fetch"
-	"github.com/beeper/ai-bridge/pkg/search"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
-	"github.com/beeper/ai-bridge/pkg/shared/websearch"
+	"github.com/beeper/agentremote/pkg/fetch"
+	"github.com/beeper/agentremote/pkg/search"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
 
 func executeWebSearchWithProviders(ctx context.Context, args map[string]any) (string, error) {

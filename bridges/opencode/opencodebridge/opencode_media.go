@@ -18,8 +18,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/bridges/opencode/opencode"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 func (b *Bridge) buildOpenCodeFileContent(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, part opencode.Part) (*event.MessageEventContent, error) {

@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
+	"github.com/beeper/agentremote/pkg/connector/msgconv"
 )
 
 var (

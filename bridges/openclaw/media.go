@@ -18,8 +18,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 const openClawMaxMediaMB = 50

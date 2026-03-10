@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	memorycore "github.com/beeper/ai-bridge/pkg/memory"
-	"github.com/beeper/ai-bridge/pkg/textfs"
+	memorycore "github.com/beeper/agentremote/pkg/memory"
+	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 const lexicalProviderKey = "builtin-lexical-v1"

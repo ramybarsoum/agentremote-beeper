@@ -3,7 +3,7 @@ package tools
 import (
 	"sync"
 
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 )
 
 var toolLookup = sync.OnceValue(func() map[string]*Tool {

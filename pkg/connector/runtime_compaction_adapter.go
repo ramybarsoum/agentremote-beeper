@@ -5,7 +5,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	airuntime "github.com/beeper/ai-bridge/pkg/runtime"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 // CompactionEventType represents a compaction lifecycle event type.

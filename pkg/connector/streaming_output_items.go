@@ -9,8 +9,8 @@ import (
 
 	"github.com/openai/openai-go/v3/responses"
 
-	"github.com/beeper/ai-bridge/pkg/shared/citations"
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
 func mergeMaps(base map[string]any, extra map[string]any) map[string]any {

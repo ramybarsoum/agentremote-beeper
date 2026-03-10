@@ -10,14 +10,14 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/format"
 
-	"github.com/beeper/ai-bridge/bridges/opencode/opencodebridge"
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
-	"github.com/beeper/ai-bridge/pkg/shared/streamtransport"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/bridges/opencode/opencodebridge"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/connector/msgconv"
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/shared/streamtransport"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 func (oc *OpenCodeClient) applyStreamMessageMetadata(state *openCodeStreamState, metadata map[string]any) {

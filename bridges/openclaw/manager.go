@@ -18,12 +18,12 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
-	"github.com/beeper/ai-bridge/pkg/matrixevents"
-	"github.com/beeper/ai-bridge/pkg/shared/jsonutil"
-	"github.com/beeper/ai-bridge/pkg/shared/openclawconv"
-	"github.com/beeper/ai-bridge/pkg/shared/streamui"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/connector/msgconv"
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/shared/openclawconv"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 type openClawManager struct {

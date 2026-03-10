@@ -3,9 +3,9 @@ package opencodebridge
 import (
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/bridgeadapter"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 // CanonicalReasoningText extracts and joins all reasoning-type text from a canonical UI message.

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 const (

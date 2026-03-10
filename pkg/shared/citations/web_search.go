@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
 )
 
 // ExtractWebSearchCitations parses a JSON tool output containing web search results

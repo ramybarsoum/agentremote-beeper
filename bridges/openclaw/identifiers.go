@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/ai-bridge/pkg/shared/openclawconv"
+	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 )
 
 var (

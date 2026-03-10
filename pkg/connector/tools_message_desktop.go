@@ -8,7 +8,7 @@ import (
 
 	beeperdesktopapi "github.com/beeper/desktop-api-go"
 
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 // resolveDesktopInstance resolves the "instance" arg and returns the canonical instance name.

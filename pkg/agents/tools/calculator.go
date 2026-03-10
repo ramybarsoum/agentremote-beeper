@@ -6,8 +6,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/beeper/ai-bridge/pkg/shared/calc"
-	"github.com/beeper/ai-bridge/pkg/shared/toolspec"
+	"github.com/beeper/agentremote/pkg/shared/calc"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
 // Calculator is the calculator tool definition.

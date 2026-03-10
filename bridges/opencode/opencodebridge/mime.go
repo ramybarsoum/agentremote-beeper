@@ -3,7 +3,7 @@ package opencodebridge
 import (
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/ai-bridge/pkg/shared/media"
+	"github.com/beeper/agentremote/pkg/shared/media"
 )
 
 func messageTypeForMIME(mimeType string) event.MessageType {

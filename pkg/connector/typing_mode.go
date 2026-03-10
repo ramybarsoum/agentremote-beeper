@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	runtimeparse "github.com/beeper/ai-bridge/pkg/runtime"
+	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
 type TypingMode string

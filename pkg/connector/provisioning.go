@@ -17,8 +17,8 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/ai-bridge/pkg/agents"
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 )
 
 // ProvisioningAPI handles login-scoped profile, agent, and MCP configuration.

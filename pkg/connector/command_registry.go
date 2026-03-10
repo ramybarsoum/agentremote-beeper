@@ -13,8 +13,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/event/cmdschema"
 
-	"github.com/beeper/ai-bridge/pkg/connector/commandregistry"
-	integrationruntime "github.com/beeper/ai-bridge/pkg/integrations/runtime"
+	"github.com/beeper/agentremote/pkg/connector/commandregistry"
+	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
 var aiCommandRegistry = commandregistry.NewRegistry()

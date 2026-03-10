@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/ai-bridge/pkg/shared/exa"
-	"github.com/beeper/ai-bridge/pkg/shared/httputil"
-	"github.com/beeper/ai-bridge/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/agentremote/pkg/shared/httputil"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 type exaProvider struct {

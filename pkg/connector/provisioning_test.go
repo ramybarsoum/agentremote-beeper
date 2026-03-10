@@ -3,7 +3,7 @@ package connector
 import (
 	"testing"
 
-	"github.com/beeper/ai-bridge/pkg/agents/toolpolicy"
+	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 )
 
 func strPtr(v string) *string {

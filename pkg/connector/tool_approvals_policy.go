@@ -3,7 +3,7 @@ package connector
 import (
 	"strings"
 
-	"github.com/beeper/ai-bridge/pkg/shared/maputil"
+	"github.com/beeper/agentremote/pkg/shared/maputil"
 )
 
 func (oc *AIClient) builtinToolApprovalRequirement(toolName string, args map[string]any) (required bool, action string) {
