@@ -29,7 +29,7 @@ func (s *schedulerRuntime) ensureCronRoomLocked(ctx context.Context, record *sch
 	if err != nil {
 		return err
 	}
-	portal.OtherUserID = agentUserID(normalizeAgentID(record.Job.AgentID))
+	portal.OtherUserID = s.client.agentUserID(normalizeAgentID(record.Job.AgentID))
 	if err := portal.Save(ctx); err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func (s *schedulerRuntime) ensureHeartbeatRoomLocked(ctx context.Context, state 
 	if err != nil {
 		return err
 	}
-	portal.OtherUserID = agentUserID(normalizeAgentID(state.AgentID))
+	portal.OtherUserID = s.client.agentUserID(normalizeAgentID(state.AgentID))
 	if err := portal.Save(ctx); err != nil {
 		return err
 	}

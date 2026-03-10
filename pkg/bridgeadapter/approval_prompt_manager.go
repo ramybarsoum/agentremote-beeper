@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/util/variationselector"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -193,15 +192,25 @@ func (m *ApprovalPromptManager) HandleReaction(ctx context.Context, msg *bridgev
 	if m.sender != nil {
 		sender = m.sender(msg.Portal)
 	}
-	_ = RedactApprovalPromptReactions(
-		ctx,
-		m.loginOrNil(),
-		msg.Portal,
-		sender,
-		msg.TargetMessage,
-		msg.Event.ID,
-		keepEventID,
-	)
+	redactLogin := m.loginOrNil()
+	redactPortal := msg.Portal
+	redactTarget := msg.TargetMessage
+	triggerID := msg.Event.ID
+	go func() {
+		redactCtx := context.Background()
+		if m.backgroundCtx != nil {
+			redactCtx = m.backgroundCtx(redactCtx)
+		}
+		_ = RedactApprovalPromptReactions(
+			redactCtx,
+			redactLogin,
+			redactPortal,
+			sender,
+			redactTarget,
+			triggerID,
+			keepEventID,
+		)
+	}()
 	return true
 }
 
@@ -258,6 +267,7 @@ func (m *ApprovalPromptManager) sendPrefillReactions(ctx context.Context, portal
 	if m.sender != nil {
 		sender = m.sender(portal)
 	}
+	now := time.Now()
 	seenKeys := map[string]struct{}{}
 	for _, option := range options {
 		for _, key := range option.prefillKeys() {
@@ -274,7 +284,7 @@ func (m *ApprovalPromptManager) sendPrefillReactions(ctx context.Context, portal
 				TargetMessage: msgID,
 				Emoji:         key,
 				EmojiID:       networkid.EmojiID(key),
-				Timestamp:     time.Now(),
+				Timestamp:     now,
 				LogKey:        m.logKey,
 			})
 		}
@@ -324,7 +334,7 @@ func PreHandleApprovalReaction(msg *bridgev2.MatrixReaction) (bridgev2.MatrixRea
 	}
 	return bridgev2.MatrixReactionPreResponse{
 		SenderID:     MatrixSenderID(msg.Event.Sender),
-		Emoji:        variationselector.Remove(content.RelatesTo.Key),
+		Emoji:        normalizeReactionKey(content.RelatesTo.Key),
 		MaxReactions: 1,
 	}, nil
 }
@@ -343,7 +353,7 @@ func ExtractReactionContext(msg *bridgev2.MatrixReaction) ReactionContext {
 		emoji = msg.PreHandleResp.Emoji
 	}
 	if emoji == "" && content != nil {
-		emoji = variationselector.Remove(content.RelatesTo.Key)
+		emoji = normalizeReactionKey(content.RelatesTo.Key)
 	}
 	targetEventID := id.EventID("")
 	if msg != nil && msg.TargetMessage != nil && msg.TargetMessage.MXID != "" {

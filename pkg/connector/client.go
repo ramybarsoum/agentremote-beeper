@@ -405,11 +405,13 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		groupHistoryBuffers: make(map[id.RoomID]*groupHistoryBuffer),
 		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
-		approvals: bridgeadapter.NewApprovalManager[toolApprovalResolution](),
+		approvals:           bridgeadapter.NewApprovalManager[toolApprovalResolution](),
 	}
 	oc.approvalPrompts = bridgeadapter.NewApprovalPromptManager(bridgeadapter.ApprovalPromptManagerConfig{
-		Login:             func() *bridgev2.UserLogin { return oc.UserLogin },
-		Sender:            func(portal *bridgev2.Portal) bridgev2.EventSender { return oc.senderForPortal(context.Background(), portal) },
+		Login: func() *bridgev2.UserLogin { return oc.UserLogin },
+		Sender: func(portal *bridgev2.Portal) bridgev2.EventSender {
+			return oc.senderForPortal(context.Background(), portal)
+		},
 		BackgroundContext: oc.backgroundContext,
 		IDPrefix:          "ai",
 		LogKey:            "ai_msg_id",
@@ -1105,6 +1107,13 @@ func (oc *AIClient) LogoutRemote(ctx context.Context) {
 
 func (oc *AIClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
 	return userID == humanUserID(oc.UserLogin.ID)
+}
+
+func (oc *AIClient) agentUserID(agentID string) networkid.UserID {
+	if oc == nil || oc.UserLogin == nil {
+		return agentUserID(agentID)
+	}
+	return agentUserIDForLogin(oc.UserLogin.ID, agentID)
 }
 
 func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
@@ -2363,7 +2372,7 @@ func (oc *AIClient) ensureGhostDisplayNameWithGhost(ctx context.Context, ghost *
 
 // ensureAgentGhostDisplayName ensures the agent ghost has its display name set.
 func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, modelID, agentName string) {
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, agentUserID(agentID))
+	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, oc.agentUserID(agentID))
 	if err != nil || ghost == nil {
 		return
 	}

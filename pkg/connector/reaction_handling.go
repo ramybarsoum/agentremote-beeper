@@ -8,20 +8,13 @@ import (
 	"go.mau.fi/util/variationselector"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
 )
 
 func (oc *AIClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
-	resp, err := bridgeadapter.PreHandleApprovalReaction(msg)
-	if err != nil {
-		return resp, err
-	}
-	// Connector overrides the sender ID with its own method.
-	resp.SenderID = oc.matrixSenderID(msg.Event.Sender)
-	return resp, nil
+	return bridgeadapter.PreHandleApprovalReaction(msg)
 }
 
 func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
@@ -100,13 +93,6 @@ func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	EnqueueReactionFeedback(msg.Portal.MXID, feedback)
 
 	return nil
-}
-
-func (oc *AIClient) matrixSenderID(userID id.UserID) networkid.UserID {
-	if userID == "" {
-		return ""
-	}
-	return networkid.UserID("mxid:" + userID.String())
 }
 
 func (oc *AIClient) matrixDisplayName(ctx context.Context, roomID id.RoomID, userID id.UserID) string {

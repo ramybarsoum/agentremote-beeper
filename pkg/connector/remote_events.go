@@ -165,7 +165,7 @@ func NewAITextMessage(
 	})
 	senderID := modelUserID(modelID)
 	if agentID != "" {
-		senderID = agentUserID(agentID)
+		senderID = agentUserIDForLogin(login.ID, agentID)
 	}
 	return &bridgeadapter.RemoteMessage{
 		Portal:    portal.PortalKey,

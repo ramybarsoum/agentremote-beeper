@@ -76,7 +76,7 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	rendered.Raw["com.beeper.continuation"] = true
 	senderID := modelUserID(modelID)
 	if agentID != "" {
-		senderID = agentUserID(agentID)
+		senderID = oc.agentUserID(agentID)
 	}
 	msg := &bridgeadapter.RemoteMessage{
 		Portal:    portal.PortalKey,

@@ -53,7 +53,7 @@ func (o ApprovalOption) prefillKeys() []string {
 	if len(keys) == 0 {
 		return nil
 	}
-	return slices.Clone(keys)
+	return keys
 }
 
 func DefaultApprovalOptions() []ApprovalOption {
@@ -209,7 +209,7 @@ type ApprovalPromptRegistration struct {
 }
 
 type ApprovalPromptStore struct {
-	mu         sync.Mutex
+	mu         sync.RWMutex
 	byApproval map[string]*ApprovalPromptRegistration
 	byEventID  map[id.EventID]string
 }
@@ -234,6 +234,7 @@ func (s *ApprovalPromptStore) Register(reg ApprovalPromptRegistration) {
 	reg.TurnID = strings.TrimSpace(reg.TurnID)
 	reg.Options = normalizeApprovalOptions(reg.Options)
 
+	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if prev := s.byApproval[reg.ApprovalID]; prev != nil && prev.PromptEventID != "" {
@@ -243,6 +244,20 @@ func (s *ApprovalPromptStore) Register(reg ApprovalPromptRegistration) {
 	s.byApproval[reg.ApprovalID] = &copyReg
 	if reg.PromptEventID != "" {
 		s.byEventID[reg.PromptEventID] = reg.ApprovalID
+	}
+	// Opportunistic sweep: remove up to 10 expired entries to prevent unbounded growth.
+	swept := 0
+	for aid, entry := range s.byApproval {
+		if swept >= 10 {
+			break
+		}
+		if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
+			if entry.PromptEventID != "" {
+				delete(s.byEventID, entry.PromptEventID)
+			}
+			delete(s.byApproval, aid)
+			swept++
+		}
 	}
 }
 
@@ -296,22 +311,27 @@ type ApprovalPromptReactionMatch struct {
 }
 
 func (s *ApprovalPromptStore) MatchReaction(targetEventID id.EventID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
-	targetEventID = id.EventID(strings.TrimSpace(targetEventID.String()))
-	sender = id.UserID(strings.TrimSpace(sender.String()))
-	key = normalizeReactionKey(key)
 	if s == nil || targetEventID == "" || key == "" {
 		return ApprovalPromptReactionMatch{}
 	}
-	s.mu.Lock()
+	targetEventID = id.EventID(strings.TrimSpace(targetEventID.String()))
+	key = normalizeReactionKey(key)
+	if targetEventID == "" || key == "" {
+		return ApprovalPromptReactionMatch{}
+	}
+
+	s.mu.RLock()
 	approvalID := s.byEventID[targetEventID]
 	entry := s.byApproval[approvalID]
 	if entry == nil {
-		s.mu.Unlock()
+		s.mu.RUnlock()
 		return ApprovalPromptReactionMatch{}
 	}
 	promptCopy := *entry
 	promptCopy.Options = slices.Clone(entry.Options)
-	s.mu.Unlock()
+	s.mu.RUnlock()
+
+	sender = id.UserID(strings.TrimSpace(sender.String()))
 
 	match := ApprovalPromptReactionMatch{
 		KnownPrompt: true,
@@ -324,6 +344,7 @@ func (s *ApprovalPromptStore) MatchReaction(targetEventID id.EventID, sender id.
 	}
 	if !promptCopy.ExpiresAt.IsZero() && !now.IsZero() && now.After(promptCopy.ExpiresAt) {
 		match.RejectReason = "expired"
+		s.Drop(approvalID)
 		return match
 	}
 	for _, opt := range promptCopy.Options {

@@ -9,10 +9,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func ApprovalOptionPrefillKeys(option ApprovalOption) []string {
-	return option.prefillKeys()
-}
-
 // RedactApprovalPromptReactions redacts all reactions on targetMessage except keepEventID.
 // If targetMessage is nil and keepEventID is empty, triggerEventID is redacted directly.
 func RedactApprovalPromptReactions(

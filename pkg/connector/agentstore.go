@@ -584,7 +584,7 @@ func (b *BossStoreAdapter) ModifyRoom(ctx context.Context, roomID string, update
 		if err != nil {
 			return fmt.Errorf("agent '%s' not found: %w", updates.AgentID, err)
 		}
-		portal.OtherUserID = agentUserID(agent.ID)
+		portal.OtherUserID = b.store.client.agentUserID(agent.ID)
 		pm.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)
 		modelID := b.store.client.effectiveModel(pm)
 		agentName := b.store.client.resolveAgentDisplayName(ctx, agent)
