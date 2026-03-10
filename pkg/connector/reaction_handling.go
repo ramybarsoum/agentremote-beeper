@@ -17,39 +17,14 @@ import (
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
-func ensureReactionContent(msg *bridgev2.MatrixReaction) *event.ReactionEventContent {
-	if msg == nil {
-		return nil
+func (oc *AIClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
+	resp, err := bridgeadapter.PreHandleApprovalReaction(msg)
+	if err != nil {
+		return resp, err
 	}
-	if msg.Content != nil {
-		return msg.Content
-	}
-	if msg.Event == nil || len(msg.Event.Content.VeryRaw) == 0 {
-		return nil
-	}
-	var parsed event.ReactionEventContent
-	if err := json.Unmarshal(msg.Event.Content.VeryRaw, &parsed); err != nil {
-		return nil
-	}
-	msg.Content = &parsed
-	return msg.Content
-}
-
-func (oc *AIClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
-	if msg == nil || msg.Event == nil {
-		return bridgev2.MatrixReactionPreResponse{}, bridgev2.ErrReactionsNotSupported
-	}
-	content := ensureReactionContent(msg)
-	if content == nil {
-		return bridgev2.MatrixReactionPreResponse{}, bridgev2.ErrReactionsNotSupported
-	}
-
-	emoji := variationselector.Remove(content.RelatesTo.Key)
-	return bridgev2.MatrixReactionPreResponse{
-		SenderID:     oc.matrixSenderID(msg.Event.Sender),
-		Emoji:        emoji,
-		MaxReactions: 1,
-	}, nil
+	// Connector overrides the sender ID with its own method.
+	resp.SenderID = oc.matrixSenderID(msg.Event.Sender)
+	return resp, nil
 }
 
 func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {

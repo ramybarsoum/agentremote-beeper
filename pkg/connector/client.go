@@ -337,7 +337,7 @@ type AIClient struct {
 	// Tool approvals (e.g. OpenAI MCP approval requests)
 	approvals *bridgeadapter.ApprovalManager[toolApprovalResolution]
 	// Matrix approval prompt metadata keyed by approval ID / prompt event ID.
-	approvalPrompts *bridgeadapter.ApprovalPromptStore
+	approvalPrompts *bridgeadapter.ApprovalPromptManager
 
 	streamFallbackToDebounced atomic.Bool
 
@@ -405,9 +405,41 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		groupHistoryBuffers: make(map[id.RoomID]*groupHistoryBuffer),
 		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
-		approvals:           bridgeadapter.NewApprovalManager[toolApprovalResolution](),
-		approvalPrompts:     bridgeadapter.NewApprovalPromptStore(),
+		approvals: bridgeadapter.NewApprovalManager[toolApprovalResolution](),
 	}
+	oc.approvalPrompts = bridgeadapter.NewApprovalPromptManager(bridgeadapter.ApprovalPromptManagerConfig{
+		Login:             func() *bridgev2.UserLogin { return oc.UserLogin },
+		Sender:            func(portal *bridgev2.Portal) bridgev2.EventSender { return oc.senderForPortal(context.Background(), portal) },
+		BackgroundContext: oc.backgroundContext,
+		IDPrefix:          "ai",
+		LogKey:            "ai_msg_id",
+		Resolve: func(ctx context.Context, roomID id.RoomID, match bridgeadapter.ApprovalPromptReactionMatch) error {
+			state := airuntime.ToolApprovalDenied
+			if match.Decision.Approved {
+				state = airuntime.ToolApprovalApproved
+			}
+			return oc.resolveToolApproval(
+				roomID,
+				match.ApprovalID,
+				airuntime.ToolApprovalDecision{State: state, Reason: match.Decision.Reason},
+				match.Decision.Always,
+				id.UserID(match.Prompt.OwnerMXID),
+			)
+		},
+		OnError: func(ctx context.Context, portal *bridgev2.Portal, approvalID string, err error) {
+			oc.sendApprovalRejectionEvent(ctx, portal, approvalID, err, "")
+		},
+		DBMetadata: func(prompt bridgeadapter.ApprovalPromptMessage) database.MessageMetadata {
+			return &MessageMetadata{
+				BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
+					Role:               "assistant",
+					CanonicalSchema:    "ai-sdk-ui-message-v1",
+					CanonicalUIMessage: prompt.UIMessage,
+				},
+				ExcludeFromHistory: true,
+			}
+		},
+	})
 
 	// Initialize inbound message processing with config values
 	inboundCfg := connector.Config.Inbound.WithDefaults()

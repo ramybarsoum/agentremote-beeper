@@ -30,18 +30,6 @@ func (oc *AIClient) sendApprovalRequestFallbackEvent(
 	replyToEventID id.EventID,
 	ttlSeconds int,
 ) {
-	if oc == nil || portal == nil || portal.MXID == "" {
-		return
-	}
-	approvalID = strings.TrimSpace(approvalID)
-	toolCallID = strings.TrimSpace(toolCallID)
-	toolName = strings.TrimSpace(toolName)
-	if approvalID == "" || toolCallID == "" {
-		return
-	}
-	if toolName == "" {
-		toolName = "tool"
-	}
 	turnID := ""
 	if state != nil {
 		turnID = state.turnID
@@ -50,66 +38,18 @@ func (oc *AIClient) sendApprovalRequestFallbackEvent(
 	if ttlSeconds > 0 {
 		expiresAt = time.Now().Add(time.Duration(ttlSeconds) * time.Second)
 	}
-	prompt := bridgeadapter.BuildApprovalPromptMessage(bridgeadapter.ApprovalPromptMessageParams{
-		ApprovalID:     approvalID,
-		ToolCallID:     toolCallID,
-		ToolName:       toolName,
-		TurnID:         turnID,
-		ReplyToEventID: replyToEventID,
-		ExpiresAt:      expiresAt,
-	})
-	uiMessage := prompt.UIMessage
-	if oc.approvalPrompts != nil {
-		oc.approvalPrompts.Register(bridgeadapter.ApprovalPromptRegistration{
-			ApprovalID: approvalID,
-			RoomID:     portal.MXID,
-			OwnerMXID:  oc.UserLogin.UserMXID,
-			ToolCallID: toolCallID,
-			ToolName:   toolName,
-			TurnID:     turnID,
-			ExpiresAt:  expiresAt,
-			Options:    prompt.Options,
-		})
-	}
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{
-			{
-				ID:      networkid.PartID("0"),
-				Type:    event.EventMessage,
-				Content: &event.MessageEventContent{MsgType: event.MsgNotice, Body: prompt.Body},
-				Extra:   prompt.Raw,
-				DBMetadata: &MessageMetadata{
-					BaseMessageMetadata: bridgeadapter.BaseMessageMetadata{
-						Role:               "assistant",
-						CanonicalSchema:    "ai-sdk-ui-message-v1",
-						CanonicalUIMessage: uiMessage,
-					},
-					ExcludeFromHistory: true,
-				},
-			},
+	oc.approvalPrompts.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
+			ApprovalID:     approvalID,
+			ToolCallID:     toolCallID,
+			ToolName:       toolName,
+			TurnID:         turnID,
+			ReplyToEventID: replyToEventID,
+			ExpiresAt:      expiresAt,
 		},
-	}
-	eventID, _, err := oc.sendViaPortal(ctx, portal, converted, "")
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to send approval request fallback event")
-		return
-	}
-	if oc.approvalPrompts != nil {
-		oc.approvalPrompts.BindPromptEvent(approvalID, eventID)
-	}
-	seenKeys := map[string]struct{}{}
-	for _, option := range prompt.Options {
-		for _, key := range bridgeadapter.ApprovalOptionPrefillKeys(option) {
-			if key == "" {
-				continue
-			}
-			if _, exists := seenKeys[key]; exists {
-				continue
-			}
-			seenKeys[key] = struct{}{}
-			oc.sendReaction(ctx, portal, eventID, key)
-		}
-	}
+		RoomID:    portal.MXID,
+		OwnerMXID: oc.UserLogin.UserMXID,
+	})
 }
 
 // sendApprovalRejectionEvent sends a combined toast + com.beeper.ai snapshot
