@@ -241,7 +241,7 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 	bridgeadapter.SendAIRoomInfo(ctx, portal, bridgeadapter.AIRoomKindAgent)
 
 	b.host.SendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
-	b.host.SendSystemNotice(ctx, portal, "What directory should OpenCode work in? Send an absolute path, or send an empty message to use the managed default path.")
+	b.host.SendSystemNotice(ctx, portal, "What directory should OpenCode work in? Send an absolute path or `~/...`, or send an empty message to use the managed default path.")
 
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,

@@ -16,7 +16,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/ai-bridge/pkg/aidb"
 	"github.com/beeper/ai-bridge/pkg/bridgeadapter"
@@ -45,11 +44,6 @@ type OpenAIConnector struct {
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
-
-	localAIBridgeLoginMu         sync.RWMutex
-	localAIBridgeLoginUserMXID   id.UserID
-	localAIBridgeLoginToken      string
-	localAIBridgeLoginHomeserver string
 }
 
 func (oc *OpenAIConnector) Init(bridge *bridgev2.Bridge) {
@@ -123,23 +117,6 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 		oc.Config.Pruning = airuntime.DefaultPruningConfig()
 	} else {
 		oc.Config.Pruning = airuntime.ApplyPruningDefaults(oc.Config.Pruning)
-	}
-}
-
-// SetLocalAIBridgeLogin updates the local managed Beeper Cloud auth tuple for SDK-driven local AI bridge setup.
-func (oc *OpenAIConnector) SetLocalAIBridgeLogin(userMXID id.UserID, accessToken, homeserver string) {
-	if oc == nil {
-		return
-	}
-	oc.localAIBridgeLoginMu.Lock()
-	oc.localAIBridgeLoginUserMXID = id.UserID(strings.TrimSpace(string(userMXID)))
-	oc.localAIBridgeLoginToken = strings.TrimSpace(accessToken)
-	oc.localAIBridgeLoginHomeserver = strings.TrimSpace(homeserver)
-	oc.localAIBridgeLoginMu.Unlock()
-	if oc.br != nil {
-		if _, err := oc.reconcileManagedBeeperLogin(context.Background()); err != nil {
-			oc.br.Log.Warn().Err(err).Stringer("user_mxid", userMXID).Msg("Failed to reconcile managed Beeper Cloud login after runtime credential update")
-		}
 	}
 }
 

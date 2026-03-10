@@ -1,6 +1,7 @@
 package opencodebridge
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/beeper/ai-bridge/bridges/opencode/opencode"
@@ -50,6 +51,33 @@ func TestResolveManagedWorkingDirectory(t *testing.T) {
 		}
 		if got != "/tmp/default" {
 			t.Fatalf("expected default path, got %q", got)
+		}
+	})
+
+	t.Run("expands tilde path", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		got, err := resolveManagedWorkingDirectory("~/worktree", "/tmp/default")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := filepath.Join(home, "worktree")
+		if got != want {
+			t.Fatalf("expected expanded path %q, got %q", want, got)
+		}
+	})
+
+	t.Run("expands bare tilde", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		got, err := resolveManagedWorkingDirectory("~", "/tmp/default")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != home {
+			t.Fatalf("expected expanded home %q, got %q", home, got)
 		}
 	})
 

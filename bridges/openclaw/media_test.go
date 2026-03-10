@@ -10,6 +10,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/ai-bridge/pkg/connector/msgconv"
 )
 
 func TestOpenClawAgentIDFromSessionKey(t *testing.T) {
@@ -156,6 +158,102 @@ func TestConvertHistoryToCanonicalUIMetadata(t *testing.T) {
 	}
 	if usage["prompt_tokens"] != int64(4) || usage["completion_tokens"] != int64(6) || usage["reasoning_tokens"] != int64(2) || usage["total_tokens"] != int64(12) {
 		t.Fatalf("unexpected usage metadata: %#v", usage)
+	}
+}
+
+func TestBuildOpenClawHistoryMessageMetadataIncludesToolCalls(t *testing.T) {
+	meta := &PortalMetadata{
+		OpenClawSessionID:  "sess-1",
+		OpenClawSessionKey: "agent:main:matrix-dm",
+	}
+	uiParts, uiMetadata := convertHistoryToCanonicalUI(map[string]any{
+		"role":  "assistant",
+		"runId": "run-2",
+		"content": []any{
+			map[string]any{
+				"type":      "toolCall",
+				"id":        "call-2",
+				"name":      "fetch",
+				"arguments": map[string]any{"url": "https://example.com"},
+			},
+			map[string]any{
+				"type": "reasoning",
+				"text": "checking",
+			},
+			map[string]any{
+				"type":       "toolResult",
+				"toolCallId": "call-2",
+				"details":    map[string]any{"status": 200},
+			},
+		},
+	}, "assistant", meta)
+	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		TurnID:   "turn-2",
+		Role:     "assistant",
+		Metadata: uiMetadata,
+		Parts:    uiParts,
+	})
+
+	metadata := buildOpenClawHistoryMessageMetadata(map[string]any{}, meta, "assistant", "main", "", nil, uiMetadata, uiMessage)
+	if metadata == nil {
+		t.Fatal("expected metadata")
+	}
+	if metadata.ThinkingContent != "checking" {
+		t.Fatalf("unexpected thinking content: %q", metadata.ThinkingContent)
+	}
+	if len(metadata.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %#v", metadata.ToolCalls)
+	}
+	call := metadata.ToolCalls[0]
+	if call.CallID != "call-2" || call.ToolName != "fetch" {
+		t.Fatalf("unexpected tool call metadata: %#v", call)
+	}
+	if call.Status != "output-available" || call.ResultStatus != "completed" {
+		t.Fatalf("unexpected tool call status: %#v", call)
+	}
+	if call.Output["status"] != 200 {
+		t.Fatalf("unexpected tool output: %#v", call.Output)
+	}
+	if len(metadata.GeneratedFiles) != 0 {
+		t.Fatalf("expected no generated files, got %#v", metadata.GeneratedFiles)
+	}
+}
+
+func TestBuildOpenClawHistoryMessageMetadataIncludesGeneratedFiles(t *testing.T) {
+	meta := &PortalMetadata{
+		OpenClawSessionID:  "sess-1",
+		OpenClawSessionKey: "agent:main:matrix-dm",
+	}
+	uiParts, uiMetadata := convertHistoryToCanonicalUI(map[string]any{
+		"role": "assistant",
+		"content": []any{
+			map[string]any{
+				"type": "text",
+				"text": "done",
+			},
+		},
+	}, "assistant", meta)
+	uiParts = append(uiParts, map[string]any{
+		"type":      "file",
+		"url":       "mxc://example.org/history-file",
+		"mediaType": "image/png",
+	})
+	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		TurnID:   "turn-3",
+		Role:     "assistant",
+		Metadata: uiMetadata,
+		Parts:    uiParts,
+	})
+
+	metadata := buildOpenClawHistoryMessageMetadata(map[string]any{}, meta, "assistant", "main", "done", nil, uiMetadata, uiMessage)
+	if metadata == nil {
+		t.Fatal("expected metadata")
+	}
+	if len(metadata.GeneratedFiles) != 1 {
+		t.Fatalf("expected 1 generated file, got %#v", metadata.GeneratedFiles)
+	}
+	if metadata.GeneratedFiles[0].URL != "mxc://example.org/history-file" || metadata.GeneratedFiles[0].MimeType != "image/png" {
+		t.Fatalf("unexpected generated files: %#v", metadata.GeneratedFiles)
 	}
 }
 

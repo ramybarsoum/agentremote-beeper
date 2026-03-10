@@ -69,3 +69,57 @@ func TestCodexExtractThreadTurn_TopLevelTurnIDRequired(t *testing.T) {
 		t.Fatalf("expected top-level turnId, got %s", turnID)
 	}
 }
+
+func TestCodexExtractThreadTurn_FallsBackToNestedTurnID(t *testing.T) {
+	params, _ := json.Marshal(map[string]any{
+		"threadId": "thr1",
+		"turn": map[string]any{
+			"id":     "nestedTurn",
+			"status": "completed",
+		},
+	})
+	threadID, turnID, ok := codexExtractThreadTurn(params)
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if threadID != "thr1" {
+		t.Fatalf("expected threadId thr1, got %s", threadID)
+	}
+	if turnID != "nestedTurn" {
+		t.Fatalf("expected nested turn id, got %s", turnID)
+	}
+}
+
+func TestCodex_Dispatch_RoutesTurnCompletedByNestedTurnID(t *testing.T) {
+	cc := &CodexClient{
+		notifCh:       make(chan codexNotif, 16),
+		notifDone:     make(chan struct{}),
+		turnSubs:      make(map[string]chan codexNotif),
+		activeTurns:   make(map[string]*codexActiveTurn),
+		loadedThreads: make(map[string]bool),
+	}
+	go cc.dispatchNotifications()
+	defer close(cc.notifDone)
+
+	ch := cc.subscribeTurn("thr1", "turn1")
+	defer cc.unsubscribeTurn("thr1", "turn1")
+
+	params, _ := json.Marshal(map[string]any{
+		"threadId": "thr1",
+		"turn": map[string]any{
+			"id":     "turn1",
+			"status": "completed",
+		},
+	})
+
+	cc.notifCh <- codexNotif{Method: "turn/completed", Params: params}
+
+	select {
+	case evt := <-ch:
+		if evt.Method != "turn/completed" {
+			t.Fatalf("unexpected evt on channel: %+v", evt)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for turn/completed")
+	}
+}

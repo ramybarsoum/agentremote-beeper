@@ -5,6 +5,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -36,7 +37,12 @@ func TestIntegrationPortalAIKind(t *testing.T) {
 
 func TestApplyAIBridgeInfo(t *testing.T) {
 	t.Run("visible dm rooms stay dm", func(t *testing.T) {
-		portal := &bridgev2.Portal{Portal: &database.Portal{RoomType: database.RoomTypeDM}}
+		portal := &bridgev2.Portal{Portal: &database.Portal{
+			RoomType: database.RoomTypeDM,
+			PortalKey: networkid.PortalKey{
+				Receiver: networkid.UserLoginID("openrouter:@user:example.com"),
+			},
+		}}
 		content := &event.BridgeEventContent{}
 
 		applyAIBridgeInfo(portal, nil, content)
@@ -49,8 +55,29 @@ func TestApplyAIBridgeInfo(t *testing.T) {
 		}
 	})
 
+	t.Run("beeper rooms use beeper protocol id", func(t *testing.T) {
+		portal := &bridgev2.Portal{Portal: &database.Portal{
+			RoomType: database.RoomTypeDM,
+			PortalKey: networkid.PortalKey{
+				Receiver: networkid.UserLoginID("beeper:@user:beeper.local"),
+			},
+		}}
+		content := &event.BridgeEventContent{}
+
+		applyAIBridgeInfo(portal, nil, content)
+
+		if content.Protocol.ID != "beeper" {
+			t.Fatalf("expected protocol id %q, got %q", "beeper", content.Protocol.ID)
+		}
+	})
+
 	t.Run("background rooms normalize to group", func(t *testing.T) {
-		portal := &bridgev2.Portal{Portal: &database.Portal{RoomType: database.RoomTypeDM}}
+		portal := &bridgev2.Portal{Portal: &database.Portal{
+			RoomType: database.RoomTypeDM,
+			PortalKey: networkid.PortalKey{
+				Receiver: networkid.UserLoginID("beeper:@user:beeper.local"),
+			},
+		}}
 		meta := &PortalMetadata{
 			ModuleMeta: map[string]any{
 				"heartbeat": map[string]any{"is_internal_room": true},

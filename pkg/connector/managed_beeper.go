@@ -29,31 +29,10 @@ func (oc *OpenAIConnector) resolveManagedBeeperAuth() managedBeeperAuth {
 		return managedBeeperAuth{}
 	}
 
-	oc.localAIBridgeLoginMu.RLock()
-	runtimeUserMXID := oc.localAIBridgeLoginUserMXID
-	runtimeToken := strings.TrimSpace(oc.localAIBridgeLoginToken)
-	runtimeHomeserver := strings.TrimSpace(oc.localAIBridgeLoginHomeserver)
-	oc.localAIBridgeLoginMu.RUnlock()
-
-	userMXID := id.UserID(strings.TrimSpace(oc.Config.Beeper.UserMXID))
-	if userMXID == "" {
-		userMXID = runtimeUserMXID
-	}
-
-	baseURL := normalizeBeeperBaseURL(oc.Config.Beeper.BaseURL)
-	if baseURL == "" {
-		baseURL = normalizeBeeperBaseURL(runtimeHomeserver)
-	}
-
-	token := strings.TrimSpace(oc.Config.Beeper.Token)
-	if token == "" {
-		token = runtimeToken
-	}
-
 	return managedBeeperAuth{
-		UserMXID: userMXID,
-		BaseURL:  baseURL,
-		Token:    token,
+		UserMXID: id.UserID(strings.TrimSpace(oc.Config.Beeper.UserMXID)),
+		BaseURL:  normalizeBeeperBaseURL(oc.Config.Beeper.BaseURL),
+		Token:    strings.TrimSpace(oc.Config.Beeper.Token),
 	}
 }
 

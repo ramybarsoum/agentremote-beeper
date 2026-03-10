@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -76,6 +77,11 @@ func (b *Bridge) handleAwaitingPath(ctx context.Context, msg *bridgev2.MatrixMes
 		b.host.SendSystemNotice(ctx, portal, err.Error())
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		b.host.SendSystemNotice(ctx, portal, fmt.Sprintf("That path doesn't exist or isn't a directory: %s", path))
+		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+	}
 	inst, err := b.manager.EnsureManagedInstance(ctx, meta.InstanceID, path)
 	if err != nil {
 		b.host.SendSystemNotice(ctx, portal, "Failed to start managed OpenCode: "+err.Error())
@@ -120,10 +126,23 @@ func resolveManagedWorkingDirectory(raw, defaultDir string) (string, error) {
 		path = strings.TrimSpace(defaultDir)
 	}
 	if path == "" {
-		return "", errors.New("Send an absolute path, or configure a default path in the managed OpenCode login.")
+		return "", errors.New("Send an absolute path or `~/...`, or configure a default path in the managed OpenCode login.")
+	}
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(home, rest)
+	} else if path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = home
 	}
 	if !filepath.IsAbs(path) {
-		return "", errors.New("Send an absolute path for managed OpenCode.")
+		return "", errors.New("Send an absolute path or `~/...` for managed OpenCode.")
 	}
 	return filepath.Clean(path), nil
 }

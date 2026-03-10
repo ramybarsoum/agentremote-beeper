@@ -460,6 +460,7 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 	if body == "" {
 		body = strings.TrimSpace(state.accumulated.String())
 	}
+	uiMessage := oc.currentCanonicalUIMessage(state)
 	return &MessageMetadata{
 		Role:               stringsTrimDefault(state.role, "assistant"),
 		Body:               body,
@@ -475,7 +476,10 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 		ReasoningTokens:    state.reasoningTokens,
 		TotalTokens:        state.totalTokens,
 		CanonicalSchema:    "ai-sdk-ui-message-v1",
-		CanonicalUIMessage: oc.currentCanonicalUIMessage(state),
+		CanonicalUIMessage: uiMessage,
+		ThinkingContent:    openClawCanonicalReasoningText(uiMessage),
+		ToolCalls:          openClawCanonicalToolCalls(uiMessage),
+		GeneratedFiles:     openClawCanonicalGeneratedFiles(uiMessage),
 		StartedAtMs:        state.startedAtMs,
 		FirstTokenAtMs:     state.firstTokenAtMs,
 		CompletedAtMs:      state.completedAtMs,

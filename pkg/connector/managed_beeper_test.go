@@ -6,7 +6,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func TestResolveManagedBeeperAuthConfigOverridesRuntime(t *testing.T) {
+func TestResolveManagedBeeperAuthUsesConfig(t *testing.T) {
 	oc := &OpenAIConnector{
 		Config: Config{
 			Beeper: BeeperConfig{
@@ -15,9 +15,6 @@ func TestResolveManagedBeeperAuthConfigOverridesRuntime(t *testing.T) {
 				Token:    "config-token",
 			},
 		},
-		localAIBridgeLoginUserMXID:   "@runtime:beeper.com",
-		localAIBridgeLoginToken:      "runtime-token",
-		localAIBridgeLoginHomeserver: "https://matrix.runtime.com",
 	}
 
 	auth := oc.resolveManagedBeeperAuth()
@@ -32,41 +29,27 @@ func TestResolveManagedBeeperAuthConfigOverridesRuntime(t *testing.T) {
 	}
 }
 
-func TestResolveManagedBeeperAuthUsesRuntimeForMissingConfigFields(t *testing.T) {
+func TestResolveManagedBeeperAuthDoesNotUseRuntimeFallback(t *testing.T) {
 	oc := &OpenAIConnector{
 		Config: Config{
 			Beeper: BeeperConfig{
 				UserMXID: "@config:beeper.com",
 			},
 		},
-		localAIBridgeLoginToken:      "runtime-token",
-		localAIBridgeLoginHomeserver: "matrix.runtime.com",
 	}
 
 	auth := oc.resolveManagedBeeperAuth()
 	if auth.UserMXID != id.UserID("@config:beeper.com") {
 		t.Fatalf("expected config mxid, got %q", auth.UserMXID)
 	}
-	if auth.BaseURL != "https://matrix.runtime.com/_matrix/client/unstable/com.beeper.ai" {
-		t.Fatalf("unexpected runtime base url: %q", auth.BaseURL)
+	if auth.BaseURL != "" {
+		t.Fatalf("expected empty base url, got %q", auth.BaseURL)
 	}
-	if auth.Token != "runtime-token" {
-		t.Fatalf("expected runtime token, got %q", auth.Token)
+	if auth.Token != "" {
+		t.Fatalf("expected empty token, got %q", auth.Token)
 	}
-	if !auth.Complete() {
-		t.Fatal("expected auth tuple to be complete")
-	}
-}
-
-func TestGetLoginFlowsHidesManagedBeeperFlowWhenAuthAvailable(t *testing.T) {
-	oc := &OpenAIConnector{}
-	oc.SetLocalAIBridgeLogin(id.UserID("@user:beeper.com"), "runtime-token", "https://matrix.beeper.com")
-
-	flows := oc.GetLoginFlows()
-	for _, flow := range flows {
-		if flow.ID == ProviderBeeper {
-			t.Fatalf("expected Beeper Cloud flow to be hidden, got %+v", flow)
-		}
+	if auth.Complete() {
+		t.Fatal("expected auth tuple to be incomplete")
 	}
 }
 

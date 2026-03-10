@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -11,11 +12,27 @@ import (
 
 const aiBridgeProtocolID = "ai"
 
+func aiBridgeProtocolIDForPortal(portal *bridgev2.Portal) string {
+	if portal == nil {
+		return aiBridgeProtocolID
+	}
+	loginID := strings.TrimSpace(string(portal.Receiver))
+	provider, _, _ := strings.Cut(loginID, ":")
+	switch provider {
+	case "beeper":
+		// Beeper clients know the Beeper Cloud bridge; the generic "ai" protocol
+		// shows up as an unknown bridge in local Beeper-backed rooms.
+		return "beeper"
+	default:
+		return aiBridgeProtocolID
+	}
+}
+
 func applyAIBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, content *event.BridgeEventContent) {
 	if portal == nil {
 		return
 	}
-	bridgeadapter.ApplyAIBridgeInfo(content, aiBridgeProtocolID, portal.RoomType, integrationPortalAIKind(meta))
+	bridgeadapter.ApplyAIBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType, integrationPortalAIKind(meta))
 }
 
 func sendAIPortalInfo(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) bool {

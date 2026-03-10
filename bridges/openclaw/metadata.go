@@ -100,6 +100,7 @@ type MessageMetadata struct {
 	TotalTokens        int64                            `json:"total_tokens,omitempty"`
 	CanonicalSchema    string                           `json:"canonical_schema,omitempty"`
 	CanonicalUIMessage map[string]any                   `json:"canonical_ui_message,omitempty"`
+	ThinkingContent    string                           `json:"thinking_content,omitempty"`
 	ToolCalls          []bridgeadapter.ToolCallMetadata `json:"tool_calls,omitempty"`
 	GeneratedFiles     []bridgeadapter.GeneratedFileRef `json:"generated_files,omitempty"`
 	Attachments        []map[string]any                 `json:"attachments,omitempty"`
@@ -158,6 +159,9 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	}
 	if len(src.CanonicalUIMessage) > 0 {
 		mm.CanonicalUIMessage = src.CanonicalUIMessage
+	}
+	if src.ThinkingContent != "" {
+		mm.ThinkingContent = src.ThinkingContent
 	}
 	if len(src.ToolCalls) > 0 {
 		mm.ToolCalls = src.ToolCalls

@@ -304,10 +304,6 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
-	if err = ol.Connector.LoadUserLogin(persistCtx, login); err != nil {
-		log.Debug().Err(err).Str("login_id", string(login.ID)).Msg("Reloading OpenClaw user login failed")
-		return nil, fmt.Errorf("failed to load client: %w", err)
-	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Loaded OpenClaw user login client")
 	if login.Client != nil {
 		log.Debug().Str("login_id", string(login.ID)).Msg("Starting OpenClaw user login connect loop")
@@ -434,7 +430,7 @@ func (ol *OpenClawLogin) preflightGatewayLogin(ctx context.Context, gatewayURL, 
 		log.Debug().Err(err).Str("gateway_url", gatewayURL).Msg("OpenClaw gateway preflight connect failed")
 		return "", err
 	}
-	defer client.Close()
+	defer client.CloseNow()
 
 	listCtx, listCancel := openClawBoundedContext(ctx, openClawPreflightList)
 	_, err = client.ListSessions(listCtx, 1)

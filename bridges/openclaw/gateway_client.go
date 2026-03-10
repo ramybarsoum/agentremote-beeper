@@ -460,6 +460,13 @@ func (c *gatewayWSClient) Close() {
 	c.shutdown(nil, websocket.StatusNormalClosure, "closing", true, true)
 }
 
+func (c *gatewayWSClient) CloseNow() {
+	c.shutdown(nil, websocket.StatusNormalClosure, "closing", false, false)
+	if c.conn != nil {
+		_ = c.conn.CloseNow()
+	}
+}
+
 func (c *gatewayWSClient) Events() <-chan gatewayEvent {
 	return c.events
 }

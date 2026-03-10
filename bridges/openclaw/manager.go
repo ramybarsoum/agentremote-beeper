@@ -645,7 +645,6 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 		Parts: parts,
 	}
 	if len(converted.Parts) > 0 {
-		converted.Parts[0].DBMetadata = buildOpenClawHistoryMessageMetadata(message, meta, role, agentID, text, attachmentBlocks, uiMetadata)
 		uiRole := "assistant"
 		if role == "user" {
 			uiRole = "user"
@@ -656,6 +655,7 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 			Metadata: uiMetadata,
 			Parts:    uiParts,
 		})
+		converted.Parts[0].DBMetadata = buildOpenClawHistoryMessageMetadata(message, meta, role, agentID, text, attachmentBlocks, uiMetadata, uiMessage)
 		converted.Parts[0].Extra[matrixevents.BeeperAIKey] = uiMessage
 		converted.Parts[0].DBMetadata.(*MessageMetadata).CanonicalSchema = "ai-sdk-ui-message-v1"
 		converted.Parts[0].DBMetadata.(*MessageMetadata).CanonicalUIMessage = uiMessage
@@ -663,14 +663,17 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 	return converted, sender, messageID
 }
 
-func buildOpenClawHistoryMessageMetadata(message map[string]any, meta *PortalMetadata, role, agentID, text string, attachmentBlocks []map[string]any, uiMetadata map[string]any) *MessageMetadata {
+func buildOpenClawHistoryMessageMetadata(message map[string]any, meta *PortalMetadata, role, agentID, text string, attachmentBlocks []map[string]any, uiMetadata, uiMessage map[string]any) *MessageMetadata {
 	metadata := &MessageMetadata{
-		Role:        role,
-		Body:        text,
-		SessionID:   meta.OpenClawSessionID,
-		SessionKey:  meta.OpenClawSessionKey,
-		AgentID:     agentID,
-		Attachments: attachmentBlocks,
+		Role:            role,
+		Body:            text,
+		SessionID:       meta.OpenClawSessionID,
+		SessionKey:      meta.OpenClawSessionKey,
+		AgentID:         agentID,
+		Attachments:     attachmentBlocks,
+		ThinkingContent: openClawCanonicalReasoningText(uiMessage),
+		ToolCalls:       openClawCanonicalToolCalls(uiMessage),
+		GeneratedFiles:  openClawCanonicalGeneratedFiles(uiMessage),
 	}
 	if value := strings.TrimSpace(stringValue(uiMetadata["completion_id"])); value != "" {
 		metadata.RunID = value
