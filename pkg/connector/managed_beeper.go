@@ -99,13 +99,6 @@ func (oc *OpenAIConnector) reconcileManagedBeeperLoginForUser(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	if login == nil {
-		login, err = oc.br.GetExistingUserLoginByID(ctx, legacyManagedBeeperLoginID(user.MXID))
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	effectiveToken := auth.Token
 	if !auth.Complete() {
 		effectiveToken = ""

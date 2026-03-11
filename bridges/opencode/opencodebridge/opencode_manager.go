@@ -116,13 +116,7 @@ func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {
 			if ref == nil {
 				return bridgeadapter.ErrApprovalUnknown
 			}
-			response := "reject"
-			if decision.Approved {
-				response = "once"
-				if decision.Always {
-					response = "always"
-				}
-			}
+			response := bridgeadapter.DecisionToString(decision, "once", "always", "reject")
 			inst, err := mgr.requireConnectedInstance(ref.InstanceID)
 			if err != nil {
 				return err

@@ -37,10 +37,6 @@ func managedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
 	return baseLoginID("managed-beeper", mxid)
 }
 
-func legacyManagedBeeperLoginID(mxid id.UserID) networkid.UserLoginID {
-	return baseLoginID("beeper", mxid)
-}
-
 func providerSlug(provider string) string {
 	switch strings.TrimSpace(provider) {
 	case ProviderBeeper:

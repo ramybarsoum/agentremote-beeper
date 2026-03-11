@@ -601,6 +601,28 @@ func normalizeApprovalOptions(options []ApprovalOption) []ApprovalOption {
 	return out
 }
 
+// AddOptionalDetail appends an approval detail from an optional string pointer.
+// If the pointer is nil or empty, input and details are returned unchanged.
+func AddOptionalDetail(input map[string]any, details []ApprovalDetail, key, label string, ptr *string) (map[string]any, []ApprovalDetail) {
+	if v := ValueSummary(ptr); v != "" {
+		input[key] = v
+		details = append(details, ApprovalDetail{Label: label, Value: v})
+	}
+	return input, details
+}
+
+// DecisionToString maps an ApprovalDecisionPayload to one of three upstream
+// string values (once/always/deny) based on the decision fields.
+func DecisionToString(decision ApprovalDecisionPayload, once, always, deny string) string {
+	if !decision.Approved {
+		return deny
+	}
+	if decision.Always {
+		return always
+	}
+	return once
+}
+
 func normalizeReactionKey(key string) string {
 	key = strings.TrimSpace(key)
 	if key == "" {

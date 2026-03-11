@@ -14,7 +14,6 @@ import (
 type UserLoginMetadata struct {
 	Provider          string `json:"provider,omitempty"`
 	CodexHome         string `json:"codex_home,omitempty"`
-	CodexHomeManaged  bool   `json:"codex_home_managed,omitempty"`
 	CodexAuthSource   string `json:"codex_auth_source,omitempty"`
 	CodexCommand      string `json:"codex_command,omitempty"`
 	CodexAuthMode     string `json:"codex_auth_mode,omitempty"`
@@ -103,26 +102,11 @@ func normalizedCodexAuthSource(meta *UserLoginMetadata) string {
 }
 
 func isHostAuthLogin(meta *UserLoginMetadata) bool {
-	source := normalizedCodexAuthSource(meta)
-	if source == CodexAuthSourceHost {
-		return true
-	}
-	// Backward-compatible fallback for older host-auth auto-provisioned logins.
-	if source == "" && meta != nil && !meta.CodexHomeManaged && strings.TrimSpace(meta.CodexHome) == "" {
-		return true
-	}
-	return false
+	return normalizedCodexAuthSource(meta) == CodexAuthSourceHost
 }
 
 func isManagedAuthLogin(meta *UserLoginMetadata) bool {
-	source := normalizedCodexAuthSource(meta)
-	if source == CodexAuthSourceManaged {
-		return true
-	}
-	if source == CodexAuthSourceHost {
-		return false
-	}
-	return meta != nil && meta.CodexHomeManaged
+	return normalizedCodexAuthSource(meta) == CodexAuthSourceManaged
 }
 
 func NewTurnID() string {

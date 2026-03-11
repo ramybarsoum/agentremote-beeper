@@ -100,7 +100,7 @@ func (ol *OpenAILogin) StartWithOverride(ctx context.Context, old *bridgev2.User
 	if ol.User == nil || old.UserMXID != ol.User.MXID {
 		return nil, errors.New("invalid relogin target")
 	}
-	if old.ID == managedBeeperLoginID(old.UserMXID) || old.ID == legacyManagedBeeperLoginID(old.UserMXID) {
+	if old.ID == managedBeeperLoginID(old.UserMXID) {
 		return nil, errors.New("managed Beeper Cloud logins are controlled by bridge configuration")
 	}
 	ol.Override = old

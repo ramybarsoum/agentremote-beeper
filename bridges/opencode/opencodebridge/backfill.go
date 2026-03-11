@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -62,60 +61,26 @@ func (b *Bridge) FetchMessages(ctx context.Context, params bridgev2.FetchMessage
 		return cmp.Compare(a.msg.Info.ID, b.msg.Info.ID)
 	})
 
-	var batch []backfillMessageEntry
-	var cursor networkid.PaginationCursor
-	var hasMore bool
-
-	if params.Forward {
-		start := 0
-		if params.AnchorMessage != nil {
-			if anchorIdx, ok := findAnchorIndex(entries, params.AnchorMessage); ok {
-				start = anchorIdx
-			} else {
-				start = indexAtOrAfter(entries, params.AnchorMessage.Timestamp)
-			}
-		}
-		end := len(entries)
-		if params.Count > 0 && start+params.Count < end {
-			end = start + params.Count
-			hasMore = true
-		}
-		if start < end {
-			batch = entries[start:end]
-		}
-	} else {
-		end := len(entries)
-		if params.Cursor != "" {
-			if idx, ok := backfillutil.ParseCursor(params.Cursor); ok {
-				if idx >= 0 && idx <= len(entries) {
-					end = idx
-				}
-			}
-		} else if params.AnchorMessage != nil {
-			if anchorIdx, ok := findAnchorIndex(entries, params.AnchorMessage); ok {
-				end = anchorIdx
-			} else {
-				end = indexAtOrAfter(entries, params.AnchorMessage.Timestamp)
-			}
-		}
-		if end < 0 {
-			end = 0
-		}
-		start := end
-		if params.Count > 0 {
-			start = end - params.Count
-		}
-		if start < 0 {
-			start = 0
-		}
-		if start < end {
-			batch = entries[start:end]
-		}
-		hasMore = start > 0
-		if hasMore {
-			cursor = backfillutil.FormatCursor(start)
-		}
-	}
+	result := backfillutil.Paginate(
+		len(entries),
+		backfillutil.PaginateParams{
+			Count:         params.Count,
+			Forward:       params.Forward,
+			Cursor:        params.Cursor,
+			AnchorMessage: params.AnchorMessage,
+		},
+		func(anchor *database.Message) (int, bool) {
+			return findAnchorIndex(entries, anchor)
+		},
+		func(anchor *database.Message) int {
+			return backfillutil.IndexAtOrAfter(len(entries), func(i int) time.Time {
+				return entries[i].when
+			}, anchor.Timestamp)
+		},
+	)
+	batch := entries[result.Start:result.End]
+	cursor := result.Cursor
+	hasMore := result.HasMore
 
 	if len(batch) == 0 {
 		return &bridgev2.FetchMessagesResponse{HasMore: hasMore, Forward: params.Forward, Cursor: cursor}, nil
@@ -133,15 +98,6 @@ func (b *Bridge) FetchMessages(ctx context.Context, params bridgev2.FetchMessage
 		AggressiveDeduplication: true,
 		ApproxTotalCount:        len(entries),
 	}, nil
-}
-
-func indexAtOrAfter(entries []backfillMessageEntry, anchor time.Time) int {
-	if anchor.IsZero() {
-		return 0
-	}
-	return sort.Search(len(entries), func(i int) bool {
-		return !entries[i].when.Before(anchor)
-	})
 }
 
 func findAnchorIndex(entries []backfillMessageEntry, anchor *database.Message) (int, bool) {

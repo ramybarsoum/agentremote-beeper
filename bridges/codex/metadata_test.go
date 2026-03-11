@@ -9,31 +9,10 @@ func TestIsHostAuthLogin_WithExplicitHostSource(t *testing.T) {
 	}
 }
 
-func TestIsHostAuthLogin_BackCompatLegacyHostMetadata(t *testing.T) {
-	meta := &UserLoginMetadata{
-		CodexAuthSource:  "",
-		CodexHomeManaged: false,
-		CodexHome:        "",
-	}
-	if !isHostAuthLogin(meta) {
-		t.Fatal("expected legacy unmanaged empty-home login to be treated as host-auth login")
-	}
-}
-
 func TestIsManagedAuthLogin_SourceManaged(t *testing.T) {
 	meta := &UserLoginMetadata{CodexAuthSource: CodexAuthSourceManaged}
 	if !isManagedAuthLogin(meta) {
 		t.Fatal("expected managed source to be treated as managed login")
-	}
-}
-
-func TestIsManagedAuthLogin_LegacyManagedFlag(t *testing.T) {
-	meta := &UserLoginMetadata{
-		CodexAuthSource:  "",
-		CodexHomeManaged: true,
-	}
-	if !isManagedAuthLogin(meta) {
-		t.Fatal("expected legacy managed flag to be treated as managed login")
 	}
 }
 

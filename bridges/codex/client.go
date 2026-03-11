@@ -291,7 +291,7 @@ func (cc *CodexClient) purgeCodexHomeBestEffort(ctx context.Context) {
 		return
 	}
 	// Don't delete unmanaged homes (e.g. the user's own ~/.codex).
-	if !meta.CodexHomeManaged {
+	if !isManagedAuthLogin(meta) {
 		return
 	}
 	codexHome := strings.TrimSpace(meta.CodexHome)
@@ -2190,14 +2190,6 @@ func (cc *CodexClient) handleApprovalRequest(
 	return emitOutcome(decision.Approved, decision.Reason)
 }
 
-func addOptionalDetail(input map[string]any, details []bridgeadapter.ApprovalDetail, key, label string, ptr *string) (map[string]any, []bridgeadapter.ApprovalDetail) {
-	if v := bridgeadapter.ValueSummary(ptr); v != "" {
-		input[key] = v
-		details = append(details, bridgeadapter.ApprovalDetail{Label: label, Value: v})
-	}
-	return input, details
-}
-
 func (cc *CodexClient) handleCommandApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {
 	return cc.handleApprovalRequest(ctx, req, "commandExecution", func(raw json.RawMessage) (map[string]any, bridgeadapter.ApprovalPromptPresentation) {
 		var p struct {
@@ -2208,9 +2200,9 @@ func (cc *CodexClient) handleCommandApprovalRequest(ctx context.Context, req cod
 		_ = json.Unmarshal(raw, &p)
 		input := map[string]any{}
 		details := make([]bridgeadapter.ApprovalDetail, 0, 3)
-		input, details = addOptionalDetail(input, details, "command", "Command", p.Command)
-		input, details = addOptionalDetail(input, details, "cwd", "Working directory", p.Cwd)
-		input, details = addOptionalDetail(input, details, "reason", "Reason", p.Reason)
+		input, details = bridgeadapter.AddOptionalDetail(input, details, "command", "Command", p.Command)
+		input, details = bridgeadapter.AddOptionalDetail(input, details, "cwd", "Working directory", p.Cwd)
+		input, details = bridgeadapter.AddOptionalDetail(input, details, "reason", "Reason", p.Reason)
 		return input, bridgeadapter.ApprovalPromptPresentation{
 			Title:       "Codex command execution",
 			Details:     details,
@@ -2228,8 +2220,8 @@ func (cc *CodexClient) handleFileChangeApprovalRequest(ctx context.Context, req 
 		_ = json.Unmarshal(raw, &p)
 		input := map[string]any{}
 		details := make([]bridgeadapter.ApprovalDetail, 0, 2)
-		input, details = addOptionalDetail(input, details, "grantRoot", "Grant root", p.GrantRoot)
-		input, details = addOptionalDetail(input, details, "reason", "Reason", p.Reason)
+		input, details = bridgeadapter.AddOptionalDetail(input, details, "grantRoot", "Grant root", p.GrantRoot)
+		input, details = bridgeadapter.AddOptionalDetail(input, details, "reason", "Reason", p.Reason)
 		return input, bridgeadapter.ApprovalPromptPresentation{
 			Title:       "Codex file change",
 			Details:     details,

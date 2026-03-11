@@ -647,7 +647,6 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 	meta := &UserLoginMetadata{
 		Provider:          ProviderCodex,
 		CodexHome:         cl.codexHome,
-		CodexHomeManaged:  true,
 		CodexAuthSource:   CodexAuthSourceManaged,
 		CodexAuthMode:     cl.getAuthMode(),
 		CodexAccountEmail: accountEmail,

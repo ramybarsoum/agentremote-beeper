@@ -300,7 +300,7 @@ func (oc *AIClient) analyzeAudioWithModel(
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	}
 	var resp *GenerateResponse
-	if provider, ok := oc.provider.(*OpenAIProvider); ok && legacyUnifiedMessagesNeedChatAdapter(messages) {
+	if provider, ok := oc.provider.(*OpenAIProvider); ok {
 		resp, err = provider.generateChatCompletions(ctx, params)
 	} else {
 		resp, err = oc.provider.Generate(ctx, params)

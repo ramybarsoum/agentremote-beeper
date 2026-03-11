@@ -84,14 +84,8 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 					return bridgeadapter.ErrApprovalWrongRoom
 				}
 			}
-			upstreamDecision := "deny"
-			if decision.Approved {
-				upstreamDecision = "allow-once"
-				if decision.Always {
-					upstreamDecision = "allow-always"
-				}
-			}
-			return gateway.ResolveApproval(ctx, decision.ApprovalID, upstreamDecision)
+			return gateway.ResolveApproval(ctx, decision.ApprovalID,
+				bridgeadapter.DecisionToString(decision, "allow-once", "allow-always", "deny"))
 		},
 		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
 			client.sendSystemNoticeViaPortal(ctx, portal, msg)

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -511,62 +510,25 @@ func codexBackfillMessageID(threadID, turnID, role string) networkid.MessageID {
 }
 
 func codexPaginateBackfill(entries []codexBackfillEntry, params bridgev2.FetchMessagesParams) ([]codexBackfillEntry, networkid.PaginationCursor, bool) {
-	count := params.Count
-	if count <= 0 {
-		count = len(entries)
-	}
-	if params.Forward {
-		start := 0
-		if params.AnchorMessage != nil {
-			if anchorIdx, ok := findCodexAnchorIndex(entries, params.AnchorMessage); ok {
-				start = anchorIdx + 1
-			} else {
-				start = codexIndexAtOrAfter(entries, params.AnchorMessage.Timestamp)
-			}
-		}
-		if start < 0 {
-			start = 0
-		}
-		if start > len(entries) {
-			start = len(entries)
-		}
-		end := len(entries)
-		hasMore := false
-		if start+count < end {
-			end = start + count
-			hasMore = true
-		}
-		return entries[start:end], "", hasMore
-	}
-
-	end := len(entries)
-	if params.Cursor != "" {
-		if idx, ok := backfillutil.ParseCursor(params.Cursor); ok && idx >= 0 && idx <= len(entries) {
-			end = idx
-		}
-	} else if params.AnchorMessage != nil {
-		if anchorIdx, ok := findCodexAnchorIndex(entries, params.AnchorMessage); ok {
-			end = anchorIdx
-		} else {
-			end = codexIndexAtOrAfter(entries, params.AnchorMessage.Timestamp)
-		}
-	}
-	if end < 0 {
-		end = 0
-	}
-	if end > len(entries) {
-		end = len(entries)
-	}
-	start := end - count
-	if start < 0 {
-		start = 0
-	}
-	hasMore := start > 0
-	cursor := networkid.PaginationCursor("")
-	if hasMore {
-		cursor = backfillutil.FormatCursor(start)
-	}
-	return entries[start:end], cursor, hasMore
+	result := backfillutil.Paginate(
+		len(entries),
+		backfillutil.PaginateParams{
+			Count:              params.Count,
+			Forward:            params.Forward,
+			Cursor:             params.Cursor,
+			AnchorMessage:      params.AnchorMessage,
+			ForwardAnchorShift: 1,
+		},
+		func(anchor *database.Message) (int, bool) {
+			return findCodexAnchorIndex(entries, anchor)
+		},
+		func(anchor *database.Message) int {
+			return backfillutil.IndexAtOrAfter(len(entries), func(i int) time.Time {
+				return entries[i].Timestamp
+			}, anchor.Timestamp)
+		},
+	)
+	return entries[result.Start:result.End], result.Cursor, result.HasMore
 }
 
 func findCodexAnchorIndex(entries []codexBackfillEntry, anchor *database.Message) (int, bool) {
@@ -581,11 +543,3 @@ func findCodexAnchorIndex(entries []codexBackfillEntry, anchor *database.Message
 	return 0, false
 }
 
-func codexIndexAtOrAfter(entries []codexBackfillEntry, anchor time.Time) int {
-	if anchor.IsZero() {
-		return 0
-	}
-	return sort.Search(len(entries), func(i int) bool {
-		return !entries[i].Timestamp.Before(anchor)
-	})
-}
