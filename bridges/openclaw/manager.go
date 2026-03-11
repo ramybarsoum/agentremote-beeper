@@ -1,6 +1,7 @@
 package openclaw
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
@@ -23,6 +25,7 @@ import (
 	"github.com/beeper/agentremote/pkg/bridgeadapter"
 	"github.com/beeper/agentremote/pkg/connector/msgconv"
 	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/backfillutil"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
@@ -505,7 +508,7 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 		return nil, err
 	}
 	meta := portalMeta(params.Portal)
-	history, err := gateway.RecentHistory(ctx, meta.OpenClawSessionKey, normalizeHistoryLimit(params.Count))
+	history, err := gateway.RecentHistory(ctx, meta.OpenClawSessionKey, openClawDefaultSessionLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -518,29 +521,21 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 	if strings.TrimSpace(history.VerboseLevel) != "" {
 		meta.VerboseLevel = strings.TrimSpace(history.VerboseLevel)
 	}
-	messages := make([]map[string]any, 0, len(history.Messages))
-	for _, message := range history.Messages {
-		if message != nil {
-			messages = append(messages, message)
-		}
-	}
-	sort.SliceStable(messages, func(i, j int) bool {
-		return extractMessageTimestamp(messages[i]).Before(extractMessageTimestamp(messages[j]))
-	})
-	backfill := make([]*bridgev2.BackfillMessage, 0, len(messages))
-	for _, message := range messages {
-		converted, sender, messageID := m.convertHistoryMessage(ctx, params.Portal, meta, message)
+	allEntries := prepareOpenClawBackfillEntries(meta, history.Messages)
+	entries, cursor, hasMore := paginateOpenClawBackfillEntries(allEntries, params)
+	backfill := make([]*bridgev2.BackfillMessage, 0, len(entries))
+	for _, entry := range entries {
+		converted, sender, messageID := m.convertHistoryMessage(ctx, params.Portal, meta, entry.message)
 		if converted == nil || messageID == "" {
 			continue
 		}
-		ts := extractMessageTimestamp(message)
 		backfill = append(backfill, &bridgev2.BackfillMessage{
 			ConvertedMessage: converted,
 			Sender:           sender,
 			ID:               messageID,
 			TxnID:            networkid.TransactionID(messageID),
-			Timestamp:        ts,
-			StreamOrder:      ts.UnixMilli(),
+			Timestamp:        entry.timestamp,
+			StreamOrder:      entry.streamOrder,
 		})
 	}
 	meta.LastHistorySyncAt = time.Now().UnixMilli()
@@ -549,11 +544,105 @@ func (m *openClawManager) FetchMessages(ctx context.Context, params bridgev2.Fet
 	}
 	return &bridgev2.FetchMessagesResponse{
 		Messages:                backfill,
-		HasMore:                 false,
+		Cursor:                  cursor,
+		HasMore:                 hasMore,
 		Forward:                 params.Forward,
 		AggressiveDeduplication: true,
-		ApproxTotalCount:        len(history.Messages),
+		ApproxTotalCount:        len(allEntries),
 	}, nil
+}
+
+type openClawBackfillEntry struct {
+	message     map[string]any
+	messageID   networkid.MessageID
+	timestamp   time.Time
+	streamOrder int64
+}
+
+func buildOpenClawBackfillEntries(meta *PortalMetadata, history []map[string]any, params bridgev2.FetchMessagesParams) ([]openClawBackfillEntry, networkid.PaginationCursor, bool) {
+	return paginateOpenClawBackfillEntries(prepareOpenClawBackfillEntries(meta, history), params)
+}
+
+func paginateOpenClawBackfillEntries(entries []openClawBackfillEntry, params bridgev2.FetchMessagesParams) ([]openClawBackfillEntry, networkid.PaginationCursor, bool) {
+	if len(entries) == 0 {
+		return nil, "", false
+	}
+	result := backfillutil.Paginate(
+		len(entries),
+		backfillutil.PaginateParams{
+			Count:              normalizeHistoryLimit(params.Count),
+			Forward:            params.Forward,
+			Cursor:             params.Cursor,
+			AnchorMessage:      params.AnchorMessage,
+			ForwardAnchorShift: 1,
+		},
+		func(anchor *database.Message) (int, bool) {
+			return findOpenClawAnchorIndex(entries, anchor)
+		},
+		func(anchor *database.Message) int {
+			return backfillutil.IndexAtOrAfter(len(entries), func(i int) time.Time {
+				return entries[i].timestamp
+			}, anchor.Timestamp)
+		},
+	)
+	return entries[result.Start:result.End], result.Cursor, result.HasMore
+}
+
+func prepareOpenClawBackfillEntries(meta *PortalMetadata, history []map[string]any) []openClawBackfillEntry {
+	entries := make([]openClawBackfillEntry, 0, len(history))
+	for _, message := range history {
+		if message == nil {
+			continue
+		}
+		normalized := normalizeOpenClawLiveMessage(0, message)
+		if len(normalized) == 0 {
+			continue
+		}
+		timestamp := extractMessageTimestamp(normalized)
+		role := openClawMessageRole(normalized)
+		text := extractMessageText(normalized)
+		if role == "toolresult" && strings.TrimSpace(text) == "" {
+			if details, ok := normalized["details"]; ok && details != nil {
+				if data, err := json.Marshal(details); err == nil {
+					text = string(data)
+				}
+			}
+		}
+		messageID := historyFingerprintMessageID(meta.OpenClawSessionKey, role, timestamp, text, normalized)
+		entries = append(entries, openClawBackfillEntry{
+			message:   normalized,
+			messageID: messageID,
+			timestamp: timestamp,
+		})
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if c := entries[i].timestamp.Compare(entries[j].timestamp); c != 0 {
+			return c < 0
+		}
+		return cmp.Compare(entries[i].messageID, entries[j].messageID) < 0
+	})
+	var lastStreamOrder int64
+	for i := range entries {
+		order := entries[i].timestamp.UnixMilli() * 1000
+		if order <= lastStreamOrder {
+			order = lastStreamOrder + 1
+		}
+		entries[i].streamOrder = order
+		lastStreamOrder = order
+	}
+	return entries
+}
+
+func findOpenClawAnchorIndex(entries []openClawBackfillEntry, anchor *database.Message) (int, bool) {
+	if anchor == nil || anchor.ID == "" {
+		return 0, false
+	}
+	for idx, entry := range entries {
+		if entry.messageID == anchor.ID {
+			return idx, true
+		}
+	}
+	return 0, false
 }
 
 func normalizeHistoryLimit(count int) int {

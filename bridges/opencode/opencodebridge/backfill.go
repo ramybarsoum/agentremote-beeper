@@ -196,12 +196,10 @@ func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.P
 	for _, entry := range batch {
 		msg := entry.msg
 		role := strings.ToLower(strings.TrimSpace(msg.Info.Role))
-		if role == "user" {
-			continue
-		}
-		fromMe := false
+		fromMe := role == "user"
 		sender := b.opencodeSender(instanceID, fromMe)
-		if intent, ok := portal.GetIntentFor(ctx, sender, login, bridgev2.RemoteEventMessage); !ok || intent == nil {
+		intent, ok := portal.GetIntentFor(ctx, sender, login, bridgev2.RemoteEventMessage)
+		if !ok || intent == nil {
 			continue
 		}
 		msgTime := entry.when
@@ -218,6 +216,14 @@ func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.P
 			baseOrder = order + 1
 			return order
 		}
+		if role == "user" {
+			userBackfill, err := b.buildOpenCodeUserBackfillMessages(ctx, portal, intent, sender, msg, msgTime, nextOrder)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, userBackfill...)
+			continue
+		}
 		snapshot := buildCanonicalAssistantBackfill(msg, b.portalAgentID(portal))
 		out = append(out, &bridgev2.BackfillMessage{
 			ConvertedMessage: &bridgev2.ConvertedMessage{
@@ -232,6 +238,50 @@ func (b *Bridge) convertOpenCodeBackfill(ctx context.Context, portal *bridgev2.P
 			Sender:      sender,
 			ID:          networkid.MessageID("opencode:" + msg.Info.ID),
 			TxnID:       networkid.TransactionID("opencode:" + msg.Info.ID),
+			Timestamp:   msgTime,
+			StreamOrder: nextOrder(),
+		})
+	}
+	return out, nil
+}
+
+func (b *Bridge) buildOpenCodeUserBackfillMessages(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	intent bridgev2.MatrixAPI,
+	sender bridgev2.EventSender,
+	msg opencode.MessageWithParts,
+	msgTime time.Time,
+	nextOrder func() int64,
+) ([]*bridgev2.BackfillMessage, error) {
+	out := make([]*bridgev2.BackfillMessage, 0, len(msg.Parts))
+	for _, part := range msg.Parts {
+		if part.ID == "" {
+			continue
+		}
+		if part.MessageID == "" {
+			part.MessageID = msg.Info.ID
+		}
+		if part.SessionID == "" {
+			part.SessionID = msg.Info.SessionID
+		}
+		cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, part)
+		if err != nil {
+			if errors.Is(err, bridgev2.ErrIgnoringRemoteEvent) {
+				continue
+			}
+			return nil, err
+		} else if cmp == nil {
+			continue
+		}
+		msgID := opencodePartMessageID(part.ID)
+		out = append(out, &bridgev2.BackfillMessage{
+			ConvertedMessage: &bridgev2.ConvertedMessage{
+				Parts: []*bridgev2.ConvertedMessagePart{cmp},
+			},
+			Sender:      sender,
+			ID:          msgID,
+			TxnID:       networkid.TransactionID(msgID),
 			Timestamp:   msgTime,
 			StreamOrder: nextOrder(),
 		})

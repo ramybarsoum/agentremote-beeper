@@ -564,9 +564,16 @@ func (m *OpenCodeManager) UpdateSessionTitle(ctx context.Context, instanceID, se
 func (m *OpenCodeManager) syncSessions(ctx context.Context, inst *openCodeInstance, sessions []opencode.Session) (int, error) {
 	count := 0
 	for _, session := range sessions {
+		hadRoom := false
+		if portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, session.ID); portal != nil && portal.MXID != "" {
+			hadRoom = true
+		}
 		if err := m.bridge.ensureOpenCodeSessionPortal(ctx, inst, session); err != nil {
 			m.log().Warn().Err(err).Str("session", session.ID).Msg("Failed to sync OpenCode session")
 			continue
+		}
+		if hadRoom {
+			m.bridge.queueOpenCodeSessionResync(inst.cfg.ID, session)
 		}
 		count++
 	}
@@ -694,8 +701,16 @@ func (m *OpenCodeManager) handleSessionEvent(ctx context.Context, inst *openCode
 		m.log().Warn().Err(err).Msg("Failed to decode session event")
 		return
 	}
+	hadRoom := false
+	if portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, session.ID); portal != nil && portal.MXID != "" {
+		hadRoom = true
+	}
 	if err := m.bridge.ensureOpenCodeSessionPortal(ctx, inst, session); err != nil {
 		m.log().Warn().Err(err).Str("session", session.ID).Msg("Failed to ensure session portal")
+		return
+	}
+	if hadRoom {
+		m.bridge.queueOpenCodeSessionResync(inst.cfg.ID, session)
 	}
 }
 

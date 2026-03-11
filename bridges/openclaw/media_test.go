@@ -258,6 +258,72 @@ func TestBuildOpenClawHistoryMessageMetadataIncludesGeneratedFiles(t *testing.T)
 	}
 }
 
+func TestBuildOpenClawBackfillEntriesBackwardPagination(t *testing.T) {
+	meta := &PortalMetadata{OpenClawSessionKey: "agent:main:test"}
+	history := []map[string]any{
+		{"role": "assistant", "timestamp": int64(1_700_000_001_000), "content": []any{map[string]any{"type": "output_text", "text": "one"}}},
+		{"role": "assistant", "timestamp": int64(1_700_000_002_000), "content": []any{map[string]any{"type": "output_text", "text": "two"}}},
+		{"role": "assistant", "timestamp": int64(1_700_000_003_000), "content": []any{map[string]any{"type": "output_text", "text": "three"}}},
+	}
+
+	firstBatch, cursor, hasMore := buildOpenClawBackfillEntries(meta, history, bridgev2.FetchMessagesParams{
+		Forward: false,
+		Count:   2,
+	})
+	if len(firstBatch) != 2 {
+		t.Fatalf("expected 2 entries in first batch, got %d", len(firstBatch))
+	}
+	if firstBatch[0].messageID == "" || firstBatch[1].messageID == "" {
+		t.Fatalf("expected stable message IDs, got %#v", firstBatch)
+	}
+	if !hasMore || cursor == "" {
+		t.Fatalf("expected backward pagination to produce cursor, got hasMore=%v cursor=%q", hasMore, cursor)
+	}
+	if !firstBatch[0].timestamp.Before(firstBatch[1].timestamp) {
+		t.Fatalf("expected chronological batch, got %#v", firstBatch)
+	}
+
+	secondBatch, _, hasMore := buildOpenClawBackfillEntries(meta, history, bridgev2.FetchMessagesParams{
+		Forward: false,
+		Count:   2,
+		Cursor:  cursor,
+	})
+	if len(secondBatch) != 1 {
+		t.Fatalf("expected 1 entry in second batch, got %d", len(secondBatch))
+	}
+	if hasMore {
+		t.Fatal("expected final backward batch to exhaust snapshot")
+	}
+	if secondBatch[0].timestamp != firstBatch[0].timestamp.Add(-time.Second) {
+		t.Fatalf("unexpected second batch entry: %#v", secondBatch[0])
+	}
+}
+
+func TestPrepareOpenClawBackfillEntriesStableStreamOrder(t *testing.T) {
+	meta := &PortalMetadata{OpenClawSessionKey: "agent:main:test"}
+	history := []map[string]any{
+		{"role": "assistant", "timestamp": int64(1_700_000_001_000), "content": []any{map[string]any{"type": "output_text", "text": "a"}}},
+		{"role": "assistant", "timestamp": int64(1_700_000_001_000), "content": []any{map[string]any{"type": "output_text", "text": "b"}}},
+	}
+
+	entries := prepareOpenClawBackfillEntries(meta, history)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].streamOrder >= entries[1].streamOrder {
+		t.Fatalf("expected strictly increasing stream order, got %d then %d", entries[0].streamOrder, entries[1].streamOrder)
+	}
+
+	batch, _, _ := buildOpenClawBackfillEntries(meta, history, bridgev2.FetchMessagesParams{
+		Forward:       true,
+		Count:         10,
+		AnchorMessage: &database.Message{ID: entries[0].messageID, Timestamp: entries[0].timestamp},
+	})
+	if len(batch) != 1 || batch[0].messageID != entries[1].messageID {
+		t.Fatalf("expected forward pagination to skip anchor, got %#v", batch)
+	}
+}
+
 func TestNormalizeOpenClawUsage(t *testing.T) {
 	usage := normalizeOpenClawUsage(map[string]any{
 		"input":           float64(10),
