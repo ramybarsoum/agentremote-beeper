@@ -238,7 +238,7 @@ func approvalPromptTitle(presentation ApprovalPromptPresentation, fallbackToolNa
 	return fallbackToolName
 }
 
-func BuildApprovalPromptBody(presentation ApprovalPromptPresentation, options []ApprovalOption) string {
+func buildApprovalBodyHeader(presentation ApprovalPromptPresentation) []string {
 	title := approvalPromptTitle(presentation, "")
 	lines := []string{fmt.Sprintf("Approval required: %s", title)}
 	for _, detail := range presentation.Details {
@@ -249,6 +249,11 @@ func BuildApprovalPromptBody(presentation ApprovalPromptPresentation, options []
 		}
 		lines = append(lines, fmt.Sprintf("%s: %s", label, value))
 	}
+	return lines
+}
+
+func BuildApprovalPromptBody(presentation ApprovalPromptPresentation, options []ApprovalOption) string {
+	lines := buildApprovalBodyHeader(presentation)
 	hints := renderApprovalOptionHints(options)
 	if len(hints) == 0 {
 		lines = append(lines, "React to approve or deny.")
@@ -259,16 +264,7 @@ func BuildApprovalPromptBody(presentation ApprovalPromptPresentation, options []
 }
 
 func BuildApprovalResponseBody(presentation ApprovalPromptPresentation, decision ApprovalDecisionPayload) string {
-	title := approvalPromptTitle(presentation, "")
-	lines := []string{fmt.Sprintf("Approval required: %s", title)}
-	for _, detail := range presentation.Details {
-		label := strings.TrimSpace(detail.Label)
-		value := strings.TrimSpace(detail.Value)
-		if label == "" || value == "" {
-			continue
-		}
-		lines = append(lines, fmt.Sprintf("%s: %s", label, value))
-	}
+	lines := buildApprovalBodyHeader(presentation)
 	outcome, reason := approvalDecisionOutcome(decision)
 	line := "Decision: " + outcome
 	if reason != "" {
@@ -467,13 +463,13 @@ func approvalDecisionOutcome(decision ApprovalDecisionPayload) (string, string) 
 		return "approved (always allow)", ""
 	case decision.Approved:
 		return "approved", ""
-	case reason == "timeout":
+	case reason == ApprovalReasonTimeout:
 		return "timed out", ""
-	case reason == "expired":
+	case reason == ApprovalReasonExpired:
 		return "expired", ""
-	case reason == "delivery_error":
+	case reason == ApprovalReasonDeliveryError:
 		return "delivery error", ""
-	case reason == "cancelled":
+	case reason == ApprovalReasonCancelled:
 		return "cancelled", ""
 	case reason == "":
 		return "denied", ""

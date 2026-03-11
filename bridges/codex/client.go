@@ -1738,34 +1738,6 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 	cc.sendViaPortal(sendCtx, portal, bridgeadapter.BuildSystemNotice(strings.TrimSpace(message)), "")
 }
 
-func (cc *CodexClient) sendApprovalRequestFallbackEvent(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	approvalID string,
-	toolCallID string,
-	toolName string,
-	presentation bridgeadapter.ApprovalPromptPresentation,
-	ttlSeconds int,
-) {
-	if state == nil {
-		return
-	}
-	cc.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
-		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
-			ApprovalID:     approvalID,
-			ToolCallID:     toolCallID,
-			ToolName:       toolName,
-			TurnID:         state.turnID,
-			Presentation:   presentation,
-			ReplyToEventID: state.initialEventID,
-			ExpiresAt:      bridgeadapter.ComputeApprovalExpiry(ttlSeconds),
-		},
-		RoomID:    portal.MXID,
-		OwnerMXID: cc.UserLogin.UserMXID,
-	})
-}
-
 func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
 	st := bridgev2.MessageStatus{
 		Status:    event.MessageStatusPending,
@@ -1949,7 +1921,22 @@ func (cc *CodexClient) emitUIToolApprovalRequest(
 	approvalID, toolCallID, toolName string, presentation bridgeadapter.ApprovalPromptPresentation, ttlSeconds int,
 ) {
 	cc.uiEmitter(state).EmitUIToolApprovalRequest(ctx, portal, approvalID, toolCallID)
-	cc.sendApprovalRequestFallbackEvent(ctx, portal, state, approvalID, toolCallID, toolName, presentation, ttlSeconds)
+	if state == nil {
+		return
+	}
+	cc.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
+			ApprovalID:     approvalID,
+			ToolCallID:     toolCallID,
+			ToolName:       toolName,
+			TurnID:         state.turnID,
+			Presentation:   presentation,
+			ReplyToEventID: state.initialEventID,
+			ExpiresAt:      bridgeadapter.ComputeApprovalExpiry(ttlSeconds),
+		},
+		RoomID:    portal.MXID,
+		OwnerMXID: cc.UserLogin.UserMXID,
+	})
 }
 
 func (cc *CodexClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
@@ -2113,9 +2100,9 @@ func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) 
 	approvalID = strings.TrimSpace(approvalID)
 	decision, ok := cc.approvalFlow.Wait(ctx, approvalID)
 	if !ok {
-		reason := "timeout"
+		reason := bridgeadapter.ApprovalReasonTimeout
 		if ctx.Err() != nil {
-			reason = "cancelled"
+			reason = bridgeadapter.ApprovalReasonCancelled
 		}
 		cc.approvalFlow.FinishResolved(approvalID, bridgeadapter.ApprovalDecisionPayload{
 			ApprovalID: approvalID,
@@ -2186,7 +2173,7 @@ func (cc *CodexClient) handleApprovalRequest(
 
 	decision, ok := cc.waitToolApproval(ctx, approvalID)
 	if !ok {
-		return emitOutcome(false, "timeout")
+		return emitOutcome(false, bridgeadapter.ApprovalReasonTimeout)
 	}
 	return emitOutcome(decision.Approved, decision.Reason)
 }

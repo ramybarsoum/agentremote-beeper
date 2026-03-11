@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/bridges/opencode/opencode"
-	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/streamtransport"
 )
 
@@ -195,10 +195,5 @@ func truncateOpenCodeText(text string, max int) string {
 	return text[:max] + "..."
 }
 
-func toolDisplayTitle(toolName string) string {
-	toolName = strings.TrimSpace(toolName)
-	if tool := tools.GetTool(toolName); tool != nil && tool.Annotations != nil && tool.Annotations.Title != "" {
-		return tool.Annotations.Title
-	}
-	return toolName
-}
+// toolDisplayTitle is an alias for streamui.ToolDisplayTitle.
+var toolDisplayTitle = streamui.ToolDisplayTitle

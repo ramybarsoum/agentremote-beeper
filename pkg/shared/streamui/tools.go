@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 // EnsureUIToolInputStart sends "tool-input-start" once per toolCallID.
@@ -217,11 +219,15 @@ func (e *Emitter) EmitUIToolOutputError(ctx context.Context, portal *bridgev2.Po
 	})
 }
 
-// ToolDisplayTitle returns toolName or a fallback "tool" for display.
+// ToolDisplayTitle returns toolName, its annotation title if available, or a
+// fallback "tool" for display.
 func ToolDisplayTitle(toolName string) string {
 	toolName = strings.TrimSpace(toolName)
 	if toolName == "" {
 		return "tool"
+	}
+	if t := tools.GetTool(toolName); t != nil && t.Annotations != nil && t.Annotations.Title != "" {
+		return t.Annotations.Title
 	}
 	return toolName
 }

@@ -61,6 +61,7 @@ func (b *Bridge) FetchMessages(ctx context.Context, params bridgev2.FetchMessage
 		return cmp.Compare(a.msg.Info.ID, b.msg.Info.ID)
 	})
 
+	msgIndex, partIndex := buildAnchorIndexMaps(entries)
 	result := backfillutil.Paginate(
 		len(entries),
 		backfillutil.PaginateParams{
@@ -70,7 +71,7 @@ func (b *Bridge) FetchMessages(ctx context.Context, params bridgev2.FetchMessage
 			AnchorMessage: params.AnchorMessage,
 		},
 		func(anchor *database.Message) (int, bool) {
-			return findAnchorIndex(entries, anchor)
+			return findAnchorIndex(msgIndex, partIndex, anchor)
 		},
 		func(anchor *database.Message) int {
 			return backfillutil.IndexAtOrAfter(len(entries), func(i int) time.Time {
@@ -100,20 +101,9 @@ func (b *Bridge) FetchMessages(ctx context.Context, params bridgev2.FetchMessage
 	}, nil
 }
 
-func findAnchorIndex(entries []backfillMessageEntry, anchor *database.Message) (int, bool) {
-	if anchor == nil {
-		return 0, false
-	}
-	if anchor.ID == "" {
-		return 0, false
-	}
-	partID, isPart := parseOpenCodePartID(anchor.ID)
-	msgID, isMsg := parseOpenCodeMessageID(anchor.ID)
-	if !isPart && !isMsg {
-		return 0, false
-	}
-	msgIndex := make(map[string]int, len(entries))
-	partIndex := make(map[string]int, len(entries))
+func buildAnchorIndexMaps(entries []backfillMessageEntry) (msgIndex, partIndex map[string]int) {
+	msgIndex = make(map[string]int, len(entries))
+	partIndex = make(map[string]int, len(entries))
 	for i, entry := range entries {
 		if entry.msg.Info.ID != "" {
 			msgIndex[entry.msg.Info.ID] = i
@@ -130,6 +120,18 @@ func findAnchorIndex(entries []backfillMessageEntry, anchor *database.Message) (
 				}
 			}
 		}
+	}
+	return msgIndex, partIndex
+}
+
+func findAnchorIndex(msgIndex, partIndex map[string]int, anchor *database.Message) (int, bool) {
+	if anchor == nil || anchor.ID == "" {
+		return 0, false
+	}
+	partID, isPart := parseOpenCodePartID(anchor.ID)
+	msgID, isMsg := parseOpenCodeMessageID(anchor.ID)
+	if !isPart && !isMsg {
+		return 0, false
 	}
 	if isPart {
 		if idx, ok := partIndex[partID]; ok {

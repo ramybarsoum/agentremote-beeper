@@ -59,6 +59,7 @@ type Pending[D any] struct {
 	ExpiresAt time.Time
 	Data      D
 	ch        chan ApprovalDecisionPayload
+	done      chan struct{} // closed when the approval is finalized
 }
 
 // ApprovalFlow owns the full lifecycle of approval prompts and pending approvals.
@@ -140,6 +141,7 @@ func (f *ApprovalFlow[D]) Register(approvalID string, ttl time.Duration, data D)
 		ExpiresAt: time.Now().Add(ttl),
 		Data:      data,
 		ch:        make(chan ApprovalDecisionPayload, 1),
+		done:      make(chan struct{}),
 	}
 	f.pending[approvalID] = p
 	return p, true
@@ -294,7 +296,6 @@ func (f *ApprovalFlow[D]) registerPromptLocked(reg ApprovalPromptRegistration) {
 	reg.ToolCallID = strings.TrimSpace(reg.ToolCallID)
 	reg.ToolName = strings.TrimSpace(reg.ToolName)
 	reg.TurnID = strings.TrimSpace(reg.TurnID)
-	reg.Options = normalizeApprovalOptions(reg.Options)
 
 	if prev := f.promptsByApproval[reg.ApprovalID]; prev != nil && prev.PromptEventID != "" {
 		delete(f.promptsByEventID, prev.PromptEventID)
@@ -569,10 +570,8 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 		}
 	}
 
-	if f.deliverDecision != nil {
-		if resolved {
-			f.FinishResolved(approvalID, match.Decision)
-		}
+	if resolved {
+		f.FinishResolved(approvalID, match.Decision)
 	}
 	return true
 }
@@ -672,11 +671,20 @@ func (f *ApprovalFlow[D]) schedulePromptTimeout(approvalID string, expiresAt tim
 		f.finishTimedOutApproval(approvalID)
 		return
 	}
+	f.mu.Lock()
+	p := f.pending[approvalID]
+	f.mu.Unlock()
+	if p == nil {
+		return
+	}
 	go func() {
 		timer := time.NewTimer(delay)
 		defer timer.Stop()
-		<-timer.C
-		f.finishTimedOutApproval(approvalID)
+		select {
+		case <-timer.C:
+			f.finishTimedOutApproval(approvalID)
+		case <-p.done:
+		}
 	}()
 }
 
@@ -686,7 +694,7 @@ func (f *ApprovalFlow[D]) finishTimedOutApproval(approvalID string) {
 	}
 	f.FinishResolved(approvalID, ApprovalDecisionPayload{
 		ApprovalID: approvalID,
-		Reason:     "timeout",
+		Reason:     ApprovalReasonTimeout,
 	})
 }
 
@@ -708,7 +716,7 @@ func approvalOptionKeyForDecision(options []ApprovalOption, decision ApprovalDec
 		return ""
 	}
 	switch strings.TrimSpace(decision.Reason) {
-	case "timeout", "expired", "delivery_error", "cancelled":
+	case ApprovalReasonTimeout, ApprovalReasonExpired, ApprovalReasonDeliveryError, ApprovalReasonCancelled:
 		return ""
 	}
 	for _, option := range options {
@@ -771,6 +779,13 @@ func (f *ApprovalFlow[D]) finalize(approvalID string, decision *ApprovalDecision
 	}
 	var prompt *ApprovalPromptRegistration
 	f.mu.Lock()
+	if p := f.pending[approvalID]; p != nil {
+		select {
+		case <-p.done:
+		default:
+			close(p.done)
+		}
+	}
 	delete(f.pending, approvalID)
 	if entry := f.promptsByApproval[approvalID]; entry != nil {
 		copyEntry := *entry

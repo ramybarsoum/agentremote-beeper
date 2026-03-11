@@ -105,9 +105,9 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 
 	decision, ok := oc.approvalFlow.Wait(ctx, approvalID)
 	if !ok {
-		reason := "timeout"
+		reason := bridgeadapter.ApprovalReasonTimeout
 		if ctx.Err() != nil {
-			reason = "cancelled"
+			reason = bridgeadapter.ApprovalReasonCancelled
 		}
 		oc.approvalFlow.FinishResolved(approvalID, bridgeadapter.ApprovalDecisionPayload{
 			ApprovalID: approvalID,
@@ -199,7 +199,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 	resolution, _, ok := oc.waitToolApproval(ctx, approvalID)
 	decision := resolution.Decision
 	if !ok {
-		decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: "timeout"}
+		decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: bridgeadapter.ApprovalReasonTimeout}
 	}
 	oc.uiEmitter(state).EmitUIToolApprovalResponse(ctx, portal, approvalID, tool.callID, approvalAllowed(decision), decision.Reason)
 	streamui.RecordApprovalResponse(&state.ui, approvalID, tool.callID, approvalAllowed(decision), decision.Reason)

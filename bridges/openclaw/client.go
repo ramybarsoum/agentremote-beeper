@@ -829,30 +829,6 @@ func (oc *OpenClawClient) sendSystemNoticeViaPortal(ctx context.Context, portal 
 	})
 }
 
-func (oc *OpenClawClient) sendApprovalRequestFallbackEvent(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	approvalID, toolCallID, toolName, turnID string,
-	presentation bridgeadapter.ApprovalPromptPresentation,
-	expiresAt time.Time,
-) {
-	if oc.manager == nil || oc.manager.approvalFlow == nil {
-		return
-	}
-	oc.manager.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
-		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
-			ApprovalID:   approvalID,
-			ToolCallID:   toolCallID,
-			ToolName:     toolName,
-			TurnID:       turnID,
-			Presentation: presentation,
-			ExpiresAt:    expiresAt,
-		},
-		RoomID:    portal.MXID,
-		OwnerMXID: oc.UserLogin.UserMXID,
-	})
-}
-
 func (oc *OpenClawClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
 	return bridgeadapter.DownloadAndEncodeMedia(ctx, oc.UserLogin, mediaURL, file, maxMB)
 }

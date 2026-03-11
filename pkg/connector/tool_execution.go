@@ -12,6 +12,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 // activeToolCall tracks a tool call that's in progress
@@ -49,13 +50,8 @@ func parseToolInputPayload(argsJSON string) map[string]any {
 	return map[string]any{"value": parsed}
 }
 
-func toolDisplayTitle(toolName string) string {
-	toolName = strings.TrimSpace(toolName)
-	if t := tools.GetTool(toolName); t != nil && t.Annotations != nil && t.Annotations.Title != "" {
-		return t.Annotations.Title
-	}
-	return toolName
-}
+// toolDisplayTitle is an alias for streamui.ToolDisplayTitle.
+var toolDisplayTitle = streamui.ToolDisplayTitle
 
 // sendToolCallEvent intentionally does not emit a separate timeline projection.
 // The canonical transport is UIMessage plus stream events; callers still expect an

@@ -33,5 +33,22 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 
 	// Emit stream event for real-time UI
 	oc.uiEmitter(state).EmitUIToolApprovalRequest(ctx, portal, approvalID, toolCallID)
-	oc.sendApprovalRequestFallbackEvent(ctx, portal, state, approvalID, toolCallID, toolName, presentation, targetEventID, ttlSeconds)
+
+	turnID := ""
+	if state != nil {
+		turnID = state.turnID
+	}
+	oc.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
+			ApprovalID:     approvalID,
+			ToolCallID:     toolCallID,
+			ToolName:       toolName,
+			TurnID:         turnID,
+			Presentation:   presentation,
+			ReplyToEventID: targetEventID,
+			ExpiresAt:      bridgeadapter.ComputeApprovalExpiry(ttlSeconds),
+		},
+		RoomID:    portal.MXID,
+		OwnerMXID: oc.UserLogin.UserMXID,
+	})
 }

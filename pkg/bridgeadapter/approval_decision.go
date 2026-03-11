@@ -5,6 +5,17 @@ import (
 	"strings"
 )
 
+// Approval decision reason constants.
+const (
+	ApprovalReasonAllowOnce     = "allow_once"
+	ApprovalReasonAllowAlways   = "allow_always"
+	ApprovalReasonDeny          = "deny"
+	ApprovalReasonTimeout       = "timeout"
+	ApprovalReasonExpired       = "expired"
+	ApprovalReasonCancelled     = "cancelled"
+	ApprovalReasonDeliveryError = "delivery_error"
+)
+
 // ApprovalDecisionPayload is the standardized decision type for all approval flows.
 type ApprovalDecisionPayload struct {
 	ApprovalID string

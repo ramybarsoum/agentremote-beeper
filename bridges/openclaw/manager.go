@@ -1014,16 +1014,18 @@ func (m *openClawManager) handleApprovalRequest(ctx context.Context, payload gat
 		}
 		turnID = strings.TrimSpace(data.TurnID)
 	}
-	m.client.sendApprovalRequestFallbackEvent(
-		ctx,
-		portal,
-		payload.ID,
-		toolCallID,
-		toolName,
-		turnID,
-		presentation,
-		time.UnixMilli(payload.ExpiresAtMs),
-	)
+	m.approvalFlow.SendPrompt(ctx, portal, bridgeadapter.SendPromptParams{
+		ApprovalPromptMessageParams: bridgeadapter.ApprovalPromptMessageParams{
+			ApprovalID:   payload.ID,
+			ToolCallID:   toolCallID,
+			ToolName:     toolName,
+			TurnID:       turnID,
+			Presentation: presentation,
+			ExpiresAt:    time.UnixMilli(payload.ExpiresAtMs),
+		},
+		RoomID:    portal.MXID,
+		OwnerMXID: m.client.UserLogin.UserMXID,
+	})
 }
 
 func (m *openClawManager) handleApprovalResolved(ctx context.Context, payload gatewayApprovalResolvedEvent) {
