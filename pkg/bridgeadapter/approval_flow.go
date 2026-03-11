@@ -241,6 +241,13 @@ func (f *ApprovalFlow[D]) Wait(ctx context.Context, approvalID string) (Approval
 	}
 }
 
+// SendPromptParams holds the parameters for sending an approval prompt.
+type SendPromptParams struct {
+	ApprovalPromptMessageParams
+	RoomID    id.RoomID
+	OwnerMXID id.UserID
+}
+
 // ---------------------------------------------------------------------------
 // Prompt sending
 // ---------------------------------------------------------------------------
