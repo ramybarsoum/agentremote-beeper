@@ -54,7 +54,7 @@ func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2
 	oc.sendSystemNoticeViaPortal(ctx, portal, msg)
 }
 
-func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID, targetEventID string, part map[string]any) {
+func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string, part map[string]any) {
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return
 	}
@@ -73,16 +73,12 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	state := oc.streamStates[turnID]
 	if state == nil {
 		state = &openCodeStreamState{
-			portal:        portal,
-			turnID:        turnID,
-			agentID:       strings.TrimSpace(agentID),
-			targetEventID: strings.TrimSpace(targetEventID),
+			portal:  portal,
+			turnID:  turnID,
+			agentID: strings.TrimSpace(agentID),
 		}
 		state.ui.TurnID = turnID
 		oc.streamStates[turnID] = state
-	}
-	if state.targetEventID == "" && strings.TrimSpace(targetEventID) != "" {
-		state.targetEventID = strings.TrimSpace(targetEventID)
 	}
 	if state.portal == nil {
 		state.portal = portal
@@ -93,7 +89,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
 		oc.applyStreamMessageMetadata(state, metadata)
 	}
-	needPlaceholder := state.initialEventID == ""
+	needPlaceholder := state.networkMessageID == ""
 	partType, _ := part["type"].(string)
 	switch strings.TrimSpace(partType) {
 	case "text-delta":
@@ -156,21 +152,24 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 				},
 			}},
 		}
+		eventTS := openCodeStreamEventTimestamp(state, false)
 		result := oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteMessage{
-			Portal:    portal.PortalKey,
-			ID:        msgID,
-			Sender:    sender,
-			Timestamp: time.Now(),
-			LogKey:    "opencode_msg_id",
-			PreBuilt:  converted,
+			Portal:      portal.PortalKey,
+			ID:          msgID,
+			Sender:      sender,
+			Timestamp:   eventTS,
+			StreamOrder: openCodeNextStreamOrder(state, eventTS),
+			LogKey:      "opencode_msg_id",
+			PreBuilt:    converted,
 		})
-		if result.Success && result.EventID != "" {
+		if result.Success {
 			oc.StreamMu.Lock()
 			st := oc.streamStates[turnID]
-			if st != nil && st.initialEventID == "" {
-				st.initialEventID = result.EventID
+			if st != nil && st.networkMessageID == "" {
 				st.networkMessageID = msgID
-				st.targetEventID = result.EventID.String()
+			}
+			if st != nil && st.initialEventID == "" && result.EventID != "" {
+				st.initialEventID = result.EventID
 			}
 			oc.StreamMu.Unlock()
 		}
@@ -184,9 +183,8 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	state = oc.streamStates[turnID]
 	if state == nil {
 		state = &openCodeStreamState{
-			turnID:        turnID,
-			agentID:       strings.TrimSpace(agentID),
-			targetEventID: strings.TrimSpace(targetEventID),
+			turnID:  turnID,
+			agentID: strings.TrimSpace(agentID),
 		}
 		oc.streamStates[turnID] = state
 	}
@@ -195,14 +193,17 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		session = streamtransport.NewStreamSession(streamtransport.StreamSessionParams{
 			TurnID:  turnID,
 			AgentID: state.agentID,
-			GetTargetEventID: func() string {
+			GetStreamTarget: func() streamtransport.StreamTarget {
 				oc.StreamMu.Lock()
 				defer oc.StreamMu.Unlock()
 				st := oc.streamStates[turnID]
 				if st == nil {
-					return ""
+					return streamtransport.StreamTarget{}
 				}
-				return st.targetEventID
+				return streamtransport.StreamTarget{NetworkMessageID: st.networkMessageID}
+			},
+			ResolveTargetEventID: func(callCtx context.Context, target streamtransport.StreamTarget) (id.EventID, error) {
+				return oc.resolveStreamTargetEventID(callCtx, portal, turnID, target)
 			},
 			GetRoomID: func() id.RoomID {
 				return portal.MXID
@@ -229,11 +230,15 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 				var visibleBody, fallbackBody string
 				var netMsgID networkid.MessageID
 				var uiMessage map[string]any
+				var eventTS time.Time
+				var streamOrder int64
 				if st != nil {
 					visibleBody = st.visible.String()
 					fallbackBody = st.accumulated.String()
 					netMsgID = st.networkMessageID
 					uiMessage = oc.currentCanonicalUIMessage(st)
+					eventTS = openCodeStreamEventTimestamp(st, true)
+					streamOrder = openCodeNextStreamOrder(st, eventTS)
 				}
 				oc.StreamMu.Unlock()
 				content := streamtransport.BuildDebouncedEditContent(streamtransport.DebouncedEditParams{
@@ -256,7 +261,8 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 					Portal:        portal.PortalKey,
 					Sender:        sender,
 					TargetMessage: netMsgID,
-					Timestamp:     time.Now(),
+					Timestamp:     eventTS,
+					StreamOrder:   streamOrder,
 					LogKey:        "opencode_edit_target",
 					PreBuilt: &bridgev2.ConvertedEdit{
 						ModifiedParts: []*bridgev2.ConvertedEditPart{{
@@ -284,6 +290,35 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	}
 	oc.StreamMu.Unlock()
 	session.EmitPart(ctx, part)
+}
+
+func (oc *OpenCodeClient) resolveStreamTargetEventID(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	turnID string,
+	target streamtransport.StreamTarget,
+) (id.EventID, error) {
+	oc.StreamMu.Lock()
+	state := oc.streamStates[turnID]
+	if state != nil && state.initialEventID != "" {
+		eventID := state.initialEventID
+		oc.StreamMu.Unlock()
+		return eventID, nil
+	}
+	oc.StreamMu.Unlock()
+
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || portal == nil {
+		return "", nil
+	}
+	eventID, err := streamtransport.ResolveTargetEventIDFromDB(ctx, oc.UserLogin.Bridge, portal.Receiver, target)
+	if err == nil && eventID != "" {
+		oc.StreamMu.Lock()
+		if state := oc.streamStates[turnID]; state != nil && state.initialEventID == "" {
+			state.initialEventID = eventID
+		}
+		oc.StreamMu.Unlock()
+	}
+	return eventID, err
 }
 
 func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {

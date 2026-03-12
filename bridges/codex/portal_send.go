@@ -3,6 +3,7 @@ package codex
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -18,14 +19,26 @@ func (cc *CodexClient) sendViaPortal(
 	converted *bridgev2.ConvertedMessage,
 	msgID networkid.MessageID,
 ) (id.EventID, networkid.MessageID, error) {
+	return cc.sendViaPortalWithOrdering(portal, converted, msgID, time.Time{}, 0)
+}
+
+func (cc *CodexClient) sendViaPortalWithOrdering(
+	portal *bridgev2.Portal,
+	converted *bridgev2.ConvertedMessage,
+	msgID networkid.MessageID,
+	timestamp time.Time,
+	streamOrder int64,
+) (id.EventID, networkid.MessageID, error) {
 	return bridgeadapter.SendViaPortal(bridgeadapter.SendViaPortalParams{
-		Login:     cc.UserLogin,
-		Portal:    portal,
-		Sender:    cc.senderForPortal(),
-		IDPrefix:  "codex",
-		LogKey:    "codex_msg_id",
-		MsgID:     msgID,
-		Converted: converted,
+		Login:       cc.UserLogin,
+		Portal:      portal,
+		Sender:      cc.senderForPortal(),
+		IDPrefix:    "codex",
+		LogKey:      "codex_msg_id",
+		MsgID:       msgID,
+		Timestamp:   timestamp,
+		StreamOrder: streamOrder,
+		Converted:   converted,
 	})
 }
 

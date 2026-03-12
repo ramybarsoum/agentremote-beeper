@@ -80,7 +80,22 @@ type streamingState struct {
 }
 
 func (s *streamingState) hasInitialMessageTarget() bool {
-	return s != nil && (s.initialEventID != "" || s.networkMessageID != "")
+	return s.hasEditTarget()
+}
+
+func (s *streamingState) streamTarget() streamtransport.StreamTarget {
+	if s == nil {
+		return streamtransport.StreamTarget{}
+	}
+	return streamtransport.StreamTarget{NetworkMessageID: s.networkMessageID}
+}
+
+func (s *streamingState) hasEditTarget() bool {
+	return s != nil && s.streamTarget().HasEditTarget()
+}
+
+func (s *streamingState) hasEphemeralTarget() bool {
+	return s != nil && s.initialEventID != ""
 }
 
 type mcpApprovalRequest struct {

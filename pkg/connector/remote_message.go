@@ -22,12 +22,13 @@ var (
 
 // OpenAIRemoteMessage represents a GPT answer that should be bridged to Matrix.
 type OpenAIRemoteMessage struct {
-	PortalKey networkid.PortalKey
-	ID        networkid.MessageID
-	Sender    bridgev2.EventSender
-	Content   string
-	Timestamp time.Time
-	Metadata  *MessageMetadata
+	PortalKey   networkid.PortalKey
+	ID          networkid.MessageID
+	Sender      bridgev2.EventSender
+	Content     string
+	Timestamp   time.Time
+	StreamOrder int64
+	Metadata    *MessageMetadata
 
 	FormattedContent string
 	ReplyToEventID   id.EventID
@@ -63,6 +64,9 @@ func (m *OpenAIRemoteMessage) GetTimestamp() time.Time {
 }
 
 func (m *OpenAIRemoteMessage) GetStreamOrder() int64 {
+	if m.StreamOrder != 0 {
+		return m.StreamOrder
+	}
 	return m.GetTimestamp().UnixMilli()
 }
 

@@ -44,10 +44,11 @@ type StreamSessionParams struct {
 	TurnID  string
 	AgentID string
 
-	GetTargetEventID func() string
-	GetRoomID        func() id.RoomID
-	GetSuppressSend  func() bool
-	NextSeq          func() int
+	GetStreamTarget      func() StreamTarget
+	ResolveTargetEventID TargetEventResolver
+	GetRoomID            func() id.RoomID
+	GetSuppressSend      func() bool
+	NextSeq              func() int
 
 	RuntimeFallbackFlag *atomic.Bool
 	GetEphemeralSender  func(ctx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool)
@@ -79,6 +80,10 @@ type StreamSession struct {
 	// Lazy worker start: goroutine and channels are only allocated when needed.
 	ensureWorker  func() // lazily starts the debounce worker goroutine
 	workerStarted atomic.Bool
+
+	targetMu           sync.Mutex
+	resolvedTargetID   id.EventID
+	targetResolutionOK bool
 }
 
 func NewStreamSession(params StreamSessionParams) *StreamSession {
@@ -204,15 +209,35 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 		return
 	}
 
+	target := StreamTarget{}
+	if s.params.GetStreamTarget != nil {
+		target = s.params.GetStreamTarget()
+	}
+	if !target.HasEditTarget() {
+		s.logWarn("missing_stream_target", nil)
+		return
+	}
+	targetEventID, err := s.resolveTargetEventID(ctx, target)
+	if err != nil {
+		s.switchToDebounced(ctx, "target_event_lookup_failed", err)
+		if debounceEligible {
+			s.enqueueDebounced(forceDebounced)
+		}
+		return
+	}
+	if targetEventID == "" {
+		s.switchToDebounced(ctx, "missing_target_event_id", nil)
+		if debounceEligible {
+			s.enqueueDebounced(forceDebounced)
+		}
+		return
+	}
+
 	// Build the envelope once and share it between hook and ephemeral paths.
 	seq := s.params.NextSeq()
-	targetEventID := ""
-	if s.params.GetTargetEventID != nil {
-		targetEventID = strings.TrimSpace(s.params.GetTargetEventID())
-	}
 	content, err := matrixevents.BuildStreamEventEnvelope(turnID, seq, part, matrixevents.StreamEventOpts{
-		TargetEventID: targetEventID,
-		AgentID:       strings.TrimSpace(s.params.AgentID),
+		RelatesToEventID: targetEventID,
+		AgentID:          strings.TrimSpace(s.params.AgentID),
 	})
 	if err != nil {
 		if s.params.Logger != nil {
@@ -244,6 +269,35 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 	}
 	eventContent := &event.Content{Raw: content}
 	_ = s.sendEphemeralWithRetry(ephemeralSender, eventContent, txnID, partType)
+}
+
+func (s *StreamSession) resolveTargetEventID(ctx context.Context, target StreamTarget) (string, error) {
+	if s == nil {
+		return "", nil
+	}
+	s.targetMu.Lock()
+	if s.targetResolutionOK {
+		resolved := s.resolvedTargetID.String()
+		s.targetMu.Unlock()
+		return resolved, nil
+	}
+	s.targetMu.Unlock()
+
+	if s.params.ResolveTargetEventID == nil {
+		return "", nil
+	}
+	resolved, err := s.params.ResolveTargetEventID(ctx, target)
+	if err != nil || resolved == "" {
+		return resolved.String(), err
+	}
+
+	s.targetMu.Lock()
+	if !s.targetResolutionOK {
+		s.resolvedTargetID = resolved
+		s.targetResolutionOK = true
+	}
+	s.targetMu.Unlock()
+	return resolved.String(), nil
 }
 
 func (s *StreamSession) sendEphemeralWithRetry(ephemeralSender bridgev2.EphemeralSendingMatrixAPI, eventContent *event.Content, txnID string, partType string) bool {

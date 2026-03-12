@@ -32,7 +32,9 @@ type RemoteMessage struct {
 	ID        networkid.MessageID
 	Sender    bridgev2.EventSender
 	Timestamp time.Time
-	PreBuilt  *bridgev2.ConvertedMessage
+	// StreamOrder overrides timestamp-based ordering when the caller has a stable upstream order.
+	StreamOrder int64
+	PreBuilt    *bridgev2.ConvertedMessage
 
 	// LogKey is the zerolog field name used in AddLogContext (e.g. "ai_msg_id", "codex_msg_id").
 	LogKey string
@@ -66,6 +68,9 @@ func (m *RemoteMessage) GetTimestamp() time.Time {
 }
 
 func (m *RemoteMessage) GetStreamOrder() int64 {
+	if m.StreamOrder != 0 {
+		return m.StreamOrder
+	}
 	return m.GetTimestamp().UnixMilli()
 }
 
@@ -89,7 +94,9 @@ type RemoteEdit struct {
 	Sender        bridgev2.EventSender
 	TargetMessage networkid.MessageID
 	Timestamp     time.Time
-	PreBuilt      *bridgev2.ConvertedEdit
+	// StreamOrder overrides timestamp-based ordering when the caller has a stable upstream order.
+	StreamOrder int64
+	PreBuilt    *bridgev2.ConvertedEdit
 
 	// LogKey is the zerolog field name used in AddLogContext (e.g. "ai_edit_target", "codex_edit_target").
 	LogKey string
@@ -123,6 +130,9 @@ func (e *RemoteEdit) GetTimestamp() time.Time {
 }
 
 func (e *RemoteEdit) GetStreamOrder() int64 {
+	if e.StreamOrder != 0 {
+		return e.StreamOrder
+	}
 	return e.GetTimestamp().UnixMilli()
 }
 

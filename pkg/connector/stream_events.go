@@ -19,8 +19,11 @@ func (oc *AIClient) ensureStreamSession(ctx context.Context, portal *bridgev2.Po
 	state.session = streamtransport.NewStreamSession(streamtransport.StreamSessionParams{
 		TurnID:  state.turnID,
 		AgentID: state.agentID,
-		GetTargetEventID: func() string {
-			return state.initialEventID.String()
+		GetStreamTarget: func() streamtransport.StreamTarget {
+			return state.streamTarget()
+		},
+		ResolveTargetEventID: func(callCtx context.Context, target streamtransport.StreamTarget) (id.EventID, error) {
+			return oc.resolveStreamTargetEventID(callCtx, portal, state, target)
 		},
 		GetRoomID: func() id.RoomID {
 			return portal.MXID
@@ -71,4 +74,23 @@ func (oc *AIClient) emitStreamEvent(
 		func() *streamtransport.StreamSession { return oc.ensureStreamSession(ctx, portal, state) },
 		part,
 	)
+}
+
+func (oc *AIClient) resolveStreamTargetEventID(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	target streamtransport.StreamTarget,
+) (id.EventID, error) {
+	if state != nil && state.initialEventID != "" {
+		return state.initialEventID, nil
+	}
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || portal == nil {
+		return "", nil
+	}
+	eventID, err := streamtransport.ResolveTargetEventIDFromDB(ctx, oc.UserLogin.Bridge, portal.Receiver, target)
+	if err == nil && eventID != "" && state != nil {
+		state.initialEventID = eventID
+	}
+	return eventID, err
 }

@@ -7,8 +7,17 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 )
+
+func newHookableStreamingState(turnID string) *streamingState {
+	return &streamingState{
+		turnID:           turnID,
+		initialEventID:   id.EventID("$event"),
+		networkMessageID: networkid.MessageID("codex:test"),
+	}
+}
 
 func TestCodex_Mapping_AgentMessageDelta_EmitsTextStartThenDelta(t *testing.T) {
 	cc := &CodexClient{}
@@ -23,7 +32,7 @@ func TestCodex_Mapping_AgentMessageDelta_EmitsTextStartThenDelta(t *testing.T) {
 	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -57,7 +66,7 @@ func TestCodex_Mapping_ReasoningSummaryDelta_EmitsReasoningStartThenDelta(t *tes
 	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -90,7 +99,7 @@ func TestCodex_Mapping_ItemStartedCommandExecution_EmitsToolInputStartAndAvailab
 	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -134,7 +143,7 @@ func TestCodex_Mapping_CommandOutputDelta_IsBuffered(t *testing.T) {
 	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -180,7 +189,7 @@ func TestCodex_Mapping_TurnDiffUpdated_EmitsToolOutput(t *testing.T) {
 	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -216,7 +225,7 @@ func TestCodex_Mapping_ContextCompaction_EmitsToolParts(t *testing.T) {
 	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 
@@ -256,7 +265,7 @@ func TestCodex_Mapping_ReviewMode_EmitsReviewToolOutput(t *testing.T) {
 	}
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	state := &streamingState{turnID: "turn_1"}
+	state := newHookableStreamingState("turn_1")
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 

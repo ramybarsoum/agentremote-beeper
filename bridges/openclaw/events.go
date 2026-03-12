@@ -162,11 +162,12 @@ func (evt *OpenClawSessionResyncEvent) GetChatInfo(ctx context.Context, portal *
 }
 
 type OpenClawRemoteMessage struct {
-	portal    networkid.PortalKey
-	id        networkid.MessageID
-	sender    bridgev2.EventSender
-	timestamp time.Time
-	preBuilt  *bridgev2.ConvertedMessage
+	portal      networkid.PortalKey
+	id          networkid.MessageID
+	sender      bridgev2.EventSender
+	timestamp   time.Time
+	streamOrder int64
+	preBuilt    *bridgev2.ConvertedMessage
 }
 
 var (
@@ -191,6 +192,9 @@ func (m *OpenClawRemoteMessage) GetTimestamp() time.Time {
 	return m.timestamp
 }
 func (m *OpenClawRemoteMessage) GetStreamOrder() int64 {
+	if m.streamOrder != 0 {
+		return m.streamOrder
+	}
 	return m.GetTimestamp().UnixMilli()
 }
 func (m *OpenClawRemoteMessage) ConvertMessage(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI) (*bridgev2.ConvertedMessage, error) {
@@ -202,6 +206,7 @@ type OpenClawRemoteEdit struct {
 	sender        bridgev2.EventSender
 	targetMessage networkid.MessageID
 	timestamp     time.Time
+	streamOrder   int64
 	preBuilt      *bridgev2.ConvertedEdit
 }
 
@@ -227,6 +232,9 @@ func (e *OpenClawRemoteEdit) GetTimestamp() time.Time {
 	return e.timestamp
 }
 func (e *OpenClawRemoteEdit) GetStreamOrder() int64 {
+	if e.streamOrder != 0 {
+		return e.streamOrder
+	}
 	return e.GetTimestamp().UnixMilli()
 }
 func (e *OpenClawRemoteEdit) ConvertEdit(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, existing []*database.Message) (*bridgev2.ConvertedEdit, error) {

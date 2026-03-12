@@ -160,7 +160,10 @@ type SendViaPortalParams struct {
 	IDPrefix  string // e.g. "ai", "codex", "opencode"
 	LogKey    string // zerolog field name, e.g. "ai_msg_id"
 	MsgID     networkid.MessageID
-	Converted *bridgev2.ConvertedMessage
+	Timestamp time.Time
+	// StreamOrder is optional explicit ordering for events that share a timestamp.
+	StreamOrder int64
+	Converted   *bridgev2.ConvertedMessage
 }
 
 // SendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
@@ -176,12 +179,13 @@ func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, erro
 		p.MsgID = NewMessageID(p.IDPrefix)
 	}
 	evt := &RemoteMessage{
-		Portal:    p.Portal.PortalKey,
-		ID:        p.MsgID,
-		Sender:    p.Sender,
-		Timestamp: time.Now(),
-		LogKey:    p.LogKey,
-		PreBuilt:  p.Converted,
+		Portal:      p.Portal.PortalKey,
+		ID:          p.MsgID,
+		Sender:      p.Sender,
+		Timestamp:   p.Timestamp,
+		StreamOrder: p.StreamOrder,
+		LogKey:      p.LogKey,
+		PreBuilt:    p.Converted,
 	}
 	result := p.Login.QueueRemoteEvent(evt)
 	if !result.Success {

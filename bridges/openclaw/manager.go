@@ -1265,11 +1265,12 @@ func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bri
 		return
 	}
 	m.client.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        messageID,
-		sender:    sender,
-		timestamp: eventTS,
-		preBuilt:  converted,
+		portal:      portal.PortalKey,
+		id:          messageID,
+		sender:      sender,
+		timestamp:   eventTS,
+		streamOrder: payload.Seq,
+		preBuilt:    converted,
 	})
 	if text := strings.TrimSpace(extractMessageText(payload.Message)); text != "" {
 		meta.OpenClawPreviewSnippet = text

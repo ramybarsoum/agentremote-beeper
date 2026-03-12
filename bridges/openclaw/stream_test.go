@@ -33,9 +33,6 @@ func TestApplyStreamPlaceholderResultWithoutEventIDFallsBackToDebounced(t *testi
 	if state.initialEventID != "" {
 		t.Fatalf("expected empty initial event id, got %q", state.initialEventID)
 	}
-	if state.targetEventID != "" {
-		t.Fatalf("expected empty target event id, got %q", state.targetEventID)
-	}
 	if !state.streamFallbackToDebounced.Load() {
 		t.Fatal("expected stream to fall back to debounced edits without an event id")
 	}
@@ -67,9 +64,6 @@ func TestApplyStreamPlaceholderResultWithEventIDKeepsEphemeralStreaming(t *testi
 	}
 	if state.initialEventID != eventID {
 		t.Fatalf("expected initial event id %q, got %q", eventID, state.initialEventID)
-	}
-	if state.targetEventID != eventID.String() {
-		t.Fatalf("expected target event id %q, got %q", eventID.String(), state.targetEventID)
 	}
 	if state.streamFallbackToDebounced.Load() {
 		t.Fatal("expected ephemeral streaming to remain enabled")

@@ -154,13 +154,16 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		session = streamtransport.NewStreamSession(streamtransport.StreamSessionParams{
 			TurnID:  turnID,
 			AgentID: state.agentID,
-			GetTargetEventID: func() string {
+			GetStreamTarget: func() streamtransport.StreamTarget {
 				oc.StreamMu.Lock()
 				defer oc.StreamMu.Unlock()
 				if current := oc.streamStates[turnID]; current != nil {
-					return current.targetEventID
+					return streamtransport.StreamTarget{NetworkMessageID: current.networkMessageID}
 				}
-				return ""
+				return streamtransport.StreamTarget{}
+			},
+			ResolveTargetEventID: func(callCtx context.Context, target streamtransport.StreamTarget) (id.EventID, error) {
+				return oc.resolveStreamTargetEventID(callCtx, portal, turnID, target)
 			},
 			GetRoomID: func() id.RoomID {
 				return portal.MXID
@@ -367,13 +370,41 @@ func (oc *OpenClawClient) applyStreamPlaceholderResult(turnID string, msgID netw
 	state.networkMessageID = msgID
 	if result.EventID != "" {
 		state.initialEventID = result.EventID
-		state.targetEventID = result.EventID.String()
 		return
 	}
 
 	// Without a concrete target event ID, ephemeral stream events cannot be
 	// correlated to the placeholder message, so stay on edit-based streaming.
 	state.streamFallbackToDebounced.Store(true)
+}
+
+func (oc *OpenClawClient) resolveStreamTargetEventID(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	turnID string,
+	target streamtransport.StreamTarget,
+) (id.EventID, error) {
+	oc.StreamMu.Lock()
+	state := oc.streamStates[turnID]
+	if state != nil && state.initialEventID != "" {
+		eventID := state.initialEventID
+		oc.StreamMu.Unlock()
+		return eventID, nil
+	}
+	oc.StreamMu.Unlock()
+
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || portal == nil {
+		return "", nil
+	}
+	eventID, err := streamtransport.ResolveTargetEventIDFromDB(ctx, oc.UserLogin.Bridge, portal.Receiver, target)
+	if err == nil && eventID != "" {
+		oc.StreamMu.Lock()
+		if state := oc.streamStates[turnID]; state != nil && state.initialEventID == "" {
+			state.initialEventID = eventID
+		}
+		oc.StreamMu.Unlock()
+	}
+	return eventID, err
 }
 
 func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState, metadata map[string]any) {

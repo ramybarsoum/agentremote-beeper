@@ -9,6 +9,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/bridges/codex/codexrpc"
@@ -60,7 +61,7 @@ func TestCodex_CommandApproval_RequestBlocksUntilApproved(t *testing.T) {
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
 	meta := &PortalMetadata{}
-	state := &streamingState{turnID: "turn_local"}
+	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event"), networkMessageID: networkid.MessageID("codex:test")}
 	cc.activeTurns = map[string]*codexActiveTurn{
 		codexTurnKey("thr_1", "turn_1"): {
 			portal:   portal,
@@ -171,7 +172,7 @@ func TestCodex_CommandApproval_DenyEmitsResponseThenOutputDenied(t *testing.T) {
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
 	meta := &PortalMetadata{}
-	state := &streamingState{turnID: "turn_local"}
+	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event"), networkMessageID: networkid.MessageID("codex:test")}
 	cc.activeTurns = map[string]*codexActiveTurn{
 		codexTurnKey("thr_1", "turn_1"): {
 			portal:   portal,
@@ -251,7 +252,7 @@ func TestCodex_CommandApproval_AutoApproveInFullElevated(t *testing.T) {
 
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
 	meta := &PortalMetadata{ElevatedLevel: "full"}
-	state := &streamingState{turnID: "turn_local"}
+	state := &streamingState{turnID: "turn_local", initialEventID: id.EventID("$event"), networkMessageID: networkid.MessageID("codex:test")}
 	cc.activeTurns = map[string]*codexActiveTurn{
 		codexTurnKey("thr_1", "turn_1"): {
 			portal:   portal,

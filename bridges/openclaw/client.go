@@ -96,7 +96,6 @@ type openClawStreamState struct {
 	sessionKey                string
 	messageTS                 time.Time
 	placeholderPending        bool
-	targetEventID             string
 	initialEventID            id.EventID
 	networkMessageID          networkid.MessageID
 	sequenceNum               int

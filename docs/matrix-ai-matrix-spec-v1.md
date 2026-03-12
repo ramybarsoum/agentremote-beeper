@@ -65,7 +65,6 @@ Reference implementation in this repo (ai-bridge):
 ## Terminology
 - `turn_id`: Unique ID for a single assistant response "turn".
 - `seq`: Per-turn monotonic sequence number for stream events.
-- `target_event`: Matrix event ID that a stream relates to (typically the placeholder timeline event).
 - `call_id` / `toolCallId`: Tool invocation identifier.
 - `timeline`: persisted Matrix events.
 - `ephemeral`: non-persisted events (dropped by servers/clients that don't support them).
@@ -144,9 +143,8 @@ Content:
 - `turn_id: string` (REQUIRED)
 - `seq: integer` (REQUIRED, starts at 1, strictly increasing per `turn_id`)
 - `part: UIMessageChunk` (REQUIRED)
-- `target_event?: string` (RECOMMENDED)
+- `m.relates_to: { rel_type: "m.reference", event_id: string }` (REQUIRED)
 - `agent_id?: string` (OPTIONAL)
-- `m.relates_to?: { rel_type: "m.reference", event_id: string }` (RECOMMENDED when `target_event` is present)
 
 ### SSE Mapping
 AI SDK UI streams emit SSE frames:
@@ -211,11 +209,15 @@ Per turn:
 - `seq` MUST be strictly increasing.
 - Duplicate/stale events (`seq <= last_applied_seq`) MUST be ignored.
 - Out-of-order events SHOULD be buffered briefly and applied in `seq` order.
+- Producers MUST NOT emit ephemeral stream events until the canonical assistant timeline message has a concrete Matrix event ID.
+- If the Matrix event ID is unavailable but the bridge-side `networkid.MessageID` exists, producers MAY continue with debounced/final timeline edits only.
+- If neither a bridge-side message ID nor a Matrix event ID exists, producers MUST buffer or fail the turn and MUST NOT emit stream events or edits.
 
-Recommended lifecycle:
+Required lifecycle:
 1. Send initial placeholder `m.room.message` with seed `com.beeper.ai`.
-2. Emit `com.beeper.ai.stream_event` chunks (monotonic `seq`).
-3. Emit final timeline edit (`m.replace`) containing final fallback text + full final `com.beeper.ai`.
+2. Resolve/store the placeholder's Matrix event ID.
+3. Emit `com.beeper.ai.stream_event` chunks (monotonic `seq`) only after `m.relates_to.event_id` can reference that message.
+4. Emit final timeline edit (`m.replace`) containing final fallback text + full final `com.beeper.ai`.
 
 Terminal chunks:
 - The stream SHOULD end with one of: `finish`, `abort`, `error`.
@@ -242,7 +244,6 @@ sequenceDiagram
 {
   "turn_id": "turn_123",
   "seq": 7,
-  "target_event": "$initial_event",
   "m.relates_to": { "rel_type": "m.reference", "event_id": "$initial_event" },
   "part": { "type": "text-delta", "id": "text-turn_123", "delta": "hello" }
 }
@@ -408,7 +409,7 @@ Examples:
 <a id="impl-notes"></a>
 ## Implementation Notes
 - Desktop consumes `com.beeper.ai.stream_event.part` as an AI SDK `UIMessageChunk` and reconstructs a live `UIMessage`.
-- Matrix envelope concerns (`turn_id`, `seq`, `target_event`) remain bridge/client responsibilities.
+- Matrix envelope concerns (`turn_id`, `seq`, `m.relates_to`) remain bridge/client responsibilities.
 - Consumers should prefer AI SDK-compatible chunk semantics (metadata merge, tool partial JSON handling, step boundaries).
 
 <a id="forward-compat"></a>

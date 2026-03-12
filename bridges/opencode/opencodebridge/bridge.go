@@ -22,7 +22,7 @@ type Host interface {
 	Login() *bridgev2.UserLogin
 	BackgroundContext(ctx context.Context) context.Context
 	SendSystemNotice(ctx context.Context, portal *bridgev2.Portal, msg string)
-	EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID, targetEventID string, part map[string]any)
+	EmitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string, part map[string]any)
 	FinishOpenCodeStream(turnID string)
 	DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error)
 	SetRoomName(ctx context.Context, portal *bridgev2.Portal, name string) error
@@ -140,7 +140,7 @@ func (b *Bridge) emitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.P
 	if b == nil || b.host == nil {
 		return
 	}
-	b.host.EmitOpenCodeStreamEvent(ctx, portal, turnID, agentID, "", part)
+	b.host.EmitOpenCodeStreamEvent(ctx, portal, turnID, agentID, part)
 }
 
 func (b *Bridge) finishOpenCodeStream(turnID string) {

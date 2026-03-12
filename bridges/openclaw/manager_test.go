@@ -91,3 +91,18 @@ func TestShouldMirrorLatestUserMessageFromHistory(t *testing.T) {
 		}
 	})
 }
+
+func TestOpenClawRemoteMessageGetStreamOrderUsesGatewaySeq(t *testing.T) {
+	ts := time.Date(2026, time.March, 12, 12, 0, 0, 0, time.UTC)
+	first := &OpenClawRemoteMessage{timestamp: ts, streamOrder: 10}
+	second := &OpenClawRemoteMessage{timestamp: ts, streamOrder: 11}
+	if first.GetStreamOrder() != 10 {
+		t.Fatalf("expected first stream order 10, got %d", first.GetStreamOrder())
+	}
+	if second.GetStreamOrder() != 11 {
+		t.Fatalf("expected second stream order 11, got %d", second.GetStreamOrder())
+	}
+	if second.GetStreamOrder() <= first.GetStreamOrder() {
+		t.Fatalf("expected gateway seq ordering to be strictly increasing")
+	}
+}

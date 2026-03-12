@@ -72,8 +72,8 @@ const (
 )
 
 type StreamEventOpts struct {
-	TargetEventID string
-	AgentID       string
+	RelatesToEventID string
+	AgentID          string
 }
 
 // BuildStreamEventEnvelope builds the stable envelope for com.beeper.ai.stream_event payloads.
@@ -95,12 +95,13 @@ func BuildStreamEventEnvelope(turnID string, seq int, part map[string]any, opts 
 		"part":    part,
 	}
 
-	if target := strings.TrimSpace(opts.TargetEventID); target != "" {
-		content["target_event"] = target
-		content["m.relates_to"] = map[string]any{
-			"rel_type": RelReference,
-			"event_id": target,
-		}
+	target := strings.TrimSpace(opts.RelatesToEventID)
+	if target == "" {
+		return nil, fmt.Errorf("stream event envelope: missing m.relates_to event_id")
+	}
+	content["m.relates_to"] = map[string]any{
+		"rel_type": RelReference,
+		"event_id": target,
 	}
 	if agentID := strings.TrimSpace(opts.AgentID); agentID != "" {
 		content["agent_id"] = agentID

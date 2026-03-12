@@ -275,7 +275,6 @@ func (cc *CodexClient) LogoutRemote(ctx context.Context) {
 	})
 }
 
-
 func (cc *CodexClient) purgeCodexHomeBestEffort(ctx context.Context) {
 	if cc.UserLogin == nil {
 		return
@@ -1874,7 +1873,9 @@ func (cc *CodexClient) sendInitialStreamMessage(ctx context.Context, portal *bri
 		}},
 	}
 
-	eventID, _, err := cc.sendViaPortal(ctx, portal, converted, msgID)
+	eventTS := codexStreamEventTimestamp(state, false)
+	streamOrder := codexNextLiveStreamOrder(state, eventTS)
+	eventID, _, err := cc.sendViaPortalWithOrdering(portal, converted, msgID, eventTS, streamOrder)
 	if err != nil {
 		cc.loggerForContext(ctx).Error().Err(err).Msg("Failed to send initial streaming message")
 		return ""
@@ -1991,11 +1992,13 @@ func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridg
 	}
 
 	sender := cc.senderForPortal()
+	editTS := codexStreamEventTimestamp(state, true)
 	cc.UserLogin.QueueRemoteEvent(&CodexRemoteEdit{
 		Portal:        portal.PortalKey,
 		Sender:        sender,
 		TargetMessage: state.networkMessageID,
-		Timestamp:     time.Now(),
+		Timestamp:     editTS,
+		StreamOrder:   codexNextLiveStreamOrder(state, editTS),
 		LogKey:        "codex_edit_target",
 		PreBuilt: streamtransport.BuildRenderedConvertedEdit(streamtransport.RenderedMarkdownContent{
 			Body:          rendered.Body,

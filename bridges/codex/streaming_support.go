@@ -15,27 +15,28 @@ import (
 )
 
 type streamingState struct {
-	turnID             string
-	agentID            string
-	startedAtMs        int64
-	firstTokenAtMs     int64
-	completedAtMs      int64
-	promptTokens       int64
-	completionTokens   int64
-	reasoningTokens    int64
-	totalTokens        int64
-	accumulated        strings.Builder
-	visibleAccumulated strings.Builder
-	reasoning          strings.Builder
-	toolCalls          []ToolCallMetadata
-	sourceCitations    []citations.SourceCitation
-	sourceDocuments    []citations.SourceDocument
-	generatedFiles     []citations.GeneratedFilePart
-	initialEventID     id.EventID
-	networkMessageID   networkid.MessageID
-	sequenceNum        int
-	firstToken         bool
-	suppressSend       bool
+	turnID               string
+	agentID              string
+	startedAtMs          int64
+	firstTokenAtMs       int64
+	completedAtMs        int64
+	promptTokens         int64
+	completionTokens     int64
+	reasoningTokens      int64
+	totalTokens          int64
+	accumulated          strings.Builder
+	visibleAccumulated   strings.Builder
+	reasoning            strings.Builder
+	toolCalls            []ToolCallMetadata
+	sourceCitations      []citations.SourceCitation
+	sourceDocuments      []citations.SourceDocument
+	generatedFiles       []citations.GeneratedFilePart
+	initialEventID       id.EventID
+	networkMessageID     networkid.MessageID
+	sequenceNum          int
+	lastRemoteEventOrder int64
+	firstToken           bool
+	suppressSend         bool
 
 	ui      streamui.UIState
 	session *streamtransport.StreamSession
@@ -48,7 +49,22 @@ type streamingState struct {
 }
 
 func (s *streamingState) hasInitialMessageTarget() bool {
-	return s != nil && (s.initialEventID != "" || s.networkMessageID != "")
+	return s.hasEditTarget()
+}
+
+func (s *streamingState) streamTarget() streamtransport.StreamTarget {
+	if s == nil {
+		return streamtransport.StreamTarget{}
+	}
+	return streamtransport.StreamTarget{NetworkMessageID: s.networkMessageID}
+}
+
+func (s *streamingState) hasEditTarget() bool {
+	return s != nil && s.streamTarget().HasEditTarget()
+}
+
+func (s *streamingState) hasEphemeralTarget() bool {
+	return s != nil && s.initialEventID != ""
 }
 
 func (cc *CodexClient) uiEmitter(state *streamingState) *streamui.Emitter {
@@ -76,4 +92,28 @@ func newStreamingState(_ context.Context, _ *PortalMetadata, sourceEventID id.Ev
 		codexTimelineNotices:   make(map[string]bool),
 		codexToolOutputBuffers: make(map[string]*strings.Builder),
 	}
+}
+
+func codexStreamEventTimestamp(state *streamingState, preferCompleted bool) time.Time {
+	if state == nil {
+		return time.Now()
+	}
+	if preferCompleted && state.completedAtMs > 0 {
+		return time.UnixMilli(state.completedAtMs)
+	}
+	if state.startedAtMs > 0 {
+		return time.UnixMilli(state.startedAtMs)
+	}
+	if state.completedAtMs > 0 {
+		return time.UnixMilli(state.completedAtMs)
+	}
+	return time.Now()
+}
+
+func codexNextLiveStreamOrder(state *streamingState, ts time.Time) int64 {
+	if state == nil {
+		return codexNextStreamOrder(0, ts)
+	}
+	state.lastRemoteEventOrder = codexNextStreamOrder(state.lastRemoteEventOrder, ts)
+	return state.lastRemoteEventOrder
 }

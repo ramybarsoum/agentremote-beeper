@@ -111,6 +111,37 @@ func opencodeUIMessageMetadata(state *openCodeStreamState) map[string]any {
 	})
 }
 
+func openCodeStreamEventTimestamp(state *openCodeStreamState, preferCompleted bool) time.Time {
+	if state == nil {
+		return time.Now()
+	}
+	if preferCompleted && state.completedAtMs > 0 {
+		return time.UnixMilli(state.completedAtMs)
+	}
+	if state.startedAtMs > 0 {
+		return time.UnixMilli(state.startedAtMs)
+	}
+	if state.completedAtMs > 0 {
+		return time.UnixMilli(state.completedAtMs)
+	}
+	return time.Now()
+}
+
+func openCodeNextStreamOrder(state *openCodeStreamState, ts time.Time) int64 {
+	base := ts.UnixMilli() * 1000
+	if base <= 0 {
+		base = time.Now().UnixMilli() * 1000
+	}
+	if state == nil {
+		return base
+	}
+	if base <= state.lastRemoteEventOrder {
+		base = state.lastRemoteEventOrder + 1
+	}
+	state.lastRemoteEventOrder = base
+	return base
+}
+
 func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *MessageMetadata {
 	if state == nil {
 		return nil
@@ -212,11 +243,13 @@ func (oc *OpenCodeClient) queueFinalStreamEdit(ctx context.Context, portal *brid
 		instanceID = pmeta.InstanceID
 	}
 	sender := oc.SenderForOpenCode(instanceID, false)
+	eventTS := openCodeStreamEventTimestamp(state, true)
 	oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteEdit{
 		Portal:        portal.PortalKey,
 		Sender:        sender,
 		TargetMessage: state.networkMessageID,
-		Timestamp:     time.Now(),
+		Timestamp:     eventTS,
+		StreamOrder:   openCodeNextStreamOrder(state, eventTS),
 		LogKey:        "opencode_edit_target",
 		PreBuilt: streamtransport.BuildRenderedConvertedEdit(streamtransport.RenderedMarkdownContent{
 			Body:          rendered.Body,

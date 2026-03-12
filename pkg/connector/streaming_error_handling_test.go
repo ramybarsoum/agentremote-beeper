@@ -8,25 +8,28 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func TestStreamingStateHasInitialMessageTarget(t *testing.T) {
+func TestStreamingStateHasTargets(t *testing.T) {
 	t.Run("event-id", func(t *testing.T) {
 		state := &streamingState{initialEventID: id.EventID("$evt")}
-		if !state.hasInitialMessageTarget() {
-			t.Fatalf("expected event-id target to be valid")
+		if !state.hasEphemeralTarget() {
+			t.Fatalf("expected event-id target to be a valid ephemeral target")
 		}
 	})
 
 	t.Run("network-message-id", func(t *testing.T) {
 		state := &streamingState{networkMessageID: networkid.MessageID("msg-1")}
-		if !state.hasInitialMessageTarget() {
-			t.Fatalf("expected network-message-id target to be valid")
+		if !state.hasEditTarget() {
+			t.Fatalf("expected network-message-id target to be a valid edit target")
+		}
+		if state.hasEphemeralTarget() {
+			t.Fatalf("did not expect network-message-id alone to be a valid ephemeral target")
 		}
 	})
 
 	t.Run("none", func(t *testing.T) {
 		state := &streamingState{}
-		if state.hasInitialMessageTarget() {
-			t.Fatalf("expected empty state to have no target")
+		if state.hasEditTarget() || state.hasEphemeralTarget() {
+			t.Fatalf("expected empty state to have no targets")
 		}
 	})
 }

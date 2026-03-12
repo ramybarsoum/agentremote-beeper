@@ -37,8 +37,11 @@ func (cc *CodexClient) ensureStreamSession(ctx context.Context, portal *bridgev2
 	state.session = streamtransport.NewStreamSession(streamtransport.StreamSessionParams{
 		TurnID:  state.turnID,
 		AgentID: state.agentID,
-		GetTargetEventID: func() string {
-			return state.initialEventID.String()
+		GetStreamTarget: func() streamtransport.StreamTarget {
+			return state.streamTarget()
+		},
+		ResolveTargetEventID: func(callCtx context.Context, target streamtransport.StreamTarget) (id.EventID, error) {
+			return cc.resolveStreamTargetEventID(callCtx, portal, state, target)
 		},
 		GetRoomID: func() id.RoomID {
 			return portal.MXID
@@ -88,4 +91,23 @@ func (cc *CodexClient) emitStreamEvent(ctx context.Context, portal *bridgev2.Por
 		func() *streamtransport.StreamSession { return cc.ensureStreamSession(ctx, portal, state) },
 		part,
 	)
+}
+
+func (cc *CodexClient) resolveStreamTargetEventID(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	target streamtransport.StreamTarget,
+) (id.EventID, error) {
+	if state != nil && state.initialEventID != "" {
+		return state.initialEventID, nil
+	}
+	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || portal == nil {
+		return "", nil
+	}
+	eventID, err := streamtransport.ResolveTargetEventIDFromDB(ctx, cc.UserLogin.Bridge, portal.Receiver, target)
+	if err == nil && eventID != "" && state != nil {
+		state.initialEventID = eventID
+	}
+	return eventID, err
 }
