@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 )
 
 func TestOpenAIRemoteMessageAccessors(t *testing.T) {
@@ -48,24 +49,61 @@ func TestOpenAIRemoteMessageAccessors(t *testing.T) {
 }
 
 func TestOpenAIRemoteMessageConvertMessage(t *testing.T) {
-	meta := &MessageMetadata{
-		Model:        "gpt-test",
-		CompletionID: "completion-2",
-	}
-	msg := &OpenAIRemoteMessage{
-		Content:          "hello world",
-		FormattedContent: "<strong>hello world</strong>",
-		Metadata:         meta,
+	testCases := []struct {
+		name             string
+		content          string
+		formattedContent string
+	}{
+		{
+			name:             "formatted content",
+			content:          "hello world",
+			formattedContent: "<strong>hello world</strong>",
+		},
+		{
+			name:    "plain content",
+			content: "plain text",
+		},
 	}
 
-	converted, err := msg.ConvertMessage(context.Background(), nil, nil)
-	if err != nil {
-		t.Fatalf("expected conversion to succeed, got %v", err)
-	}
-	if converted == nil || len(converted.Parts) == 0 {
-		t.Fatalf("expected converted message parts, got %#v", converted)
-	}
-	if meta.Body != "hello world" {
-		t.Fatalf("expected metadata body to be backfilled from content, got %q", meta.Body)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			meta := &MessageMetadata{
+				Model:        "gpt-test",
+				CompletionID: "completion-2",
+			}
+			msg := &OpenAIRemoteMessage{
+				Content:          tc.content,
+				FormattedContent: tc.formattedContent,
+				Metadata:         meta,
+			}
+
+			converted, err := msg.ConvertMessage(context.Background(), nil, nil)
+			if err != nil {
+				t.Fatalf("expected conversion to succeed, got %v", err)
+			}
+			if converted == nil || len(converted.Parts) == 0 {
+				t.Fatalf("expected converted message parts, got %#v", converted)
+			}
+			part := converted.Parts[0]
+			if part.Type != event.EventMessage {
+				t.Fatalf("expected first part type %q, got %q", event.EventMessage, part.Type)
+			}
+			if part.Content == nil {
+				t.Fatalf("expected first part content")
+			}
+			if part.Content.Body != tc.content {
+				t.Fatalf("expected body %q, got %q", tc.content, part.Content.Body)
+			}
+			if tc.formattedContent != "" {
+				if part.Content.FormattedBody != tc.formattedContent {
+					t.Fatalf("expected formatted body %q, got %q", tc.formattedContent, part.Content.FormattedBody)
+				}
+			} else if part.Content.FormattedBody != "" {
+				t.Fatalf("expected empty formatted body, got %q", part.Content.FormattedBody)
+			}
+			if meta.Body != tc.content {
+				t.Fatalf("expected metadata body to be backfilled from content, got %q", meta.Body)
+			}
+		})
 	}
 }

@@ -255,3 +255,69 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 		t.Fatalf("timed out waiting for mirrored remote reaction")
 	}
 }
+
+func TestApprovalFlow_ResolveExternalNotifiesWaiters(t *testing.T) {
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{})
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		flow.ResolveExternal(context.Background(), "approval-1", ApprovalDecisionPayload{
+			ApprovalID: "approval-1",
+			Approved:   true,
+			Reason:     "allow_once",
+		})
+	}()
+
+	decision, ok := flow.Wait(context.Background(), "approval-1")
+	if !ok {
+		t.Fatalf("expected ResolveExternal to notify waiter")
+	}
+	if !decision.Approved {
+		t.Fatalf("expected approved decision, got %#v", decision)
+	}
+	if decision.Reason != "allow_once" {
+		t.Fatalf("expected allow_once reason, got %#v", decision)
+	}
+}
+
+func TestApprovalFlow_SendPromptSendFailureCleansUpRegistration(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			UserMXID: owner,
+		},
+	}
+
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+		Login:    func() *bridgev2.UserLogin { return login },
+		IDPrefix: "test",
+		LogKey:   "test_msg_id",
+	})
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+
+	flow.SendPrompt(context.Background(), portal, SendPromptParams{
+		ApprovalPromptMessageParams: ApprovalPromptMessageParams{
+			ApprovalID:   "approval-1",
+			ToolCallID:   "tool-1",
+			ToolName:     "exec",
+			Presentation: ApprovalPromptPresentation{Title: "Prompt"},
+			ExpiresAt:    time.Now().Add(time.Minute),
+		},
+		RoomID:    roomID,
+		OwnerMXID: owner,
+	})
+
+	if _, ok := flow.promptRegistration("approval-1"); ok {
+		t.Fatalf("expected prompt registration to be cleaned up after send failure")
+	}
+	if flow.Get("approval-1") == nil {
+		t.Fatalf("expected pending approval to remain registered after send failure")
+	}
+}

@@ -207,6 +207,7 @@ func (f *ApprovalFlow[D]) ResolveExternal(ctx context.Context, approvalID string
 	if prompt, ok := f.promptRegistration(approvalID); ok {
 		f.mirrorRemoteDecisionReaction(ctx, prompt, decision)
 	}
+	_ = f.Resolve(approvalID, decision)
 	f.FinishResolved(approvalID, decision)
 }
 
@@ -454,13 +455,20 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 	if login == nil {
 		return
 	}
+	approvalID := strings.TrimSpace(params.ApprovalID)
 
 	prompt := BuildApprovalPromptMessage(params.ApprovalPromptMessageParams)
 	sender := f.senderOrEmpty(portal)
 
 	f.mu.Lock()
+	prevPrompt, hadPrevPrompt := f.promptsByApproval[approvalID], false
+	var prevPromptCopy ApprovalPromptRegistration
+	if prevPrompt != nil {
+		prevPromptCopy = *prevPrompt
+		hadPrevPrompt = true
+	}
 	f.registerPromptLocked(ApprovalPromptRegistration{
-		ApprovalID:     strings.TrimSpace(params.ApprovalID),
+		ApprovalID:     approvalID,
 		RoomID:         params.RoomID,
 		OwnerMXID:      params.OwnerMXID,
 		ToolCallID:     strings.TrimSpace(params.ToolCallID),
@@ -497,15 +505,21 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 
 	eventID, msgID, err := f.send(ctx, portal, converted)
 	if err != nil {
+		f.mu.Lock()
+		f.dropPromptLocked(approvalID)
+		if hadPrevPrompt {
+			f.registerPromptLocked(prevPromptCopy)
+		}
+		f.mu.Unlock()
 		return
 	}
 
 	f.mu.Lock()
-	f.bindPromptIDsLocked(strings.TrimSpace(params.ApprovalID), eventID, msgID)
+	f.bindPromptIDsLocked(approvalID, eventID, msgID)
 	f.mu.Unlock()
 
 	f.sendPrefillReactions(ctx, portal, login, msgID, prompt.Options)
-	f.schedulePromptTimeout(strings.TrimSpace(params.ApprovalID), params.ExpiresAt)
+	f.schedulePromptTimeout(approvalID, params.ExpiresAt)
 }
 
 // ---------------------------------------------------------------------------

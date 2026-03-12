@@ -30,7 +30,7 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 	if toolName == "" {
 		toolName = "tool"
 	}
-	if portal == nil || portal.MXID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.UserMXID == "" {
+	if portal == nil || portal.MXID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.UserMXID == "" || oc.approvalFlow == nil {
 		if oc != nil {
 			log := oc.loggerForContext(ctx).Warn().
 				Str("approval_id", approvalID).
@@ -38,7 +38,7 @@ func (oc *AIClient) emitUIToolApprovalRequest(
 			if portal != nil {
 				log = log.Stringer("room_id", portal.MXID)
 			}
-			log.Msg("Skipping tool approval prompt: missing portal or owner context")
+			log.Msg("Skipping tool approval prompt: missing portal, owner, or approval flow context")
 		}
 		return false
 	}
