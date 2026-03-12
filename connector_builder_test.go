@@ -211,7 +211,8 @@ func TestTypedClientLoaderPropagatesCreateErrorViaBrokenLogin(t *testing.T) {
 
 func TestClientBaseBackgroundContextFallsBackToBackground(t *testing.T) {
 	var base ClientBase
-	got := base.BackgroundContext(nil)
+	var nilCtx context.Context
+	got := base.BackgroundContext(nilCtx)
 	if got == nil {
 		t.Fatal("expected non-nil context")
 	}
