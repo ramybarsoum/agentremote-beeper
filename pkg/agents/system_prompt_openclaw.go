@@ -349,12 +349,10 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 	}
 
 	runtimeInfo := params.RuntimeInfo
-	runtimeChannel := ""
-	if runtimeInfo != nil {
-		runtimeChannel = strings.TrimSpace(strings.ToLower(runtimeInfo.Channel))
-	}
+	var runtimeChannel string
 	var runtimeCapabilities []string
 	if runtimeInfo != nil {
+		runtimeChannel = strings.TrimSpace(strings.ToLower(runtimeInfo.Channel))
 		for _, cap := range runtimeInfo.Capabilities {
 			trimmed := strings.TrimSpace(cap)
 			if trimmed != "" {
