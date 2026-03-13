@@ -258,13 +258,11 @@ func (i *Integration) buildCommandExecDeps() CommandExecDeps {
 	}
 }
 
-// asOverflowCall safely extracts an overflow call from the generic call argument.
 func asOverflowCall(call any) (iruntime.ContextOverflowCall, bool) {
 	oc, ok := call.(iruntime.ContextOverflowCall)
 	return oc, ok
 }
 
-// toInt64 extracts an int64 from a value that may be int, int64, or float64.
 func toInt64(v any) int64 {
 	switch n := v.(type) {
 	case int64:
@@ -658,9 +656,8 @@ func (i *Integration) writeMemoryCommandFile(
 // ---- private: helpers ----
 
 func (i *Integration) agentIDFromEventMeta(meta any) string {
-	ma, ok := i.host.(iruntime.MetadataAccess)
-	rawAgentID := ""
-	if ok && meta != nil {
+	var rawAgentID string
+	if ma, ok := i.host.(iruntime.MetadataAccess); ok && meta != nil {
 		rawAgentID = ma.AgentIDFromMeta(meta)
 	}
 	ah, ok := i.host.(iruntime.AgentHelper)

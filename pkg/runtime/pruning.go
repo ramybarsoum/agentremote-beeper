@@ -289,16 +289,12 @@ func ApplyPruningDefaults(config *PruningConfig) *PruningConfig {
 	if cfg.MaxSummaryTokens <= 0 {
 		cfg.MaxSummaryTokens = defaults.MaxSummaryTokens
 	}
-	if strings.TrimSpace(cfg.CompactionMode) == "" {
+	cfg.CompactionMode = strings.ToLower(strings.TrimSpace(cfg.CompactionMode))
+	switch cfg.CompactionMode {
+	case "default", "safeguard":
+		// valid, keep as-is
+	default:
 		cfg.CompactionMode = defaults.CompactionMode
-	} else {
-		mode := strings.ToLower(strings.TrimSpace(cfg.CompactionMode))
-		switch mode {
-		case "default", "safeguard":
-			cfg.CompactionMode = mode
-		default:
-			cfg.CompactionMode = defaults.CompactionMode
-		}
 	}
 	if cfg.KeepRecentTokens <= 0 {
 		cfg.KeepRecentTokens = defaults.KeepRecentTokens
@@ -341,17 +337,17 @@ func LimitHistoryTurns(prompt []openai.ChatCompletionMessageParamUnion, limit in
 	}
 
 	userCount := 0
-	lastUserIndex := len(prompt)
+	cutIndex := systemEndIndex
 	for i := len(prompt) - 1; i >= systemEndIndex; i-- {
 		if prompt[i].OfUser != nil {
 			userCount++
 			if userCount > limit {
-				result := make([]openai.ChatCompletionMessageParamUnion, 0, systemEndIndex+len(prompt)-lastUserIndex)
-				result = append(result, prompt[:systemEndIndex]...)
-				result = append(result, prompt[lastUserIndex:]...)
-				return result
+				out := make([]openai.ChatCompletionMessageParamUnion, 0, systemEndIndex+len(prompt)-cutIndex)
+				out = append(out, prompt[:systemEndIndex]...)
+				out = append(out, prompt[cutIndex:]...)
+				return out
 			}
-			lastUserIndex = i
+			cutIndex = i
 		}
 	}
 	return prompt
@@ -447,8 +443,7 @@ func PruneContext(
 		return result
 	}
 
-	hardClearEnabled := cfg.HardClearEnabled == nil || *cfg.HardClearEnabled
-	if !hardClearEnabled {
+	if cfg.HardClearEnabled != nil && !*cfg.HardClearEnabled {
 		return result
 	}
 

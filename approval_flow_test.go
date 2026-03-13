@@ -13,8 +13,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-type testApprovalFlowData struct {
-}
+type testApprovalFlowData struct{}
 
 func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T) {
 	owner := id.UserID("@owner:example.com")

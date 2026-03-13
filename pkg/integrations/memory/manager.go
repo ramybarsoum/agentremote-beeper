@@ -27,9 +27,11 @@ const memorySnippetMaxChars = 700
 
 var keywordTokenRE = regexp.MustCompile(`[A-Za-z0-9_]+`)
 
-const memoryStatusTimeout = 3 * time.Second
-const memorySearchTimeout = 10 * time.Second
-const memoryManagerInitTimeout = 10 * time.Second
+const (
+	memoryStatusTimeout      = 3 * time.Second
+	memorySearchTimeout      = 10 * time.Second
+	memoryManagerInitTimeout = 10 * time.Second
+)
 
 type MemorySearchManager struct {
 	runtime      Runtime
@@ -107,10 +109,10 @@ func GetMemorySearchManager(runtime Runtime, agentID string) (*MemorySearchManag
 		return nil, "memory search unavailable"
 	}
 	cfg, err := runtime.ResolveConfig(agentID)
-	if err != nil || cfg == nil {
-		if err != nil {
-			return nil, err.Error()
-		}
+	if err != nil {
+		return nil, err.Error()
+	}
+	if cfg == nil {
 		return nil, "memory search disabled"
 	}
 

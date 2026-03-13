@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -167,12 +168,7 @@ func (c *Conversation) conversationStateSpec() ConversationSpec {
 		ParentEventID:        state.ParentEventID,
 		Title:                c.Title,
 		ArchiveOnCompletion:  state.ArchiveOnCompletion,
-	}
-	if len(state.Metadata) > 0 {
-		spec.Metadata = make(map[string]any, len(state.Metadata))
-		for k, v := range state.Metadata {
-			spec.Metadata[k] = v
-		}
+		Metadata:             maps.Clone(state.Metadata),
 	}
 	return spec
 }

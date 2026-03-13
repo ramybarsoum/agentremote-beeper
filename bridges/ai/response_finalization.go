@@ -588,9 +588,6 @@ func finalRenderedBodyFallback(state *streamingState) string {
 	if body := strings.TrimSpace(state.accumulated.String()); body != "" {
 		return body
 	}
-	if reasoning := strings.TrimSpace(state.reasoning.String()); reasoning != "" {
-		return "..."
-	}
 	return "..."
 }
 

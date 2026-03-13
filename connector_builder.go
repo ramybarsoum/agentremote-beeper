@@ -94,10 +94,10 @@ func (c *ConnectorBase) GetDBMetaTypes() database.MetaTypes {
 }
 
 func (c *ConnectorBase) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	if c != nil && c.spec.Capabilities != nil {
-		return c.spec.Capabilities()
+	if c == nil || c.spec.Capabilities == nil {
+		return DefaultNetworkCapabilities()
 	}
-	return DefaultNetworkCapabilities()
+	return c.spec.Capabilities()
 }
 
 func (c *ConnectorBase) LoadUserLogin(ctx context.Context, login *bridgev2.UserLogin) error {
@@ -122,10 +122,10 @@ func (c *ConnectorBase) CreateLogin(ctx context.Context, user *bridgev2.User, fl
 }
 
 func (c *ConnectorBase) GetBridgeInfoVersion() (info, capabilities int) {
-	if c != nil && c.spec.BridgeInfoVersion != nil {
-		return c.spec.BridgeInfoVersion()
+	if c == nil || c.spec.BridgeInfoVersion == nil {
+		return DefaultBridgeInfoVersion()
 	}
-	return DefaultBridgeInfoVersion()
+	return c.spec.BridgeInfoVersion()
 }
 
 func (c *ConnectorBase) FillPortalBridgeInfo(portal *bridgev2.Portal, content *event.BridgeEventContent) {

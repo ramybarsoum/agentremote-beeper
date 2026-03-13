@@ -102,9 +102,7 @@ func convertImportedTurn(turn *ImportedTurn, idPrefix string) *bridgev2.Backfill
 		FinishReason: turn.FinishReason,
 		TurnID:       turn.ID,
 	}
-	if turn.Reasoning != "" {
-		meta.ThinkingContent = turn.Reasoning
-	}
+	meta.ThinkingContent = turn.Reasoning
 	if turn.Agent != nil {
 		meta.AgentID = turn.Agent.ID
 	}

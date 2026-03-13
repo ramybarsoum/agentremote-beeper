@@ -401,28 +401,26 @@ func readStringList(args map[string]any, key string) []string {
 		return nil
 	}
 	raw := args[key]
+	var items []string
 	switch list := raw.(type) {
 	case []any:
-		out := make([]string, 0, len(list))
 		for _, item := range list {
 			if s, ok := item.(string); ok {
-				if trimmed := strings.TrimSpace(s); trimmed != "" {
-					out = append(out, trimmed)
-				}
+				items = append(items, s)
 			}
 		}
-		return out
 	case []string:
-		out := make([]string, 0, len(list))
-		for _, item := range list {
-			if trimmed := strings.TrimSpace(item); trimmed != "" {
-				out = append(out, trimmed)
-			}
-		}
-		return out
+		items = list
 	default:
 		return nil
 	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func marshalSearch(payload searchOutput) string {

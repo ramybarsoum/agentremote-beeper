@@ -661,8 +661,12 @@ func (t *Turn) Abort(reason string) {
 		return
 	}
 	defer t.cancel()
-	t.ensureStarted()
 	t.ended = true
+	if !t.started {
+		// No content was ever written — skip placeholder message creation.
+		t.SendStatus(event.MessageStatusRetriable, reason)
+		return
+	}
 	t.emitter.EmitUIAbort(t.turnCtx, t.conv.portal, reason)
 	if t.session != nil {
 		t.session.End(t.turnCtx, turns.EndReasonDisconnect)

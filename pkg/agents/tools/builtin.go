@@ -82,12 +82,9 @@ func AllTools() []*Tool {
 // DefaultRegistry returns a registry with all default tools registered.
 func DefaultRegistry() *Registry {
 	reg := NewRegistry()
-
-	// Register all tools
 	for _, tool := range AllTools() {
 		reg.Register(tool)
 	}
-
 	return reg
 }
 

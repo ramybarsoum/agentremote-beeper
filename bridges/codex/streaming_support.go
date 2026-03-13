@@ -51,10 +51,6 @@ type streamingState struct {
 	loggedStreamStart         bool
 }
 
-func (s *streamingState) hasInitialMessageTarget() bool {
-	return s.hasEditTarget()
-}
-
 func (s *streamingState) streamTarget() turns.StreamTarget {
 	if s == nil {
 		return turns.StreamTarget{}

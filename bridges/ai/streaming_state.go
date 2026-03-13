@@ -129,11 +129,9 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 	if hb := heartbeatRunFromContext(ctx); hb != nil {
 		state.heartbeat = hb.Config
 		state.heartbeatResultCh = hb.ResultCh
-		if hb.Config != nil && hb.Config.SuppressSave {
-			state.suppressSave = true
-		}
-		if hb.Config != nil && hb.Config.SuppressSend {
-			state.suppressSend = true
+		if hb.Config != nil {
+			state.suppressSave = hb.Config.SuppressSave
+			state.suppressSend = hb.Config.SuppressSend
 		}
 	}
 	return state
@@ -153,9 +151,6 @@ func (oc *AIClient) setupEmitter(state *streamingState) {
 }
 
 func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
-	if state != nil && state.emitter != nil {
-		return state.emitter
-	}
 	if state == nil {
 		fallback := &streamui.UIState{}
 		fallback.InitMaps()
@@ -163,6 +158,9 @@ func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
 			State: fallback,
 			Emit:  func(context.Context, *bridgev2.Portal, map[string]any) {},
 		}
+	}
+	if state.emitter != nil {
+		return state.emitter
 	}
 	return &streamui.Emitter{
 		State: &state.ui,

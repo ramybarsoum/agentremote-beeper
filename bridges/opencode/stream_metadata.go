@@ -54,14 +54,7 @@ func buildTurnFinishMetadata(msg *api.MessageWithParts, agentID, finishReason st
 		metadata["cost"] = msg.Info.Cost
 	}
 	if msg != nil && msg.Info.Tokens != nil {
-		metadata["prompt_tokens"] = int64(msg.Info.Tokens.Input)
-		metadata["completion_tokens"] = int64(msg.Info.Tokens.Output)
-		metadata["reasoning_tokens"] = int64(msg.Info.Tokens.Reasoning)
-		total := int64(msg.Info.Tokens.Input + msg.Info.Tokens.Output + msg.Info.Tokens.Reasoning)
-		if msg.Info.Tokens.Cache != nil {
-			total += int64(msg.Info.Tokens.Cache.Read + msg.Info.Tokens.Cache.Write)
-		}
-		metadata["total_tokens"] = total
+		applyTokenMetadata(metadata, msg.Info.Tokens)
 	}
 	if msg == nil {
 		return metadata
@@ -74,15 +67,20 @@ func buildTurnFinishMetadata(msg *api.MessageWithParts, agentID, finishReason st
 			metadata["cost"] = part.Cost
 		}
 		if part.Tokens != nil {
-			metadata["prompt_tokens"] = int64(part.Tokens.Input)
-			metadata["completion_tokens"] = int64(part.Tokens.Output)
-			metadata["reasoning_tokens"] = int64(part.Tokens.Reasoning)
-			total := int64(part.Tokens.Input + part.Tokens.Output + part.Tokens.Reasoning)
-			if part.Tokens.Cache != nil {
-				total += int64(part.Tokens.Cache.Read + part.Tokens.Cache.Write)
-			}
-			metadata["total_tokens"] = total
+			applyTokenMetadata(metadata, part.Tokens)
 		}
 	}
 	return metadata
+}
+
+// applyTokenMetadata writes token usage fields into a metadata map.
+func applyTokenMetadata(metadata map[string]any, tokens *api.TokenUsage) {
+	metadata["prompt_tokens"] = int64(tokens.Input)
+	metadata["completion_tokens"] = int64(tokens.Output)
+	metadata["reasoning_tokens"] = int64(tokens.Reasoning)
+	total := int64(tokens.Input + tokens.Output + tokens.Reasoning)
+	if tokens.Cache != nil {
+		total += int64(tokens.Cache.Read + tokens.Cache.Write)
+	}
+	metadata["total_tokens"] = total
 }

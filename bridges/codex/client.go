@@ -436,12 +436,13 @@ func codexPortalTitle(portal *bridgev2.Portal) string {
 	if portal == nil {
 		return "Codex"
 	}
-	meta := portalMeta(portal)
-	if meta != nil && strings.TrimSpace(meta.Title) != "" {
-		return strings.TrimSpace(meta.Title)
+	if meta := portalMeta(portal); meta != nil {
+		if title := strings.TrimSpace(meta.Title); title != "" {
+			return title
+		}
 	}
-	if strings.TrimSpace(portal.Name) != "" {
-		return strings.TrimSpace(portal.Name)
+	if name := strings.TrimSpace(portal.Name); name != "" {
+		return name
 	}
 	return "Codex"
 }
@@ -970,14 +971,15 @@ func codexTurnCompletedStatus(evt codexNotif, threadID, turnID string) (status s
 		} `json:"turn"`
 	}
 	_ = json.Unmarshal(evt.Params, &p)
-	if tid := strings.TrimSpace(p.ThreadID); tid != "" && tid != threadID {
-		return "", "", false
-	}
-	if tid := strings.TrimSpace(p.TurnID); tid != "" && tid != turnID {
-		return "", "", false
-	}
-	if tid := strings.TrimSpace(p.Turn.ID); tid != "" && tid != turnID {
-		return "", "", false
+	// Each ID field, when present, must match the expected value.
+	for _, pair := range [][2]string{
+		{strings.TrimSpace(p.ThreadID), threadID},
+		{strings.TrimSpace(p.TurnID), turnID},
+		{strings.TrimSpace(p.Turn.ID), turnID},
+	} {
+		if pair[0] != "" && pair[0] != pair[1] {
+			return "", "", false
+		}
 	}
 	status = strings.TrimSpace(p.Turn.Status)
 	if status == "" {
@@ -1964,7 +1966,7 @@ func (cc *CodexClient) buildCanonicalUIMessage(state *streamingState, model stri
 }
 
 func (cc *CodexClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
-	if portal == nil || portal.MXID == "" || state == nil || !state.hasInitialMessageTarget() {
+	if portal == nil || portal.MXID == "" || state == nil || !state.hasEditTarget() {
 		return
 	}
 	if state.suppressSend {
@@ -2028,7 +2030,7 @@ func (cc *CodexClient) sendContinuationMessage(ctx context.Context, portal *brid
 }
 
 func (cc *CodexClient) saveAssistantMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState, model string, finishReason string) {
-	if portal == nil || state == nil || !state.hasInitialMessageTarget() {
+	if portal == nil || state == nil || !state.hasEditTarget() {
 		return
 	}
 	log := cc.loggerForContext(ctx)
@@ -2165,7 +2167,7 @@ func (cc *CodexClient) requestSDKApproval(
 		return &codexSDKApprovalHandle{toolCallID: req.ToolCallID}
 	}
 	approvalID := strings.TrimSpace(req.ApprovalID)
-	if strings.TrimSpace(approvalID) == "" {
+	if approvalID == "" {
 		approvalID = fmt.Sprintf("codex-%d", time.Now().UnixNano())
 	}
 	ttl := req.TTL

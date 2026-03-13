@@ -730,26 +730,21 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 	if len(parts) == 0 {
 		return nil, bridgev2.EventSender{}, ""
 	}
-	converted := &bridgev2.ConvertedMessage{
-		Parts: parts,
+	uiRole := "assistant"
+	if role == "user" {
+		uiRole = "user"
 	}
-	if len(converted.Parts) > 0 {
-		uiRole := "assistant"
-		if role == "user" {
-			uiRole = "user"
-		}
-		uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
-			TurnID:   string(messageID),
-			Role:     uiRole,
-			Metadata: uiMetadata,
-			Parts:    uiParts,
-		})
-		converted.Parts[0].DBMetadata = buildOpenClawHistoryMessageMetadata(message, meta, role, agentID, text, attachmentBlocks, uiMetadata, uiMessage)
-		converted.Parts[0].Extra[matrixevents.BeeperAIKey] = uiMessage
-		converted.Parts[0].DBMetadata.(*MessageMetadata).CanonicalSchema = "ai-sdk-ui-message-v1"
-		converted.Parts[0].DBMetadata.(*MessageMetadata).CanonicalUIMessage = uiMessage
-	}
-	return converted, sender, messageID
+	uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
+		TurnID:   string(messageID),
+		Role:     uiRole,
+		Metadata: uiMetadata,
+		Parts:    uiParts,
+	})
+	parts[0].DBMetadata = buildOpenClawHistoryMessageMetadata(message, meta, role, agentID, text, attachmentBlocks, uiMetadata, uiMessage)
+	parts[0].Extra[matrixevents.BeeperAIKey] = uiMessage
+	parts[0].DBMetadata.(*MessageMetadata).CanonicalSchema = "ai-sdk-ui-message-v1"
+	parts[0].DBMetadata.(*MessageMetadata).CanonicalUIMessage = uiMessage
+	return &bridgev2.ConvertedMessage{Parts: parts}, sender, messageID
 }
 
 func buildOpenClawHistoryMessageMetadata(message map[string]any, meta *PortalMetadata, role, agentID, text string, attachmentBlocks []map[string]any, uiMetadata, uiMessage map[string]any) *MessageMetadata {
