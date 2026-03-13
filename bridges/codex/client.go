@@ -585,25 +585,27 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	conv := bridgesdk.NewConversation(ctx, cc.UserLogin, portal, cc.senderForPortal(), cc.connector.sdkConfig, cc)
 	source := bridgesdk.UserMessageSource(sourceEvent.ID.String())
 	turn := conv.StartTurn(ctx, codexSDKAgent(), source)
-	turn.SetStreamHook(func(turnID string, seq int, content map[string]any, txnID string) bool {
+	stream := turn.Stream()
+	approvals := turn.Approvals()
+	stream.SetTransport(bridgesdk.StreamTransportFunc(func(turnID string, seq int, content map[string]any, txnID string) bool {
 		if cc.streamEventHook == nil {
 			return false
 		}
 		cc.streamEventHook(turnID, seq, content, txnID)
 		return true
-	})
-	turn.SetApprovalRequester(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
+	}))
+	approvals.SetHandler(bridgesdk.ApprovalHandlerFunc(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
 		return cc.requestSDKApproval(callCtx, portal, state, sdkTurn, req)
-	})
-	turn.SetFinalMetadataBuilder(func(sdkTurn *bridgesdk.Turn, finishReason string) any {
+	}))
+	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(sdkTurn *bridgesdk.Turn, finishReason string) any {
 		return cc.buildSDKFinalMetadata(sdkTurn, state, model, finishReason)
-	})
+	}))
 	state.turn = turn
 	state.turnID = turn.ID()
 	state.agentID = string(codexGhostID)
 	state.initialEventID = sourceEvent.ID
-	turn.SetMetadata(cc.buildUIMessageMetadata(state, model, false, ""))
-	turn.StepStart()
+	stream.Metadata(cc.buildUIMessageMetadata(state, model, false, ""))
+	stream.StepStart()
 
 	approvalPolicy := "untrusted"
 	if lvl, _ := stringutil.NormalizeElevatedLevel(meta.ElevatedLevel); lvl == "full" {
@@ -701,11 +703,11 @@ done:
 		})
 	}
 	if completedErr != "" {
-		turn.SetMetadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
+		stream.Metadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
 		turn.EndWithError(completedErr)
 		return
 	}
-	turn.SetMetadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
+	stream.Metadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
 	turn.End(finishStatus)
 }
 
@@ -2107,6 +2109,7 @@ type codexSDKApprovalHandle struct {
 	client     *CodexClient
 	portal     *bridgev2.Portal
 	state      *streamingState
+	turn       *bridgesdk.Turn
 	approvalID string
 	toolCallID string
 }
@@ -2137,7 +2140,12 @@ func (h *codexSDKApprovalHandle) Wait(ctx context.Context) (bridgesdk.ToolApprov
 			reason = agentremote.ApprovalReasonCancelled
 		}
 	}
-	if h.portal != nil {
+	if h.turn != nil {
+		h.turn.Approvals().Respond(h.approvalID, h.toolCallID, ok && decision.Approved, reason)
+		if !(ok && decision.Approved) {
+			h.turn.Stream().ToolDenied(h.toolCallID)
+		}
+	} else if h.portal != nil {
 		h.client.uiEmitter(h.state).EmitUIToolApprovalResponse(ctx, h.portal, h.approvalID, h.toolCallID, ok && decision.Approved, reason)
 		if !(ok && decision.Approved) {
 			h.client.uiEmitter(h.state).EmitUIToolOutputDenied(ctx, h.portal, h.toolCallID)
@@ -2178,7 +2186,7 @@ func (cc *CodexClient) requestSDKApproval(
 	cc.setApprovalStateTracking(state, approvalID, req.ToolCallID, req.ToolName)
 	cc.registerToolApproval(portal.MXID, approvalID, req.ToolCallID, req.ToolName, presentation, ttl)
 	if turn != nil {
-		turn.Emitter().EmitUIToolApprovalRequest(turn.Context(), portal, approvalID, req.ToolCallID)
+		turn.Approvals().EmitRequest(approvalID, req.ToolCallID)
 		cc.approvalFlow.SendPrompt(turn.Context(), portal, agentremote.SendPromptParams{
 			ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
 				ApprovalID:   approvalID,
@@ -2198,6 +2206,7 @@ func (cc *CodexClient) requestSDKApproval(
 		client:     cc,
 		portal:     portal,
 		state:      state,
+		turn:       turn,
 		approvalID: approvalID,
 		toolCallID: req.ToolCallID,
 	}
