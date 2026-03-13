@@ -22,8 +22,8 @@ var (
 
 type OpenCodeConnector struct {
 	*agentremote.ConnectorBase
-	br     *bridgev2.Bridge
-	Config Config
+	br        *bridgev2.Bridge
+	Config    Config
 	sdkConfig *bridgesdk.Config
 
 	clientsMu sync.Mutex
@@ -48,9 +48,13 @@ func NewConnector() *OpenCodeConnector {
 		Name:             "opencode",
 		Description:      "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
 		ProtocolID:       "ai-opencode",
+		AgentCatalog:     openCodeAgentCatalog{},
 		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "opencode", LogKey: "opencode_msg_id", StatusNetwork: "opencode"},
 		ClientCacheMu:    &oc.clientsMu,
 		ClientCache:      &oc.clients,
+		GetCapabilities: func(session any, _ *bridgesdk.Conversation) *bridgesdk.RoomFeatures {
+			return &bridgesdk.RoomFeatures{Custom: openCodeMatrixRoomFeatures()}
+		},
 		InitConnector: func(bridge *bridgev2.Bridge) {
 			oc.br = bridge
 		},

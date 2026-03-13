@@ -174,7 +174,7 @@ var openCodeFileFeatures = &event.FileFeatures{
 	MaxSize:          50 * 1024 * 1024,
 }
 
-func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal) *event.RoomFeatures {
+func openCodeMatrixRoomFeatures() *event.RoomFeatures {
 	return &event.RoomFeatures{
 		ID: "com.beeper.ai.capabilities.2026_02_17+opencode",
 		File: event.FileFeatureMap{
@@ -196,6 +196,10 @@ func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal)
 		TypingNotifications: true,
 		DeleteChat:          true,
 	}
+}
+
+func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal) *event.RoomFeatures {
+	return openCodeMatrixRoomFeatures()
 }
 
 func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {

@@ -4,19 +4,15 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/turns"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 var _ Host = (*OpenCodeClient)(nil)
@@ -68,6 +64,10 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		return
 	}
 
+	turnID = strings.TrimSpace(turnID)
+	agentID = strings.TrimSpace(agentID)
+	ctx = oc.BackgroundContext(ctx)
+
 	oc.StreamMu.Lock()
 	state := oc.streamStates[turnID]
 	if state == nil {
@@ -82,13 +82,12 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	if state.portal == nil {
 		state.portal = portal
 	}
-	if state.ui.TurnID == "" {
-		state.ui.TurnID = turnID
+	if state.agentID == "" {
+		state.agentID = agentID
 	}
 	if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
 		oc.applyStreamMessageMetadata(state, metadata)
 	}
-	needPlaceholder := state.networkMessageID == ""
 	partType, _ := part["type"].(string)
 	switch strings.TrimSpace(partType) {
 	case "text-delta":
@@ -104,254 +103,176 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		if errText, _ := part["errorText"].(string); strings.TrimSpace(errText) != "" {
 			state.errorText = strings.TrimSpace(errText)
 		}
+	case "finish":
+		if finishReason, _ := part["finishReason"].(string); strings.TrimSpace(finishReason) != "" {
+			state.finishReason = strings.TrimSpace(finishReason)
+		}
+	case "abort":
+		state.finishReason = "abort"
 	}
-	streamui.ApplyChunk(&state.ui, part)
+	turn := state.turn
+	if turn == nil {
+		turn = oc.newSDKStreamTurn(ctx, portal, state)
+		state.turn = turn
+	}
 	oc.StreamMu.Unlock()
 
-	if oc.IsStreamShuttingDown() {
+	if oc.IsStreamShuttingDown() || turn == nil {
 		return
 	}
-	if needPlaceholder {
-		pmeta := oc.PortalMeta(portal)
-		instanceID := ""
-		if pmeta != nil {
-			instanceID = pmeta.InstanceID
+	switch strings.TrimSpace(partType) {
+	case "start":
+		if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
+			turn.SetMetadata(metadata)
+		} else {
+			turn.SetMetadata(nil)
 		}
-		sender := oc.SenderForOpenCode(instanceID, false)
-		msgID := agentremote.NewMessageID("opencode")
-		uiMessage := msgconv.BuildUIMessage(msgconv.UIMessageParams{
-			TurnID: turnID,
-			Role:   "assistant",
-			Metadata: msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
-				TurnID:      turnID,
-				AgentID:     strings.TrimSpace(agentID),
-				StartedAtMs: state.startedAtMs,
-			}),
-		})
-		extra := map[string]any{
-			"msgtype":                event.MsgText,
-			"body":                   "...",
-			matrixevents.BeeperAIKey: uiMessage,
-			"m.mentions":             map[string]any{},
+	case "message-metadata":
+		if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
+			turn.SetMetadata(metadata)
+		} else {
+			turn.SetMetadata(nil)
 		}
-		converted := &bridgev2.ConvertedMessage{
-			Parts: []*bridgev2.ConvertedMessagePart{{
-				ID:      networkid.PartID("0"),
-				Type:    event.EventMessage,
-				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
-				Extra:   extra,
-				DBMetadata: &MessageMetadata{
-					BaseMessageMetadata: agentremote.BaseMessageMetadata{
-						Role:               "assistant",
-						TurnID:             turnID,
-						AgentID:            strings.TrimSpace(agentID),
-						CanonicalSchema:    "ai-sdk-ui-message-v1",
-						CanonicalUIMessage: uiMessage,
-					},
-				},
-			}},
+	case "start-step":
+		turn.StepStart()
+	case "finish-step":
+		turn.StepFinish()
+	case "text-start", "reasoning-start":
+		turn.SetMetadata(nil)
+	case "text-delta":
+		if delta, _ := part["delta"].(string); delta != "" {
+			turn.WriteText(delta)
+		} else {
+			turn.SetMetadata(nil)
 		}
-		eventTS := openCodeStreamEventTimestamp(state, false)
-		result := oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteMessage{
-			Portal:      portal.PortalKey,
-			ID:          msgID,
-			Sender:      sender,
-			Timestamp:   eventTS,
-			StreamOrder: openCodeNextStreamOrder(state, eventTS),
-			LogKey:      "opencode_msg_id",
-			PreBuilt:    converted,
-		})
-		if result.Success {
-			oc.StreamMu.Lock()
-			st := oc.streamStates[turnID]
-			if st != nil && st.networkMessageID == "" {
-				st.networkMessageID = msgID
-			}
-			if st != nil && st.initialEventID == "" && result.EventID != "" {
-				st.initialEventID = result.EventID
-			}
-			oc.StreamMu.Unlock()
+	case "text-end":
+		turn.FinishText()
+	case "reasoning-delta":
+		if delta, _ := part["delta"].(string); delta != "" {
+			turn.WriteReasoning(delta)
+		} else {
+			turn.SetMetadata(nil)
 		}
-	}
-
-	oc.StreamMu.Lock()
-	if oc.IsStreamShuttingDown() {
-		oc.StreamMu.Unlock()
-		return
-	}
-	state = oc.streamStates[turnID]
-	if state == nil {
-		state = &openCodeStreamState{
-			turnID:  turnID,
-			agentID: strings.TrimSpace(agentID),
+	case "reasoning-end":
+		turn.FinishReasoning()
+	case "tool-input-start":
+		toolName, _ := part["toolName"].(string)
+		toolCallID, _ := part["toolCallId"].(string)
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		turn.ToolStart(toolName, toolCallID, providerExecuted)
+	case "tool-input-delta":
+		toolCallID, _ := part["toolCallId"].(string)
+		inputTextDelta, _ := part["inputTextDelta"].(string)
+		turn.ToolInputDelta(toolCallID, inputTextDelta)
+	case "tool-input-available":
+		toolCallID, _ := part["toolCallId"].(string)
+		turn.ToolInput(toolCallID, part["input"])
+	case "tool-output-available":
+		toolCallID, _ := part["toolCallId"].(string)
+		turn.ToolOutput(toolCallID, part["output"])
+	case "tool-output-error":
+		toolCallID, _ := part["toolCallId"].(string)
+		errorText, _ := part["errorText"].(string)
+		turn.ToolOutputError(toolCallID, errorText)
+	case "tool-output-denied":
+		toolCallID, _ := part["toolCallId"].(string)
+		turn.ToolDenied(toolCallID)
+	case "tool-approval-request":
+		turn.SetMetadata(nil)
+		approvalID, _ := part["approvalId"].(string)
+		toolCallID, _ := part["toolCallId"].(string)
+		turn.Emitter().EmitUIToolApprovalRequest(turn.Context(), portal, approvalID, toolCallID)
+	case "tool-approval-response":
+		turn.SetMetadata(nil)
+		approvalID, _ := part["approvalId"].(string)
+		toolCallID, _ := part["toolCallId"].(string)
+		approved, _ := part["approved"].(bool)
+		reason, _ := part["reason"].(string)
+		turn.Emitter().EmitUIToolApprovalResponse(turn.Context(), portal, approvalID, toolCallID, approved, reason)
+	case "file":
+		url, _ := part["url"].(string)
+		mediaType, _ := part["mediaType"].(string)
+		turn.AddFile(url, mediaType)
+	case "source-document":
+		sourceID, _ := part["sourceId"].(string)
+		title, _ := part["title"].(string)
+		mediaType, _ := part["mediaType"].(string)
+		filename, _ := part["filename"].(string)
+		turn.AddSourceDocument(sourceID, title, mediaType, filename)
+	case "source-url":
+		url, _ := part["url"].(string)
+		title, _ := part["title"].(string)
+		turn.AddSourceURL(url, title)
+	case "error":
+		errText, _ := part["errorText"].(string)
+		turn.SetMetadata(nil)
+		turn.Emitter().EmitUIError(turn.Context(), portal, errText)
+	case "finish":
+		turn.SetMetadata(nil)
+		finishReason, _ := part["finishReason"].(string)
+		if strings.TrimSpace(finishReason) == "" {
+			finishReason = "stop"
 		}
-		oc.streamStates[turnID] = state
-	}
-	session := oc.StreamSessions[turnID]
-	if session == nil {
-		session = turns.NewStreamSession(turns.StreamSessionParams{
-			TurnID:  turnID,
-			AgentID: state.agentID,
-			GetStreamTarget: func() turns.StreamTarget {
-				oc.StreamMu.Lock()
-				defer oc.StreamMu.Unlock()
-				st := oc.streamStates[turnID]
-				if st == nil {
-					return turns.StreamTarget{}
-				}
-				return turns.StreamTarget{NetworkMessageID: st.networkMessageID}
-			},
-			ResolveTargetEventID: func(callCtx context.Context, target turns.StreamTarget) (id.EventID, error) {
-				return oc.resolveStreamTargetEventID(callCtx, portal, turnID, target)
-			},
-			GetRoomID: func() id.RoomID {
-				return portal.MXID
-			},
-			GetSuppressSend: func() bool { return false },
-			NextSeq: func() int {
-				oc.StreamMu.Lock()
-				defer oc.StreamMu.Unlock()
-				st := oc.streamStates[turnID]
-				if st == nil {
-					return 0
-				}
-				st.sequenceNum++
-				return st.sequenceNum
-			},
-			RuntimeFallbackFlag: &oc.StreamFallbackToDebounced,
-			GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
-				ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
-				return ephemeralSender, ok
-			},
-			SendDebouncedEdit: func(callCtx context.Context, force bool) error {
-				oc.StreamMu.Lock()
-				st := oc.streamStates[turnID]
-				var visibleBody, fallbackBody string
-				var netMsgID networkid.MessageID
-				var uiMessage map[string]any
-				var eventTS time.Time
-				var streamOrder int64
-				if st != nil {
-					visibleBody = st.visible.String()
-					fallbackBody = st.accumulated.String()
-					netMsgID = st.networkMessageID
-					uiMessage = oc.currentCanonicalUIMessage(st)
-					eventTS = openCodeStreamEventTimestamp(st, true)
-					streamOrder = openCodeNextStreamOrder(st, eventTS)
-				}
-				oc.StreamMu.Unlock()
-				content := turns.BuildDebouncedEditContent(turns.DebouncedEditParams{
-					PortalMXID:   portal.MXID.String(),
-					Force:        force,
-					SuppressSend: false,
-					VisibleBody:  visibleBody,
-					FallbackBody: fallbackBody,
-				})
-				if content == nil || netMsgID == "" {
-					return nil
-				}
-				pmeta := oc.PortalMeta(portal)
-				instanceID := ""
-				if pmeta != nil {
-					instanceID = pmeta.InstanceID
-				}
-				sender := oc.SenderForOpenCode(instanceID, false)
-				oc.UserLogin.QueueRemoteEvent(&OpenCodeRemoteEdit{
-					Portal:        portal.PortalKey,
-					Sender:        sender,
-					TargetMessage: netMsgID,
-					Timestamp:     eventTS,
-					StreamOrder:   streamOrder,
-					LogKey:        "opencode_edit_target",
-					PreBuilt: &bridgev2.ConvertedEdit{
-						ModifiedParts: []*bridgev2.ConvertedEditPart{{
-							Type: event.EventMessage,
-							Content: &event.MessageEventContent{
-								MsgType:       event.MsgText,
-								Body:          content.Body,
-								Format:        content.Format,
-								FormattedBody: content.FormattedBody,
-							},
-							Extra: map[string]any{"m.mentions": map[string]any{}},
-							TopLevelExtra: map[string]any{
-								matrixevents.BeeperAIKey:        uiMessage,
-								"com.beeper.dont_render_edited": true,
-								"m.mentions":                    map[string]any{},
-							},
-						}},
-					},
-				})
-				return nil
-			},
-			Logger: oc.Log(),
-		})
-		oc.StreamSessions[turnID] = session
-	}
-	oc.StreamMu.Unlock()
-	session.EmitPart(ctx, part)
-}
-
-func (oc *OpenCodeClient) resolveStreamTargetEventID(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	turnID string,
-	target turns.StreamTarget,
-) (id.EventID, error) {
-	if oc == nil {
-		return "", nil
-	}
-	receiver := networkid.UserLoginID("")
-	if portal != nil {
-		receiver = portal.Receiver
-	}
-	var bridge *bridgev2.Bridge
-	if oc.UserLogin != nil {
-		bridge = oc.UserLogin.Bridge
-	}
-	return agentremote.ResolveStreamTargetEventID(ctx, bridge, receiver, target, oc.streamInitialEventID(turnID), func(eventID id.EventID) {
-		oc.setStreamInitialEventID(turnID, eventID)
-	})
-}
-
-func (oc *OpenCodeClient) streamInitialEventID(turnID string) id.EventID {
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
-	if state := oc.streamStates[turnID]; state != nil {
-		return state.initialEventID
-	}
-	return ""
-}
-
-func (oc *OpenCodeClient) setStreamInitialEventID(turnID string, eventID id.EventID) {
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
-	if state := oc.streamStates[turnID]; state != nil && state.initialEventID == "" {
-		state.initialEventID = eventID
+		turn.End(finishReason)
+	case "abort":
+		reason, _ := part["reason"].(string)
+		turn.SetMetadata(nil)
+		turn.Abort(reason)
+	default:
+		if strings.HasPrefix(strings.TrimSpace(partType), "data-") {
+			turn.SetMetadata(nil)
+			turn.Emitter().Emit(turn.Context(), portal, part)
+		}
 	}
 }
 
 func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
+	turnID = strings.TrimSpace(turnID)
 	if turnID == "" {
 		return
 	}
 	oc.StreamMu.Lock()
-	session := oc.StreamSessions[turnID]
 	state := oc.streamStates[turnID]
-	delete(oc.StreamSessions, turnID)
-	oc.StreamMu.Unlock()
-	if state != nil {
-		portal := state.portal
-		if portal != nil {
-			oc.queueFinalStreamEdit(oc.BackgroundContext(context.Background()), portal, state)
-			oc.persistStreamDBMetadata(oc.BackgroundContext(context.Background()), portal, state, oc.buildStreamDBMetadata(state))
-		}
-	}
-	oc.StreamMu.Lock()
 	delete(oc.streamStates, turnID)
 	oc.StreamMu.Unlock()
-	if session != nil {
-		session.End(oc.BackgroundContext(context.Background()), turns.EndReasonFinish)
+	if state != nil && state.turn != nil {
+		finishReason := strings.TrimSpace(state.finishReason)
+		if finishReason == "" {
+			finishReason = "stop"
+		}
+		state.turn.End(finishReason)
 	}
+}
+
+func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openCodeStreamState) *bridgesdk.Turn {
+	if oc == nil || portal == nil || state == nil || oc.connector == nil || oc.connector.sdkConfig == nil {
+		return nil
+	}
+	pmeta := oc.PortalMeta(portal)
+	instanceID := ""
+	if pmeta != nil {
+		instanceID = pmeta.InstanceID
+	}
+	displayName := "OpenCode"
+	if oc.bridge != nil {
+		if name := strings.TrimSpace(oc.bridge.DisplayName(instanceID)); name != "" {
+			displayName = name
+		}
+	}
+	agent := openCodeSDKAgent(instanceID, displayName)
+	if strings.TrimSpace(state.agentID) != "" {
+		agent.ID = strings.TrimSpace(state.agentID)
+	}
+	sender := oc.SenderForOpenCode(instanceID, false)
+	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)
+	_ = conv.EnsureRoomAgent(ctx, agent)
+	turn := conv.StartTurn(ctx, agent, nil)
+	turn.SetID(state.turnID)
+	turn.SetSender(sender)
+	turn.SetFinalMetadataBuilder(func(_ *bridgesdk.Turn, finishReason string) any {
+		return oc.buildSDKFinalMetadata(state, finishReason)
+	})
+	return turn
 }
 
 func (oc *OpenCodeClient) DownloadAndEncodeMedia(ctx context.Context, mediaURL string, file *event.EncryptedFileInfo, maxMB int) (string, string, error) {
