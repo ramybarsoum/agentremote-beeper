@@ -71,10 +71,6 @@ func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
 			if cfg.BridgeName != nil {
 				return cfg.BridgeName()
 			}
-			desc := cfg.Description
-			if desc == "" {
-				desc = fmt.Sprintf("A Matrix↔%s bridge for Beeper.", cfg.Name)
-			}
 			port := cfg.Port
 			if port == 0 {
 				port = 29400

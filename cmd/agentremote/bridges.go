@@ -8,55 +8,35 @@ import (
 	"github.com/beeper/agentremote/bridges/codex"
 	"github.com/beeper/agentremote/bridges/openclaw"
 	"github.com/beeper/agentremote/bridges/opencode"
+	"github.com/beeper/agentremote/cmd/internal/bridgeentry"
 )
 
 type bridgeDef struct {
-	Name        string
-	Description string
-	NewFunc     func() bridgev2.NetworkConnector
-	Port        int
-	DBName      string
+	bridgeentry.Definition
+	NewFunc func() bridgev2.NetworkConnector
 }
 
 var bridgeRegistry = map[string]bridgeDef{
 	"ai": {
-		Name:        "ai",
-		Description: "A Matrix↔AI bridge for Beeper built on mautrix-go bridgev2.",
-		NewFunc:     func() bridgev2.NetworkConnector { return aibridge.NewAIConnector() },
-		Port:        29345,
-		DBName:      "ai.db",
+		Definition: bridgeentry.AI,
+		NewFunc:    func() bridgev2.NetworkConnector { return aibridge.NewAIConnector() },
 	},
 	"codex": {
-		Name:        "codex",
-		Description: "A Matrix↔Codex bridge built on mautrix-go bridgev2.",
-		NewFunc:     func() bridgev2.NetworkConnector { return codex.NewConnector() },
-		Port:        29346,
-		DBName:      "codex.db",
+		Definition: bridgeentry.Codex,
+		NewFunc:    func() bridgev2.NetworkConnector { return codex.NewConnector() },
 	},
 	"opencode": {
-		Name:        "opencode",
-		Description: "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
-		NewFunc:     func() bridgev2.NetworkConnector { return opencode.NewConnector() },
-		Port:        29347,
-		DBName:      "opencode.db",
+		Definition: bridgeentry.OpenCode,
+		NewFunc:    func() bridgev2.NetworkConnector { return opencode.NewConnector() },
 	},
 	"openclaw": {
-		Name:        "openclaw",
-		Description: "A Matrix↔OpenClaw bridge built on mautrix-go bridgev2.",
-		NewFunc:     func() bridgev2.NetworkConnector { return openclaw.NewConnector() },
-		Port:        29348,
-		DBName:      "openclaw.db",
+		Definition: bridgeentry.OpenClaw,
+		NewFunc:    func() bridgev2.NetworkConnector { return openclaw.NewConnector() },
 	},
 }
 
 func newBridgeMain(def bridgeDef) *mxmain.BridgeMain {
-	return &mxmain.BridgeMain{
-		Name:        def.Name,
-		Description: def.Description,
-		URL:         "https://github.com/beeper/agentremote",
-		Version:     "0.1.0",
-		Connector:   def.NewFunc(),
-	}
+	return def.Definition.NewMain(def.NewFunc())
 }
 
 func beeperBridgeName(bridgeType, name string) string {
