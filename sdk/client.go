@@ -192,7 +192,8 @@ func (c *sdkClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		if msg.Event != nil {
 			source = UserMessageSource(msg.Event.ID.String())
 		}
-		turn := conv.StartDefaultTurn(turnCtx, source)
+		agent, _ := conv.resolveDefaultAgent(turnCtx)
+		turn := conv.StartTurn(turnCtx, agent, source)
 		return c.cfg().OnMessage(session, conv, sdkMsg, turn)
 	}
 	go func() {

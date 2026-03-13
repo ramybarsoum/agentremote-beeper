@@ -259,12 +259,6 @@ func (c *Conversation) StartTurn(ctx context.Context, agent *Agent, source *Sour
 	return newTurn(ctx, c, agent, source)
 }
 
-// StartDefaultTurn creates a new Turn for this conversation with the first available/default agent.
-func (c *Conversation) StartDefaultTurn(ctx context.Context, source *SourceRef) *Turn {
-	agent, _ := c.resolveDefaultAgent(ctx)
-	return newTurn(ctx, c, agent, source)
-}
-
 // StartTurnWithAgent is kept as a compatibility helper.
 func (c *Conversation) StartTurnWithAgent(ctx context.Context, agent *Agent) *Turn {
 	return newTurn(ctx, c, agent, nil)
