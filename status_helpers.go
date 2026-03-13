@@ -25,20 +25,15 @@ func MessageSendStatusError(
 	reasonForError func(error) event.MessageStatusReason,
 ) error {
 	if err == nil {
-		if message != "" {
-			err = errors.New(message)
-		} else {
-			err = errors.New("message send failed")
-		}
+		err = errors.New(coalesceStrings(message, "message send failed"))
 	}
 	st := bridgev2.WrapErrorInStatus(err).WithSendNotice(true)
 	if statusForError != nil {
 		st = st.WithStatus(statusForError(err))
 	}
-	switch {
-	case reason != "":
+	if reason != "" {
 		st = st.WithErrorReason(reason)
-	case reasonForError != nil:
+	} else if reasonForError != nil {
 		st = st.WithErrorReason(reasonForError(err))
 	}
 	if message != "" {

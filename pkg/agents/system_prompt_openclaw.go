@@ -343,9 +343,9 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 	userTimezone := strings.TrimSpace(params.UserTimezone)
 	skillsPrompt := strings.TrimSpace(params.SkillsPrompt)
 	heartbeatPrompt := strings.TrimSpace(params.HeartbeatPrompt)
-	heartbeatPromptLine := "Heartbeat prompt: (configured)"
-	if heartbeatPrompt != "" {
-		heartbeatPromptLine = fmt.Sprintf("Heartbeat prompt: %s", heartbeatPrompt)
+	heartbeatPromptLine := "Heartbeat prompt: " + heartbeatPrompt
+	if heartbeatPrompt == "" {
+		heartbeatPromptLine = "Heartbeat prompt: (configured)"
 	}
 
 	runtimeInfo := params.RuntimeInfo
