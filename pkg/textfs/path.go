@@ -23,7 +23,6 @@ func NormalizePath(raw string) (string, error) {
 	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/..") {
 		return "", errors.New("path escapes virtual root")
 	}
-	cleaned = strings.TrimSuffix(cleaned, "/")
 	return cleaned, nil
 }
 
