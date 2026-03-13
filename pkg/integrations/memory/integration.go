@@ -354,22 +354,16 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 
 func (i *Integration) shouldInjectMemoryPromptContext(scope iruntime.PromptScope) bool {
 	ma, ok := i.host.(iruntime.MetadataAccess)
-	if !ok {
+	if !ok || (scope.Meta != nil && ma.IsSimpleMode(scope.Meta)) {
 		return false
 	}
-	if scope.Meta != nil && ma.IsSimpleMode(scope.Meta) {
-		return false
+	if cl := i.host.ConfigLookup(); cl != nil {
+		if cfg := cl.ModuleConfig(moduleName); cfg != nil {
+			inject, _ := cfg["inject_context"].(bool)
+			return inject
+		}
 	}
-	cl := i.host.ConfigLookup()
-	if cl == nil {
-		return false
-	}
-	cfg := cl.ModuleConfig(moduleName)
-	if cfg == nil {
-		return false
-	}
-	inject, _ := cfg["inject_context"].(bool)
-	return inject
+	return false
 }
 
 func (i *Integration) shouldBootstrapMemoryPromptContext(scope iruntime.PromptScope) bool {
@@ -567,16 +561,13 @@ func (i *Integration) resolveOverflowFlushSettings() *FlushSettings {
 }
 
 func (i *Integration) resolveMemoryCitationsMode() string {
-	cl := i.host.ConfigLookup()
-	if cl == nil {
-		return "auto"
+	if cl := i.host.ConfigLookup(); cl != nil {
+		if cfg := cl.ModuleConfig(moduleName); cfg != nil {
+			raw, _ := cfg["citations"].(string)
+			return normalizeCitationsMode(raw)
+		}
 	}
-	cfg := cl.ModuleConfig(moduleName)
-	if cfg == nil {
-		return "auto"
-	}
-	raw, _ := cfg["citations"].(string)
-	return normalizeCitationsMode(raw)
+	return "auto"
 }
 
 func (i *Integration) shouldIncludeMemoryCitations(ctx context.Context, scope iruntime.ToolScope, mode string) bool {

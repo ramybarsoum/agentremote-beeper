@@ -94,6 +94,24 @@ func containsAnyPattern(err error, patterns []string) bool {
 	return false
 }
 
+// containsAnyInFields checks if any of the given fields, when lowercased, contain
+// any of the given patterns. Useful for checking multiple structured error fields
+// against the same set of signal strings.
+func containsAnyInFields(patterns []string, fields ...string) bool {
+	for _, field := range fields {
+		lower := strings.ToLower(strings.TrimSpace(field))
+		if lower == "" {
+			continue
+		}
+		for _, pattern := range patterns {
+			if strings.Contains(lower, pattern) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // IsBillingError checks if the error is a billing/payment error (402)
 func IsBillingError(err error) bool {
 	return containsAnyPattern(err, []string{

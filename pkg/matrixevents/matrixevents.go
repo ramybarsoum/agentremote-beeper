@@ -30,9 +30,7 @@ const (
 )
 
 // Content field keys.
-const (
-	BeeperAIKey = "com.beeper.ai"
-)
+const BeeperAIKey = "com.beeper.ai"
 
 // CommandDescriptionEventType is the state event type for MSC4391 command descriptions.
 // Already accepted in gomuks/mautrix-go ecosystem.

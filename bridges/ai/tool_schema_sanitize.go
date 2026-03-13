@@ -612,38 +612,27 @@ func cleanSchemaWithDefs(schema map[string]any, defs schemaDefs, refStack map[st
 		return result
 	}
 
-	hasAnyOf := false
-	hasOneOf := false
-	if _, ok := schema["anyOf"].([]any); ok {
-		hasAnyOf = true
-	}
-	if _, ok := schema["oneOf"].([]any); ok {
-		hasOneOf = true
+	// Pre-clean and try to collapse anyOf/oneOf union variants
+	cleanUnionVariants := func(key string) ([]any, bool) {
+		raw, ok := schema[key].([]any)
+		if !ok {
+			return nil, false
+		}
+		cleaned := make([]any, 0, len(raw))
+		for _, variant := range raw {
+			cleaned = append(cleaned, cleanSchemaForProviderWithDefs(variant, nextDefs, refStack, report))
+		}
+		return cleaned, true
 	}
 
-	var cleanedAnyOf []any
-	var cleanedOneOf []any
-	if hasAnyOf {
-		raw := schema["anyOf"].([]any)
-		cleanedAnyOf = make([]any, 0, len(raw))
-		for _, variant := range raw {
-			cleanedAnyOf = append(cleanedAnyOf, cleanSchemaForProviderWithDefs(variant, nextDefs, refStack, report))
-		}
-	}
-	if hasOneOf {
-		raw := schema["oneOf"].([]any)
-		cleanedOneOf = make([]any, 0, len(raw))
-		for _, variant := range raw {
-			cleanedOneOf = append(cleanedOneOf, cleanSchemaForProviderWithDefs(variant, nextDefs, refStack, report))
-		}
-	}
+	cleanedAnyOf, hasAnyOf := cleanUnionVariants("anyOf")
+	cleanedOneOf, hasOneOf := cleanUnionVariants("oneOf")
 
 	if hasAnyOf {
 		if collapsed, ok := tryCollapseUnionVariants(schema, cleanedAnyOf); ok {
 			return collapsed
 		}
 	}
-
 	if hasOneOf {
 		if collapsed, ok := tryCollapseUnionVariants(schema, cleanedOneOf); ok {
 			return collapsed
@@ -714,27 +703,15 @@ func cleanSchemaWithDefs(schema map[string]any, defs schemaDefs, refStack map[st
 				cleaned[key] = value
 			}
 		case "anyOf":
-			if arr, ok := value.([]any); ok {
+			if _, ok := value.([]any); ok {
 				if cleanedAnyOf != nil {
 					cleaned[key] = cleanedAnyOf
-				} else {
-					nextItems := make([]any, 0, len(arr))
-					for _, entry := range arr {
-						nextItems = append(nextItems, cleanSchemaForProviderWithDefs(entry, nextDefs, refStack, report))
-					}
-					cleaned[key] = nextItems
 				}
 			}
 		case "oneOf":
-			if arr, ok := value.([]any); ok {
+			if _, ok := value.([]any); ok {
 				if cleanedOneOf != nil {
 					cleaned[key] = cleanedOneOf
-				} else {
-					nextItems := make([]any, 0, len(arr))
-					for _, entry := range arr {
-						nextItems = append(nextItems, cleanSchemaForProviderWithDefs(entry, nextDefs, refStack, report))
-					}
-					cleaned[key] = nextItems
 				}
 			}
 		case "allOf":

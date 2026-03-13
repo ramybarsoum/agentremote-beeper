@@ -213,6 +213,25 @@ func IsServerError(err error) bool {
 	return false
 }
 
+// authPatterns are string signals that indicate an authentication/authorization error.
+var authPatterns = []string{
+	"invalid api key",
+	"invalid_api_key",
+	"incorrect api key",
+	"invalid token",
+	"unauthorized",
+	"forbidden",
+	"access denied",
+	"token has expired",
+	"no credentials found",
+	"no api key found",
+	"re-authenticate",
+	"oauth token refresh failed",
+	"insufficient permission",
+	"insufficient_permission",
+	"permission denied",
+}
+
 // IsAuthError checks if the error is an authentication error.
 // Checks openai.Error status codes first, then falls back to string pattern matching.
 func IsAuthError(err error) bool {
@@ -226,51 +245,11 @@ func IsAuthError(err error) bool {
 			return true
 		}
 		if apiErr.StatusCode == 403 {
-			authSignals := []string{
-				strings.ToLower(strings.TrimSpace(apiErr.Code)),
-				strings.ToLower(strings.TrimSpace(apiErr.Type)),
-				strings.ToLower(strings.TrimSpace(apiErr.Message)),
-				strings.ToLower(strings.TrimSpace(apiErr.RawJSON())),
-			}
-			for _, signal := range authSignals {
-				if signal == "" {
-					continue
-				}
-				switch {
-				case strings.Contains(signal, "invalid api key"),
-					strings.Contains(signal, "invalid_api_key"),
-					strings.Contains(signal, "incorrect api key"),
-					strings.Contains(signal, "invalid token"),
-					strings.Contains(signal, "unauthorized"),
-					strings.Contains(signal, "access denied"),
-					strings.Contains(signal, "token has expired"),
-					strings.Contains(signal, "no credentials found"),
-					strings.Contains(signal, "no api key found"),
-					strings.Contains(signal, "re-authenticate"),
-					strings.Contains(signal, "oauth token refresh failed"),
-					strings.Contains(signal, "insufficient permission"),
-					strings.Contains(signal, "insufficient_permission"),
-					strings.Contains(signal, "permission denied"),
-					strings.Contains(signal, "forbidden"):
-					return true
-				}
-			}
+			return containsAnyInFields(authPatterns,
+				apiErr.Code, apiErr.Type, apiErr.Message, apiErr.RawJSON())
 		}
 	}
-	return containsAnyPattern(err, []string{
-		"invalid api key",
-		"invalid_api_key",
-		"incorrect api key",
-		"invalid token",
-		"unauthorized",
-		"forbidden",
-		"access denied",
-		"token has expired",
-		"no credentials found",
-		"no api key found",
-		"re-authenticate",
-		"oauth token refresh failed",
-	})
+	return containsAnyPattern(err, authPatterns)
 }
 
 // IsModelNotFound checks if the error is a model not found (404) error
@@ -280,17 +259,12 @@ func IsModelNotFound(err error) bool {
 		if apiErr.StatusCode == 404 {
 			return true
 		}
-		lowerCode := strings.ToLower(strings.TrimSpace(apiErr.Code))
-		lowerType := strings.ToLower(strings.TrimSpace(apiErr.Type))
-		lowerMsg := strings.ToLower(strings.TrimSpace(apiErr.Message))
-		lowerRaw := strings.ToLower(strings.TrimSpace(apiErr.RawJSON()))
-		if lowerCode == "model_not_found" {
+		if strings.EqualFold(strings.TrimSpace(apiErr.Code), "model_not_found") {
 			return true
 		}
-		if lowerType == "invalid_request_error" &&
-			(strings.Contains(lowerMsg, "model is not available") ||
-				strings.Contains(lowerMsg, "model not found") ||
-				strings.Contains(lowerRaw, "\"code\":\"model_not_found\"")) {
+		if strings.EqualFold(strings.TrimSpace(apiErr.Type), "invalid_request_error") &&
+			containsAnyInFields([]string{"model is not available", "model not found", "\"code\":\"model_not_found\""},
+				apiErr.Message, apiErr.RawJSON()) {
 			return true
 		}
 	}
@@ -304,28 +278,20 @@ func IsModelNotFound(err error) bool {
 // IsToolSchemaError checks if the error indicates a tool schema validation failure.
 func IsToolSchemaError(err error) bool {
 	var apiErr *openai.Error
-	if errors.As(err, &apiErr) {
-		lowerMsg := strings.ToLower(apiErr.Message)
-		if strings.EqualFold(apiErr.Code, "invalid_function_parameters") {
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if strings.EqualFold(apiErr.Code, "invalid_function_parameters") {
+		return true
+	}
+	if containsAnyInFields([]string{"invalid_function_parameters", "invalid schema for function"},
+		apiErr.Message, apiErr.RawJSON()) {
+		return true
+	}
+	// Check for schema composition keyword errors (oneOf/allOf/anyOf in input_schema)
+	if containsAnyInFields([]string{"input_schema"}, apiErr.Message, apiErr.RawJSON()) {
+		if containsAnyInFields([]string{"oneof", "allof", "anyof"}, apiErr.Message, apiErr.RawJSON()) {
 			return true
-		}
-		if strings.Contains(apiErr.Message, "Invalid schema for function") {
-			return true
-		}
-		if strings.Contains(lowerMsg, "input_schema") &&
-			(strings.Contains(lowerMsg, "oneof") || strings.Contains(lowerMsg, "allof") || strings.Contains(lowerMsg, "anyof")) {
-			return true
-		}
-		raw := apiErr.RawJSON()
-		if raw != "" {
-			lowerRaw := strings.ToLower(raw)
-			if strings.Contains(raw, "invalid_function_parameters") || strings.Contains(raw, "Invalid schema for function") {
-				return true
-			}
-			if strings.Contains(lowerRaw, "input_schema") &&
-				(strings.Contains(lowerRaw, "oneof") || strings.Contains(lowerRaw, "allof") || strings.Contains(lowerRaw, "anyof")) {
-				return true
-			}
 		}
 	}
 	return false
