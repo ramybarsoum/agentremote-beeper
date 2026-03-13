@@ -2,7 +2,6 @@ package fetch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -52,11 +51,6 @@ func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error)
 	}
 
 	start := time.Now()
-	data, err := exa.PostJSON(ctx, p.cfg.BaseURL, "/contents", p.cfg.APIKey, payload, DefaultTimeoutSecs)
-	if err != nil {
-		return nil, err
-	}
-
 	var resp struct {
 		Results []struct {
 			URL         string   `json:"url"`
@@ -69,7 +63,7 @@ func (p *exaProvider) Fetch(ctx context.Context, req Request) (*Response, error)
 		Statuses    []exaContentStatus `json:"statuses"`
 		CostDollars map[string]any     `json:"costDollars"`
 	}
-	if err := json.Unmarshal(data, &resp); err != nil {
+	if err := exa.PostAndDecodeJSON(ctx, p.cfg.BaseURL, "/contents", p.cfg.APIKey, payload, DefaultTimeoutSecs, &resp); err != nil {
 		return nil, err
 	}
 	statusErr := formatExaStatusError(req.URL, resp.Statuses)

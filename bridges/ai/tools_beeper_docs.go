@@ -9,7 +9,6 @@ import (
 
 	"github.com/beeper/agentremote/pkg/search"
 	"github.com/beeper/agentremote/pkg/shared/exa"
-	"github.com/beeper/agentremote/pkg/shared/httputil"
 )
 
 func executeBeeperDocs(ctx context.Context, args map[string]any) (string, error) {
@@ -36,10 +35,8 @@ func executeBeeperDocs(ctx context.Context, args map[string]any) (string, error)
 	apiKey := cfg.Exa.APIKey
 	baseURL := cfg.Exa.BaseURL
 	if baseURL == "" {
-		baseURL = "https://api.exa.ai"
+		baseURL = exa.DefaultBaseURL
 	}
-
-	endpoint := strings.TrimRight(baseURL, "/") + "/search"
 
 	payload := map[string]any{
 		"query":          query,
@@ -54,11 +51,6 @@ func executeBeeperDocs(ctx context.Context, args map[string]any) (string, error)
 		},
 	}
 
-	data, _, err := httputil.PostJSON(ctx, endpoint, exa.AuthHeaders(baseURL, apiKey), payload, 30)
-	if err != nil {
-		return "", fmt.Errorf("beeper_docs search failed: %w", err)
-	}
-
 	var resp struct {
 		Results []struct {
 			Title      string   `json:"title"`
@@ -66,7 +58,7 @@ func executeBeeperDocs(ctx context.Context, args map[string]any) (string, error)
 			Highlights []string `json:"highlights"`
 		} `json:"results"`
 	}
-	if err := json.Unmarshal(data, &resp); err != nil {
+	if err := exa.PostAndDecodeJSON(ctx, baseURL, "/search", apiKey, payload, 30, &resp); err != nil {
 		return "", fmt.Errorf("beeper_docs: failed to parse response: %w", err)
 	}
 

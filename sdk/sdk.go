@@ -2,12 +2,14 @@ package sdk
 
 import (
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
+
+	"github.com/beeper/agentremote"
 )
 
 // Bridge is the SDK bridge handle.
 type Bridge struct {
 	config    *Config
-	connector *sdkConnector
+	connector *agentremote.ConnectorBase
 	main      *mxmain.BridgeMain
 }
 
@@ -43,7 +45,7 @@ func (b *Bridge) Stop() {
 }
 
 // Connector returns the underlying ConnectorBase.
-func (b *Bridge) Connector() *sdkConnector { return b.connector }
+func (b *Bridge) Connector() *agentremote.ConnectorBase { return b.connector }
 
 // BridgeMain returns the underlying mxmain.BridgeMain.
 func (b *Bridge) BridgeMain() *mxmain.BridgeMain { return b.main }

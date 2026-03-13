@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
@@ -307,21 +306,6 @@ func (c *sdkClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 		msgID = string(msg.TargetMessage.ID)
 	}
 	return c.config().OnDelete(c.getSession(), c.conv(ctx, msg.Portal), msgID)
-}
-
-// PreHandleMatrixReaction implements bridgev2.ReactionHandlingNetworkAPI.
-func (c *sdkClient) PreHandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (bridgev2.MatrixReactionPreResponse, error) {
-	return c.BaseReactionHandler.PreHandleMatrixReaction(ctx, msg)
-}
-
-// HandleMatrixReaction implements bridgev2.ReactionHandlingNetworkAPI.
-func (c *sdkClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (reaction *database.Reaction, err error) {
-	return c.BaseReactionHandler.HandleMatrixReaction(ctx, msg)
-}
-
-// HandleMatrixReactionRemove implements bridgev2.ReactionHandlingNetworkAPI.
-func (c *sdkClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
-	return c.BaseReactionHandler.HandleMatrixReactionRemove(ctx, msg)
 }
 
 // HandleMatrixTyping implements bridgev2.TypingHandlingNetworkAPI.

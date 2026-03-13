@@ -2,13 +2,10 @@ package agentremote
 
 import "testing"
 
-func TestNewApprovalManagerWrapsFlow(t *testing.T) {
-	manager := NewApprovalManager[map[string]any](ApprovalFlowConfig[map[string]any]{})
-	if manager == nil {
-		t.Fatal("expected approval manager")
-	}
-	if manager.ApprovalFlow == nil {
-		t.Fatal("expected approval flow to be initialized")
+func TestNewApprovalFlowInit(t *testing.T) {
+	flow := NewApprovalFlow[map[string]any](ApprovalFlowConfig[map[string]any]{})
+	if flow == nil {
+		t.Fatal("expected approval flow")
 	}
 }
 

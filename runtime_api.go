@@ -23,7 +23,7 @@ type Runtime struct {
 	Login     *bridgev2.UserLogin
 	AgentID   string
 	Turns     *TurnManager
-	Approvals *ApprovalManager[map[string]any]
+	Approvals *ApprovalFlow[map[string]any]
 	Stores    *store.Scope
 }
 
@@ -42,7 +42,7 @@ func NewRuntime(cfg RuntimeConfig) *Runtime {
 		Stores:  store.NewScopeForLogin(cfg.Login, agentID),
 	}
 	rt.Turns = NewTurnManager(rt)
-	rt.Approvals = NewApprovalManager(ApprovalFlowConfig[map[string]any]{
+	rt.Approvals = NewApprovalFlow(ApprovalFlowConfig[map[string]any]{
 		Login: func() *bridgev2.UserLogin {
 			return cfg.Login
 		},

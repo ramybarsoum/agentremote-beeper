@@ -15,16 +15,8 @@ import (
 	"github.com/beeper/agentremote"
 )
 
-type sdkConnector struct {
-	*agentremote.ConnectorBase
-	cfg *Config
-}
-
-func newSDKConnector(cfg *Config) *sdkConnector {
-	return &sdkConnector{
-		cfg:           cfg,
-		ConnectorBase: NewConnectorBase(cfg),
-	}
+func newSDKConnector(cfg *Config) *agentremote.ConnectorBase {
+	return NewConnectorBase(cfg)
 }
 
 // NewConnectorBase builds an SDK-backed connector base that can be embedded by custom bridges.

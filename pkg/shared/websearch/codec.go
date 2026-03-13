@@ -96,30 +96,32 @@ func PayloadFromResponse(resp *search.Response) map[string]any {
 
 // ResultsFromPayload extracts search results from the common payload map.
 func ResultsFromPayload(payload map[string]any) []PayloadResult {
-	rawResults, ok := payload["results"].([]any)
-	if !ok || len(rawResults) == 0 {
+	switch rawResults := payload["results"].(type) {
+	case []any:
+		if len(rawResults) == 0 {
+			return nil
+		}
+		results := make([]PayloadResult, 0, len(rawResults))
+		for _, rawResult := range rawResults {
+			entry, ok := rawResult.(map[string]any)
+			if !ok {
+				continue
+			}
+			results = append(results, payloadResultFromMap(entry))
+		}
+		return results
+	case []map[string]any:
+		if len(rawResults) == 0 {
+			return nil
+		}
+		results := make([]PayloadResult, 0, len(rawResults))
+		for _, entry := range rawResults {
+			results = append(results, payloadResultFromMap(entry))
+		}
+		return results
+	default:
 		return nil
 	}
-
-	results := make([]PayloadResult, 0, len(rawResults))
-	for _, rawResult := range rawResults {
-		entry, ok := rawResult.(map[string]any)
-		if !ok {
-			continue
-		}
-		results = append(results, PayloadResult{
-			ID:          stringArg(entry, "id"),
-			Title:       stringArg(entry, "title"),
-			URL:         stringArg(entry, "url"),
-			Description: stringArg(entry, "description"),
-			Published:   stringArg(entry, "published"),
-			SiteName:    stringArg(entry, "siteName"),
-			Author:      stringArg(entry, "author"),
-			Image:       stringArg(entry, "image"),
-			Favicon:     stringArg(entry, "favicon"),
-		})
-	}
-	return results
 }
 
 // ResultsFromJSON extracts search results from a JSON-encoded payload.
@@ -139,4 +141,18 @@ func ResultsFromJSON(output string) []PayloadResult {
 func stringArg(payload map[string]any, key string) string {
 	value, _ := payload[key].(string)
 	return strings.TrimSpace(value)
+}
+
+func payloadResultFromMap(entry map[string]any) PayloadResult {
+	return PayloadResult{
+		ID:          stringArg(entry, "id"),
+		Title:       stringArg(entry, "title"),
+		URL:         stringArg(entry, "url"),
+		Description: stringArg(entry, "description"),
+		Published:   stringArg(entry, "published"),
+		SiteName:    stringArg(entry, "siteName"),
+		Author:      stringArg(entry, "author"),
+		Image:       stringArg(entry, "image"),
+		Favicon:     stringArg(entry, "favicon"),
+	}
 }

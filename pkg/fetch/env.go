@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/beeper/agentremote/pkg/shared/exa"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -17,9 +18,7 @@ func ConfigFromEnv() *Config {
 	if fallbacks := strings.TrimSpace(os.Getenv("FETCH_FALLBACKS")); fallbacks != "" {
 		cfg.Fallbacks = stringutil.SplitCSV(fallbacks)
 	}
-
-	cfg.Exa.APIKey = stringutil.EnvOr(cfg.Exa.APIKey, os.Getenv("EXA_API_KEY"))
-	cfg.Exa.BaseURL = stringutil.EnvOr(cfg.Exa.BaseURL, os.Getenv("EXA_BASE_URL"))
+	exa.ApplyEnv(&cfg.Exa.APIKey, &cfg.Exa.BaseURL)
 
 	return cfg
 }

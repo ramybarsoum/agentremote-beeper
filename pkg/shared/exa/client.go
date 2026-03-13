@@ -2,7 +2,9 @@ package exa
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/httputil"
@@ -31,4 +33,23 @@ func PostJSON(ctx context.Context, baseURL, path, apiKey string, payload any, ti
 	}
 	data, _, err := httputil.PostJSON(ctx, endpoint, AuthHeaders(baseURL, apiKey), payload, timeoutSecs)
 	return data, err
+}
+
+// PostAndDecodeJSON sends a JSON request and decodes the JSON response into out.
+func PostAndDecodeJSON(ctx context.Context, baseURL, path, apiKey string, payload any, timeoutSecs int, out any) error {
+	data, err := PostJSON(ctx, baseURL, path, apiKey, payload, timeoutSecs)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, out)
+}
+
+// ApplyEnv fills empty Exa credentials from standard environment variables.
+func ApplyEnv(apiKey, baseURL *string) {
+	if apiKey != nil {
+		*apiKey = stringutil.EnvOr(*apiKey, os.Getenv("EXA_API_KEY"))
+	}
+	if baseURL != nil {
+		*baseURL = stringutil.EnvOr(*baseURL, os.Getenv("EXA_BASE_URL"))
+	}
 }

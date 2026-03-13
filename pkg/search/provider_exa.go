@@ -2,7 +2,6 @@ package search
 
 import (
 	"context"
-	"encoding/json"
 	"net/url"
 	"strings"
 	"time"
@@ -58,11 +57,6 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 	}
 
 	start := time.Now()
-	data, err := exa.PostJSON(ctx, p.cfg.BaseURL, "/search", p.cfg.APIKey, payload, DefaultTimeoutSecs)
-	if err != nil {
-		return nil, err
-	}
-
 	var resp struct {
 		Results []struct {
 			ID            string   `json:"id"`
@@ -77,7 +71,7 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 		} `json:"results"`
 		CostDollars map[string]any `json:"costDollars"`
 	}
-	if err := json.Unmarshal(data, &resp); err != nil {
+	if err := exa.PostAndDecodeJSON(ctx, p.cfg.BaseURL, "/search", p.cfg.APIKey, payload, DefaultTimeoutSecs, &resp); err != nil {
 		return nil, err
 	}
 
