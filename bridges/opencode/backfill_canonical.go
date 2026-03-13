@@ -5,7 +5,6 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/opencode/api"
 	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
@@ -33,12 +32,7 @@ func buildCanonicalAssistantBackfill(msg api.MessageWithParts, agentID string) c
 
 	var visible strings.Builder
 	for _, part := range msg.Parts {
-		if part.MessageID == "" {
-			part.MessageID = msg.Info.ID
-		}
-		if part.SessionID == "" {
-			part.SessionID = msg.Info.SessionID
-		}
+		fillPartIDs(&part, msg.Info.ID, msg.Info.SessionID)
 		appendCanonicalAssistantPart(&state, &visible, part)
 	}
 
@@ -58,37 +52,32 @@ func buildCanonicalAssistantBackfill(msg api.MessageWithParts, agentID string) c
 	if body == "" {
 		body = "..."
 	}
+	promptTokens, completionTokens, reasoningTokens := backfillTokenCounts(msg)
 	return canonicalBackfillSnapshot{
 		body: body,
 		ui:   uiMessage,
-		meta: &MessageMetadata{
-			BaseMessageMetadata: agentremote.BaseMessageMetadata{
-				Role:               stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Role), "assistant"),
-				Body:               body,
-				FinishReason:       stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Finish), finishReason),
-				PromptTokens:       backfillPromptTokens(msg),
-				CompletionTokens:   backfillCompletionTokens(msg),
-				ReasoningTokens:    backfillReasoningTokens(msg),
-				TurnID:             turnID,
-				AgentID:            strings.TrimSpace(agentID),
-				CanonicalSchema:    "ai-sdk-ui-message-v1",
-				CanonicalUIMessage: uiMessage,
-				StartedAtMs:        int64(msg.Info.Time.Created),
-				CompletedAtMs:      int64(msg.Info.Time.Completed),
-				ThinkingContent:    agentremote.CanonicalReasoningText(agentremote.NormalizeUIParts(uiMessage["parts"])),
-				ToolCalls:          agentremote.CanonicalToolCalls(agentremote.NormalizeUIParts(uiMessage["parts"]), "opencode"),
-				GeneratedFiles:     agentremote.CanonicalGeneratedFiles(agentremote.NormalizeUIParts(uiMessage["parts"])),
-			},
-			SessionID:       strings.TrimSpace(msg.Info.SessionID),
-			MessageID:       strings.TrimSpace(msg.Info.ID),
-			ParentMessageID: strings.TrimSpace(msg.Info.ParentID),
-			Agent:           strings.TrimSpace(msg.Info.Agent),
-			ModelID:         strings.TrimSpace(msg.Info.ModelID),
-			ProviderID:      strings.TrimSpace(msg.Info.ProviderID),
-			Mode:            strings.TrimSpace(msg.Info.Mode),
-			Cost:            backfillCost(msg),
-			TotalTokens:     backfillTotalTokens(msg),
-		},
+		meta: buildMessageMetadataFromParams(MessageMetadataParams{
+			Role:             stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Role), "assistant"),
+			Body:             body,
+			FinishReason:     stringutil.FirstNonEmpty(strings.TrimSpace(msg.Info.Finish), finishReason),
+			PromptTokens:     promptTokens,
+			CompletionTokens: completionTokens,
+			ReasoningTokens:  reasoningTokens,
+			TurnID:           turnID,
+			AgentID:          strings.TrimSpace(agentID),
+			UIMessage:        uiMessage,
+			StartedAtMs:      int64(msg.Info.Time.Created),
+			CompletedAtMs:    int64(msg.Info.Time.Completed),
+			SessionID:        strings.TrimSpace(msg.Info.SessionID),
+			MessageID:        strings.TrimSpace(msg.Info.ID),
+			ParentMessageID:  strings.TrimSpace(msg.Info.ParentID),
+			Agent:            strings.TrimSpace(msg.Info.Agent),
+			ModelID:          strings.TrimSpace(msg.Info.ModelID),
+			ProviderID:       strings.TrimSpace(msg.Info.ProviderID),
+			Mode:             strings.TrimSpace(msg.Info.Mode),
+			Cost:             backfillCost(msg),
+			TotalTokens:      backfillTotalTokens(msg),
+		}),
 	}
 }
 
@@ -115,12 +104,7 @@ func appendCanonicalAssistantPart(state *streamui.UIState, visible *strings.Buil
 		appendCanonicalToolPart(state, part)
 		if part.State != nil {
 			for _, attachment := range part.State.Attachments {
-				if attachment.MessageID == "" {
-					attachment.MessageID = part.MessageID
-				}
-				if attachment.SessionID == "" {
-					attachment.SessionID = part.SessionID
-				}
+				fillPartIDs(&attachment, part.MessageID, part.SessionID)
 				appendCanonicalAssistantPart(state, visible, attachment)
 			}
 		}
@@ -253,22 +237,17 @@ func backfillCost(msg api.MessageWithParts) float64 {
 	return 0
 }
 
-func backfillPromptTokens(msg api.MessageWithParts) int64 {
-	return backfillTokenValue(msg, func(tokens api.TokenUsage) int64 {
+func backfillTokenCounts(msg api.MessageWithParts) (prompt, completion, reasoning int64) {
+	prompt = backfillTokenValue(msg, func(tokens api.TokenUsage) int64 {
 		return int64(tokens.Input)
 	})
-}
-
-func backfillCompletionTokens(msg api.MessageWithParts) int64 {
-	return backfillTokenValue(msg, func(tokens api.TokenUsage) int64 {
+	completion = backfillTokenValue(msg, func(tokens api.TokenUsage) int64 {
 		return int64(tokens.Output)
 	})
-}
-
-func backfillReasoningTokens(msg api.MessageWithParts) int64 {
-	return backfillTokenValue(msg, func(tokens api.TokenUsage) int64 {
+	reasoning = backfillTokenValue(msg, func(tokens api.TokenUsage) int64 {
 		return int64(tokens.Reasoning)
 	})
+	return prompt, completion, reasoning
 }
 
 func backfillTokenValue(msg api.MessageWithParts, pick func(api.TokenUsage) int64) int64 {
@@ -284,7 +263,8 @@ func backfillTokenValue(msg api.MessageWithParts, pick func(api.TokenUsage) int6
 }
 
 func backfillTotalTokens(msg api.MessageWithParts) int64 {
-	total := backfillPromptTokens(msg) + backfillCompletionTokens(msg) + backfillReasoningTokens(msg)
+	prompt, completion, reasoning := backfillTokenCounts(msg)
+	total := prompt + completion + reasoning
 	if msg.Info.Tokens != nil && msg.Info.Tokens.Cache != nil {
 		total += int64(msg.Info.Tokens.Cache.Read + msg.Info.Tokens.Cache.Write)
 		return total

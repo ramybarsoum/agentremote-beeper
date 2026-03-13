@@ -681,12 +681,10 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 }
 
 func (cl *CodexLogin) resolveCodexCommand() string {
-	if cl.Connector != nil && cl.Connector.Config.Codex != nil {
-		if cmd := strings.TrimSpace(cl.Connector.Config.Codex.Command); cmd != "" {
-			return cmd
-		}
+	if cl.Connector == nil {
+		return "codex"
 	}
-	return "codex"
+	return resolveCodexCommandFromConfig(cl.Connector.Config.Codex)
 }
 
 func (cl *CodexLogin) resolveCodexHomeBaseDir() string {

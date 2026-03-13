@@ -58,7 +58,7 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 		var count int
 		row := m.db.QueryRow(ctx,
 			`SELECT COUNT(*) FROM ai_memory_session_state WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
-			m.bridgeID, m.loginID, m.agentID,
+			m.baseArgs()...,
 		)
 		if err := row.Scan(&count); err == nil && count == 0 {
 			indexAll = true
@@ -70,7 +70,7 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 		`SELECT COUNT(*) FROM ai_memory_session_state
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3
            AND (pending_bytes > 0 OR pending_messages > 0)`,
-		m.bridgeID, m.loginID, m.agentID,
+		m.baseArgs()...,
 	)
 	_ = row.Scan(&dirtyFiles)
 
@@ -163,7 +163,7 @@ func (m *MemorySearchManager) loadSessionState(ctx context.Context, sessionKey s
 		`SELECT last_rowid, pending_bytes, pending_messages
          FROM ai_memory_session_state
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	switch err := row.Scan(&state.lastRowID, &state.pendingBytes, &state.pendingMessages); err {
 	case nil:
@@ -183,8 +183,9 @@ func (m *MemorySearchManager) saveSessionState(ctx context.Context, sessionKey s
          ON CONFLICT (bridge_id, login_id, agent_id, session_key)
          DO UPDATE SET last_rowid=excluded.last_rowid, pending_bytes=excluded.pending_bytes,
            pending_messages=excluded.pending_messages, updated_at=excluded.updated_at`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
-		state.lastRowID, state.pendingBytes, state.pendingMessages, time.Now().UnixMilli(),
+		m.baseArgs(sessionKey,
+			state.lastRowID, state.pendingBytes, state.pendingMessages, time.Now().UnixMilli(),
+		)...
 	)
 	return err
 }
@@ -315,7 +316,7 @@ func (m *MemorySearchManager) getSessionFileHash(ctx context.Context, sessionKey
 	row := m.db.QueryRow(ctx,
 		`SELECT hash FROM ai_memory_session_files
          WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND session_key=$4`,
-		m.bridgeID, m.loginID, m.agentID, sessionKey,
+		m.baseArgs(sessionKey)...,
 	)
 	switch err := row.Scan(&hash); err {
 	case nil:

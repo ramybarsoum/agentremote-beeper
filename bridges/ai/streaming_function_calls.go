@@ -112,6 +112,23 @@ func (oc *AIClient) ensureFunctionCallTool(
 	name string,
 	initialInput string,
 ) *activeToolCall {
+	return oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, itemID, name, ToolTypeFunction, initialInput)
+}
+
+// ensureActiveToolCall returns the existing activeToolCall for itemID, or creates and
+// registers a new one with the given toolType. This is the shared constructor used by
+// both function-call and provider/MCP tool handlers.
+func (oc *AIClient) ensureActiveToolCall(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	meta *PortalMetadata,
+	activeTools map[string]*activeToolCall,
+	itemID string,
+	name string,
+	toolType ToolType,
+	initialInput string,
+) *activeToolCall {
 	tool, exists := activeTools[itemID]
 	if !exists {
 		callID := itemID
@@ -121,7 +138,7 @@ func (oc *AIClient) ensureFunctionCallTool(
 		tool = &activeToolCall{
 			callID:      callID,
 			toolName:    name,
-			toolType:    ToolTypeFunction,
+			toolType:    toolType,
 			startedAtMs: time.Now().UnixMilli(),
 			itemID:      itemID,
 		}
@@ -130,7 +147,7 @@ func (oc *AIClient) ensureFunctionCallTool(
 		}
 		activeTools[itemID] = tool
 
-		if !state.hasInitialMessageTarget() && !state.suppressSend {
+		if meta != nil && !state.hasInitialMessageTarget() && !state.suppressSend {
 			oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 		}
 		if strings.TrimSpace(tool.toolName) != "" {
@@ -279,5 +296,34 @@ func recordCompletedToolCall(
 		CompletedAtMs: completedAt,
 		CallEventID:   string(tool.eventID),
 		ResultEventID: string(resultEventID),
+	})
+}
+
+// recordToolCallResult appends a ToolCallMetadata for a tool that has already been
+// finalized (success, failure, or provider-executed). Unlike recordCompletedToolCall
+// it accepts pre-built output/status/error fields, covering failure and provider cases.
+func recordToolCallResult(
+	state *streamingState,
+	tool *activeToolCall,
+	status ToolStatus,
+	resultStatus ResultStatus,
+	errorText string,
+	output map[string]any,
+	input map[string]any,
+	resultEventID string,
+) {
+	state.toolCalls = append(state.toolCalls, ToolCallMetadata{
+		CallID:        tool.callID,
+		ToolName:      tool.toolName,
+		ToolType:      string(tool.toolType),
+		Input:         input,
+		Output:        output,
+		Status:        string(status),
+		ResultStatus:  string(resultStatus),
+		ErrorMessage:  errorText,
+		StartedAtMs:   tool.startedAtMs,
+		CompletedAtMs: time.Now().UnixMilli(),
+		CallEventID:   string(tool.eventID),
+		ResultEventID: resultEventID,
 	})
 }

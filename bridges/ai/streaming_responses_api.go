@@ -283,26 +283,7 @@ func (oc *AIClient) handleProviderToolInProgress(
 	toolName string,
 	toolType ToolType,
 ) {
-	callID := strings.TrimSpace(itemID)
-	if callID == "" {
-		callID = NewCallID()
-	}
-	tool, exists := activeTools[itemID]
-	if !exists {
-		tool = &activeToolCall{
-			callID:      callID,
-			toolName:    toolName,
-			toolType:    toolType,
-			startedAtMs: time.Now().UnixMilli(),
-			itemID:      itemID,
-		}
-		activeTools[itemID] = tool
-		tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
-
-		if !state.hasInitialMessageTarget() && !state.suppressSend {
-			oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-		}
-	}
+	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, itemID, toolName, toolType, "")
 	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, "", true)
 }
 
@@ -317,64 +298,28 @@ func (oc *AIClient) handleProviderToolCompleted(
 	toolType ToolType,
 	failureText string,
 ) {
-	tool, exists := activeTools[itemID]
-	callID := strings.TrimSpace(itemID)
-	if callID == "" {
-		callID = NewCallID()
-	}
-	if exists && tool != nil {
-		callID = tool.callID
-	}
-	if state != nil && state.ui.UIToolOutputFinalized[callID] {
+	// Look up or lazily create the tool. We pass nil meta because
+	// ensureActiveToolCall only uses meta for ghost display-name, which
+	// handleProviderToolInProgress already handled on the in_progress event.
+	// When the in_progress event was missed the tool gets startedAtMs=now
+	// (acceptable approximation).
+	tool := oc.ensureActiveToolCall(ctx, portal, state, nil, activeTools, itemID, toolName, toolType, "")
+	if state != nil && state.ui.UIToolOutputFinalized[tool.callID] {
 		return
-	}
-	if !exists {
-		tool = &activeToolCall{
-			callID:      callID,
-			toolName:    toolName,
-			toolType:    toolType,
-			startedAtMs: 0, // Unknown; in_progress event was missed
-			itemID:      itemID,
-		}
-		activeTools[itemID] = tool
-		tool.eventID = oc.sendToolCallEvent(ctx, portal, state, tool)
 	}
 
 	if failureText != "" {
-		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, callID, failureText, true)
+		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, failureText, true)
 		resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, failureText, ResultStatusError)
-		state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-			CallID:        callID,
-			ToolName:      toolName,
-			ToolType:      string(tool.toolType),
-			Output:        map[string]any{"error": failureText},
-			Status:        string(ToolStatusFailed),
-			ResultStatus:  string(ResultStatusError),
-			ErrorMessage:  failureText,
-			StartedAtMs:   tool.startedAtMs,
-			CompletedAtMs: time.Now().UnixMilli(),
-			CallEventID:   string(tool.eventID),
-			ResultEventID: string(resultEventID),
-		})
+		recordToolCallResult(state, tool, ToolStatusFailed, ResultStatusError, failureText, map[string]any{"error": failureText}, nil, string(resultEventID))
 		return
 	}
 
 	output := map[string]any{"status": "completed"}
-	oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, callID, output, true, false)
+	oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, tool.callID, output, true, false)
 	resultJSON, _ := json.Marshal(output)
 	resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, string(resultJSON), ResultStatusSuccess)
-	state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-		CallID:        callID,
-		ToolName:      toolName,
-		ToolType:      string(tool.toolType),
-		Output:        output,
-		Status:        string(ToolStatusCompleted),
-		ResultStatus:  string(ResultStatusSuccess),
-		StartedAtMs:   tool.startedAtMs,
-		CompletedAtMs: time.Now().UnixMilli(),
-		CallEventID:   string(tool.eventID),
-		ResultEventID: string(resultEventID),
-	})
+	recordToolCallResult(state, tool, ToolStatusCompleted, ResultStatusSuccess, "", output, nil, string(resultEventID))
 }
 
 // streamingResponse handles streaming using the Responses API

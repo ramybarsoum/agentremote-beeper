@@ -5,7 +5,6 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
@@ -56,24 +55,14 @@ func UpdateExistingMessageMetadata(
 		nop := zerolog.Nop()
 		log = &nop
 	}
-	receiver := portal.Receiver
-	if receiver == "" {
-		receiver = login.ID
+	existing, errByID, errByMXID := findExistingMessage(ctx, login, portal, networkMessageID, initialEventID)
+	loadErr := errByID
+	if loadErr == nil {
+		loadErr = errByMXID
 	}
-	var (
-		existing *database.Message
-		err      error
-	)
-	if networkMessageID != "" {
-		existing, err = login.Bridge.DB.Message.GetPartByID(ctx, receiver, networkMessageID, networkid.PartID("0"))
-	}
-	if existing == nil && initialEventID != "" {
-		existing, err = login.Bridge.DB.Message.GetPartByMXID(ctx, initialEventID)
-	}
-	if err != nil {
+	if loadErr != nil {
 		log.Warn().
-			Err(err).
-			Str("receiver", string(receiver)).
+			Err(loadErr).
 			Str("network_message_id", string(networkMessageID)).
 			Stringer("initial_event_id", initialEventID).
 			Msg(loadErrorMsg)
@@ -86,7 +75,6 @@ func UpdateExistingMessageMetadata(
 	if err := login.Bridge.DB.Message.Update(ctx, existing); err != nil {
 		log.Warn().
 			Err(err).
-			Str("receiver", string(receiver)).
 			Str("network_message_id", string(networkMessageID)).
 			Stringer("initial_event_id", initialEventID).
 			Msg(updateErrorMsg)

@@ -284,6 +284,29 @@ func SendAIRoomInfo(ctx context.Context, portal *bridgev2.Portal, aiKind string)
 	)
 }
 
+// findExistingMessage performs a two-phase message lookup: first by network
+// message ID (with receiver resolution), then by Matrix event ID as fallback.
+// Returns the message (if found) and separate errors from each lookup phase.
+func findExistingMessage(
+	ctx context.Context,
+	login *bridgev2.UserLogin,
+	portal *bridgev2.Portal,
+	networkMessageID networkid.MessageID,
+	initialEventID id.EventID,
+) (msg *database.Message, errByID error, errByMXID error) {
+	receiver := portal.Receiver
+	if receiver == "" {
+		receiver = login.ID
+	}
+	if receiver != "" && networkMessageID != "" {
+		msg, errByID = login.Bridge.DB.Message.GetPartByID(ctx, receiver, networkMessageID, networkid.PartID("0"))
+	}
+	if msg == nil && initialEventID != "" {
+		msg, errByMXID = login.Bridge.DB.Message.GetPartByMXID(ctx, initialEventID)
+	}
+	return msg, errByID, errByMXID
+}
+
 // UpsertAssistantMessageParams holds parameters for UpsertAssistantMessage.
 type UpsertAssistantMessageParams struct {
 	Login            *bridgev2.UserLogin
@@ -305,18 +328,7 @@ func UpsertAssistantMessage(ctx context.Context, p UpsertAssistantMessageParams)
 	db := p.Login.Bridge.DB.Message
 
 	if p.NetworkMessageID != "" {
-		receiver := p.Portal.Receiver
-		if receiver == "" {
-			receiver = p.Login.ID
-		}
-		var existing *database.Message
-		var errByID, errByMXID error
-		if receiver != "" {
-			existing, errByID = db.GetPartByID(ctx, receiver, p.NetworkMessageID, networkid.PartID("0"))
-		}
-		if existing == nil && p.InitialEventID != "" {
-			existing, errByMXID = db.GetPartByMXID(ctx, p.InitialEventID)
-		}
+		existing, errByID, errByMXID := findExistingMessage(ctx, p.Login, p.Portal, p.NetworkMessageID, p.InitialEventID)
 		if existing != nil {
 			existing.Metadata = p.Metadata
 			if err := db.Update(ctx, existing); err != nil {

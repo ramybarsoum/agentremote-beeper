@@ -1027,12 +1027,7 @@ func (m *OpenCodeManager) handleMessageParts(ctx context.Context, inst *openCode
 	}
 	inst.upsertMessage(msg.Info.SessionID, *msg)
 	for _, part := range msg.Parts {
-		if part.MessageID == "" {
-			part.MessageID = msg.Info.ID
-		}
-		if part.SessionID == "" {
-			part.SessionID = msg.Info.SessionID
-		}
+		fillPartIDs(&part, msg.Info.ID, msg.Info.SessionID)
 		m.syncAssistantMessagePart(ctx, inst, portal, msg, part)
 		m.handlePart(ctx, inst, portal, role, part, false)
 	}

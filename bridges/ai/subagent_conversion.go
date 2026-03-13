@@ -1,54 +1,19 @@
 package ai
 
 import (
-	"fmt"
-	"slices"
-
-	"github.com/beeper/agentremote/pkg/agents"
-	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 )
 
-func subagentsToTools(cfg *agents.SubagentConfig) *tools.SubagentConfig {
-	return convertSubagentConfig(cfg, func(model, thinking string, allowAgents []string) *tools.SubagentConfig {
-		return &tools.SubagentConfig{
-			Model:       model,
-			Thinking:    thinking,
-			AllowAgents: allowAgents,
-		}
-	})
+// subagentsToTools converts an agents-package SubagentConfig to a tools-package one.
+// Both are now aliases for agentconfig.SubagentConfig, so this is an identity function
+// kept for call-site clarity.
+func subagentsToTools(cfg *agentconfig.SubagentConfig) *agentconfig.SubagentConfig {
+	return cfg
 }
 
-func subagentsFromTools(cfg *tools.SubagentConfig) *agents.SubagentConfig {
-	return convertSubagentConfig(cfg, func(model, thinking string, allowAgents []string) *agents.SubagentConfig {
-		return &agents.SubagentConfig{
-			Model:       model,
-			Thinking:    thinking,
-			AllowAgents: allowAgents,
-		}
-	})
-}
-
-type subagentConfigLike interface {
-	*agents.SubagentConfig | *tools.SubagentConfig
-}
-
-func convertSubagentConfig[T subagentConfigLike, R any](cfg T, build func(string, string, []string) *R) *R {
-	if cfg == nil {
-		return nil
-	}
-	allowAgents := []string(nil)
-	switch typed := any(cfg).(type) {
-	case *agents.SubagentConfig:
-		if len(typed.AllowAgents) > 0 {
-			allowAgents = slices.Clone(typed.AllowAgents)
-		}
-		return build(typed.Model, typed.Thinking, allowAgents)
-	case *tools.SubagentConfig:
-		if len(typed.AllowAgents) > 0 {
-			allowAgents = slices.Clone(typed.AllowAgents)
-		}
-		return build(typed.Model, typed.Thinking, allowAgents)
-	default:
-		panic(fmt.Sprintf("unsupported subagent config type: %T", cfg))
-	}
+// subagentsFromTools converts a tools-package SubagentConfig to an agents-package one.
+// Both are now aliases for agentconfig.SubagentConfig, so this is an identity function
+// kept for call-site clarity.
+func subagentsFromTools(cfg *agentconfig.SubagentConfig) *agentconfig.SubagentConfig {
+	return cfg
 }

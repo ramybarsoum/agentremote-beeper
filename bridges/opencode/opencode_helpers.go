@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+
+	"github.com/beeper/agentremote/bridges/opencode/api"
 )
 
 const (
@@ -11,6 +13,15 @@ const (
 	OpenCodeModeManagedLauncher = "managed_launcher"
 	OpenCodeModeManaged         = "managed"
 )
+
+func fillPartIDs(part *api.Part, msgID, sessionID string) {
+	if part.MessageID == "" {
+		part.MessageID = msgID
+	}
+	if part.SessionID == "" {
+		part.SessionID = sessionID
+	}
+}
 
 func (b *Bridge) InstanceConfig(instanceID string) *OpenCodeInstance {
 	if b == nil || b.host == nil {

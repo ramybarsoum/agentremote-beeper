@@ -176,8 +176,17 @@ func TestTurnStreamSetTransportReceivesEvents(t *testing.T) {
 		return true
 	}))
 
-	turn.Stream().TextDelta("hello")
+	if turn.streamHook == nil {
+		t.Fatal("expected stream transport to register a hook")
+	}
+	handled := turn.streamHook(turn.ID(), 1, map[string]any{
+		"type":  "text-delta",
+		"delta": "hello",
+	}, "txn-1")
 
+	if !handled {
+		t.Fatal("expected stream transport hook to handle the event")
+	}
 	if gotTurnID != turn.ID() {
 		t.Fatalf("expected transport to receive turn id %q, got %q", turn.ID(), gotTurnID)
 	}

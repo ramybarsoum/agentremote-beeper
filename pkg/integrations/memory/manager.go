@@ -59,6 +59,12 @@ type MemorySearchManager struct {
 	mu                sync.Mutex
 }
 
+// baseArgs returns the common (bridge_id, login_id, agent_id) query parameters,
+// optionally followed by any extra arguments.
+func (m *MemorySearchManager) baseArgs(extra ...any) []any {
+	return append([]any{m.bridgeID, m.loginID, m.agentID}, extra...)
+}
+
 type MemorySearchStatus struct {
 	Files        int
 	Chunks       int
@@ -238,8 +244,7 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 
 	genSQL, genArgs := generationFilterSQL(5, indexGen)
 	sourceSQL, sourceArgs := sourceFilterSQL(4, m.cfg.Sources)
-	chunkArgs := []any{m.bridgeID, m.loginID, m.agentID}
-	chunkArgs = append(chunkArgs, sourceArgs...)
+	chunkArgs := m.baseArgs(sourceArgs...)
 	chunkArgs = append(chunkArgs, genArgs...)
 	row := m.db.QueryRow(statusCtx,
 		`SELECT COUNT(*) FROM ai_memory_chunks
@@ -260,7 +265,7 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 		row := m.db.QueryRow(statusCtx,
 			`SELECT COUNT(*) FROM ai_memory_embedding_cache
              WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
-			m.bridgeID, m.loginID, m.agentID,
+			m.baseArgs()...,
 		)
 		_ = row.Scan(&cacheStatus.Entries)
 	}
@@ -291,16 +296,16 @@ func buildSourceCounts(ctx context.Context, m *MemorySearchManager, indexGen str
 		case "memory", "workspace":
 			_ = m.db.QueryRow(ctx,
 				`SELECT COUNT(*) FROM ai_memory_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`,
-				m.bridgeID, m.loginID, m.agentID, source,
+				m.baseArgs(source)...,
 			).Scan(&count.Files)
 		case "sessions":
 			_ = m.db.QueryRow(ctx,
 				`SELECT COUNT(*) FROM ai_memory_session_files WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3`,
-				m.bridgeID, m.loginID, m.agentID,
+				m.baseArgs()...,
 			).Scan(&count.Files)
 		}
 		genSQL, genArgs := generationFilterSQL(5, indexGen)
-		args := []any{m.bridgeID, m.loginID, m.agentID, source}
+		args := m.baseArgs(source)
 		args = append(args, genArgs...)
 		_ = m.db.QueryRow(ctx,
 			`SELECT COUNT(*) FROM ai_memory_chunks WHERE bridge_id=$1 AND login_id=$2 AND agent_id=$3 AND source=$4`+genSQL,
@@ -452,7 +457,7 @@ func (m *MemorySearchManager) listRecentFiles(ctx context.Context, sources []str
 		limit = 200
 	}
 
-	baseArgs := []any{m.bridgeID, m.loginID, m.agentID}
+	queryArgs := m.baseArgs()
 	sourceSQL, sourceArgs := sourceFilterSQL(4, sources)
 	pathSQL, pathArgs := pathPrefixFilterSQL(4+len(sourceArgs), pathPrefix)
 	// Overfetch and filter client-side (extension allowlist, size cap).
@@ -464,7 +469,7 @@ func (m *MemorySearchManager) listRecentFiles(ctx context.Context, sources []str
 		overfetch = 500
 	}
 
-	args := append(baseArgs, sourceArgs...)
+	args := append(queryArgs, sourceArgs...)
 	args = append(args, pathArgs...)
 	args = append(args, overfetch)
 
@@ -533,11 +538,11 @@ func (m *MemorySearchManager) searchKeywordScan(ctx context.Context, query strin
 		scanLimit = 1000
 	}
 
-	baseArgs := []any{m.bridgeID, m.loginID, m.agentID, m.status.Model}
+	scanArgs := m.baseArgs(m.status.Model)
 	sourceSQL, sourceArgs := sourceFilterSQL(5, sources)
 	genSQL, genArgs := generationFilterSQL(5+len(sourceArgs), indexGen)
 	pathSQL, pathArgs := pathPrefixFilterSQL(5+len(sourceArgs)+len(genArgs), pathPrefix)
-	args := append(baseArgs, sourceArgs...)
+	args := append(scanArgs, sourceArgs...)
 	args = append(args, genArgs...)
 	args = append(args, pathArgs...)
 
@@ -634,10 +639,10 @@ func (m *MemorySearchManager) searchKeywordFiles(ctx context.Context, query stri
 		overfetch = 500
 	}
 
-	baseArgs := []any{m.bridgeID, m.loginID, m.agentID}
+	fileArgs := m.baseArgs()
 	sourceSQL, sourceArgs := sourceFilterSQL(4, sources)
 	pathSQL, pathArgs := pathPrefixFilterSQL(4+len(sourceArgs), pathPrefix)
-	args := append(baseArgs, sourceArgs...)
+	args := append(fileArgs, sourceArgs...)
 	args = append(args, pathArgs...)
 
 	whereParts := make([]string, 0, len(tokens))

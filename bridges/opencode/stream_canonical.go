@@ -148,36 +148,29 @@ func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *Mes
 		return nil
 	}
 	uiMessage := oc.currentCanonicalUIMessage(state)
-	thinking := agentremote.CanonicalReasoningText(agentremote.NormalizeUIParts(uiMessage["parts"]))
-	return &MessageMetadata{
-		BaseMessageMetadata: agentremote.BaseMessageMetadata{
-			Role:               stringutil.FirstNonEmpty(state.role, "assistant"),
-			Body:               stringutil.FirstNonEmpty(state.visible.String(), state.accumulated.String()),
-			FinishReason:       state.finishReason,
-			PromptTokens:       state.promptTokens,
-			CompletionTokens:   state.completionTokens,
-			ReasoningTokens:    state.reasoningTokens,
-			TurnID:             state.turnID,
-			AgentID:            state.agentID,
-			CanonicalSchema:    "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: uiMessage,
-			StartedAtMs:        state.startedAtMs,
-			CompletedAtMs:      state.completedAtMs,
-			ThinkingContent:    thinking,
-			ToolCalls:          agentremote.CanonicalToolCalls(agentremote.NormalizeUIParts(uiMessage["parts"]), "opencode"),
-			GeneratedFiles:     agentremote.CanonicalGeneratedFiles(agentremote.NormalizeUIParts(uiMessage["parts"])),
-		},
-		SessionID:       state.sessionID,
-		MessageID:       state.messageID,
-		ParentMessageID: state.parentMessageID,
-		Agent:           state.agent,
-		ModelID:         state.modelID,
-		ProviderID:      state.providerID,
-		Mode:            state.mode,
-		ErrorText:       state.errorText,
-		Cost:            state.cost,
-		TotalTokens:     state.totalTokens,
-	}
+	return buildMessageMetadataFromParams(MessageMetadataParams{
+		Role:             stringutil.FirstNonEmpty(state.role, "assistant"),
+		Body:             stringutil.FirstNonEmpty(state.visible.String(), state.accumulated.String()),
+		FinishReason:     state.finishReason,
+		PromptTokens:     state.promptTokens,
+		CompletionTokens: state.completionTokens,
+		ReasoningTokens:  state.reasoningTokens,
+		TurnID:           state.turnID,
+		AgentID:          state.agentID,
+		UIMessage:        uiMessage,
+		StartedAtMs:      state.startedAtMs,
+		CompletedAtMs:    state.completedAtMs,
+		SessionID:        state.sessionID,
+		MessageID:        state.messageID,
+		ParentMessageID:  state.parentMessageID,
+		Agent:            state.agent,
+		ModelID:          state.modelID,
+		ProviderID:       state.providerID,
+		Mode:             state.mode,
+		ErrorText:        state.errorText,
+		Cost:             state.cost,
+		TotalTokens:      state.totalTokens,
+	})
 }
 
 func (oc *OpenCodeClient) buildSDKFinalMetadata(state *openCodeStreamState, finishReason string) any {

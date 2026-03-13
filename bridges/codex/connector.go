@@ -256,13 +256,20 @@ func hasManagedCodexLogin(logins []*bridgev2.UserLogin, exceptID networkid.UserL
 	return false
 }
 
-func (cc *CodexConnector) resolveCodexCommand() string {
-	if cc != nil && cc.Config.Codex != nil {
-		if cmd := strings.TrimSpace(cc.Config.Codex.Command); cmd != "" {
+func resolveCodexCommandFromConfig(cfg *CodexConfig) string {
+	if cfg != nil {
+		if cmd := strings.TrimSpace(cfg.Command); cmd != "" {
 			return cmd
 		}
 	}
 	return "codex"
+}
+
+func (cc *CodexConnector) resolveCodexCommand() string {
+	if cc == nil {
+		return "codex"
+	}
+	return resolveCodexCommandFromConfig(cc.Config.Codex)
 }
 
 func (cc *CodexConnector) applyRuntimeDefaults() {

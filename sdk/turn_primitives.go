@@ -6,6 +6,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"maunium.net/go/mautrix/bridgev2"
 )
 
 // StreamTransport handles SDK turn stream events for custom transports or tests.
@@ -71,6 +72,15 @@ type TurnStream struct {
 	turn *Turn
 }
 
+func (s *TurnStream) valid() bool { return s != nil && s.turn != nil }
+
+func (s *TurnStream) portal() *bridgev2.Portal {
+	if !s.valid() || s.turn.conv == nil {
+		return nil
+	}
+	return s.turn.conv.portal
+}
+
 // Stream returns the turn's provider-facing streaming surface.
 func (t *Turn) Stream() *TurnStream {
 	if t == nil {
@@ -81,7 +91,7 @@ func (t *Turn) Stream() *TurnStream {
 
 // Emitter returns the underlying stream emitter as an escape hatch.
 func (s *TurnStream) Emitter() *streamui.Emitter {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return nil
 	}
 	return s.turn.emitter
@@ -89,7 +99,7 @@ func (s *TurnStream) Emitter() *streamui.Emitter {
 
 // SetTransport configures a custom transport for streamed turn events.
 func (s *TurnStream) SetTransport(transport StreamTransport) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	if transport == nil {
@@ -101,7 +111,7 @@ func (s *TurnStream) SetTransport(transport StreamTransport) {
 
 // TextDelta emits a text delta.
 func (s *TurnStream) TextDelta(text string) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.WriteText(text)
@@ -109,15 +119,24 @@ func (s *TurnStream) TextDelta(text string) {
 
 // ReasoningDelta emits a reasoning delta.
 func (s *TurnStream) ReasoningDelta(text string) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.WriteReasoning(text)
 }
 
+// Error emits a UI error event for the turn.
+func (s *TurnStream) Error(text string) {
+	if !s.valid() {
+		return
+	}
+	s.turn.ensureStarted()
+	s.turn.emitter.EmitUIError(s.turn.turnCtx, s.portal(), text)
+}
+
 // TextEnd closes the current text stream part.
 func (s *TurnStream) TextEnd() {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.FinishText()
@@ -125,7 +144,7 @@ func (s *TurnStream) TextEnd() {
 
 // ReasoningEnd closes the current reasoning stream part.
 func (s *TurnStream) ReasoningEnd() {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.FinishReasoning()
@@ -133,7 +152,7 @@ func (s *TurnStream) ReasoningEnd() {
 
 // EnsureToolInputStart ensures the tool input UI exists and optionally publishes input.
 func (s *TurnStream) EnsureToolInputStart(toolCallID string, input any, opts ToolInputOptions) {
-	if s == nil || s.turn == nil || strings.TrimSpace(toolCallID) == "" {
+	if !s.valid() || strings.TrimSpace(toolCallID) == "" {
 		return
 	}
 	s.turn.ensureStarted()
@@ -142,51 +161,51 @@ func (s *TurnStream) EnsureToolInputStart(toolCallID string, input any, opts Too
 	if displayTitle == "" {
 		displayTitle = streamui.ToolDisplayTitle(toolName)
 	}
-	s.turn.emitter.EnsureUIToolInputStart(s.turn.turnCtx, s.turn.conv.portal, toolCallID, toolName, opts.ProviderExecuted, displayTitle, nil)
+	s.turn.emitter.EnsureUIToolInputStart(s.turn.turnCtx, s.portal(), toolCallID, toolName, opts.ProviderExecuted, displayTitle, nil)
 	if input != nil {
-		s.turn.emitter.EmitUIToolInputAvailable(s.turn.turnCtx, s.turn.conv.portal, toolCallID, toolName, input, opts.ProviderExecuted)
+		s.turn.emitter.EmitUIToolInputAvailable(s.turn.turnCtx, s.portal(), toolCallID, toolName, input, opts.ProviderExecuted)
 	}
 }
 
 // ToolInputDelta emits a tool input delta.
 func (s *TurnStream) ToolInputDelta(toolCallID, delta string, providerExecuted bool) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.ensureStarted()
-	s.turn.emitter.EmitUIToolInputDelta(s.turn.turnCtx, s.turn.conv.portal, toolCallID, "", delta, providerExecuted)
+	s.turn.emitter.EmitUIToolInputDelta(s.turn.turnCtx, s.portal(), toolCallID, "", delta, providerExecuted)
 }
 
 // ToolInput emits a complete tool input payload.
 func (s *TurnStream) ToolInput(toolCallID, toolName string, input any, providerExecuted bool) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.ensureStarted()
-	s.turn.emitter.EmitUIToolInputAvailable(s.turn.turnCtx, s.turn.conv.portal, toolCallID, toolName, input, providerExecuted)
+	s.turn.emitter.EmitUIToolInputAvailable(s.turn.turnCtx, s.portal(), toolCallID, toolName, input, providerExecuted)
 }
 
 // ToolOutput emits a tool output payload.
 func (s *TurnStream) ToolOutput(toolCallID string, output any, opts ToolOutputOptions) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.ensureStarted()
-	s.turn.emitter.EmitUIToolOutputAvailable(s.turn.turnCtx, s.turn.conv.portal, toolCallID, output, opts.ProviderExecuted, opts.Streaming)
+	s.turn.emitter.EmitUIToolOutputAvailable(s.turn.turnCtx, s.portal(), toolCallID, output, opts.ProviderExecuted, opts.Streaming)
 }
 
 // ToolOutputError emits a tool error payload.
 func (s *TurnStream) ToolOutputError(toolCallID, errText string, providerExecuted bool) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.ensureStarted()
-	s.turn.emitter.EmitUIToolOutputError(s.turn.turnCtx, s.turn.conv.portal, toolCallID, errText, providerExecuted)
+	s.turn.emitter.EmitUIToolOutputError(s.turn.turnCtx, s.portal(), toolCallID, errText, providerExecuted)
 }
 
 // ToolDenied emits a denied tool result.
 func (s *TurnStream) ToolDenied(toolCallID string) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.ToolDenied(toolCallID)
@@ -194,7 +213,7 @@ func (s *TurnStream) ToolDenied(toolCallID string) {
 
 // SourceURL emits a source URL citation.
 func (s *TurnStream) SourceURL(url, title string) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.AddSourceURL(url, title)
@@ -202,7 +221,7 @@ func (s *TurnStream) SourceURL(url, title string) {
 
 // SourceCitation emits a source URL citation from a structured citation object.
 func (s *TurnStream) SourceCitation(citation citations.SourceCitation) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.AddSourceURL(citation.URL, citation.Title)
@@ -210,7 +229,7 @@ func (s *TurnStream) SourceCitation(citation citations.SourceCitation) {
 
 // SourceDocument emits a source document citation.
 func (s *TurnStream) SourceDocument(document citations.SourceDocument) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.AddSourceDocument(document.ID, document.Title, document.MediaType, document.Filename)
@@ -218,7 +237,7 @@ func (s *TurnStream) SourceDocument(document citations.SourceDocument) {
 
 // File emits a generated file part.
 func (s *TurnStream) File(url, mediaType string) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.AddFile(url, mediaType)
@@ -226,7 +245,7 @@ func (s *TurnStream) File(url, mediaType string) {
 
 // GeneratedFile emits a generated file part from a structured file object.
 func (s *TurnStream) GeneratedFile(file citations.GeneratedFilePart) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.AddFile(file.URL, file.MediaType)
@@ -234,7 +253,7 @@ func (s *TurnStream) GeneratedFile(file citations.GeneratedFilePart) {
 
 // StepStart begins a visual step group.
 func (s *TurnStream) StepStart() {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.StepStart()
@@ -242,7 +261,7 @@ func (s *TurnStream) StepStart() {
 
 // StepFinish ends a visual step group.
 func (s *TurnStream) StepFinish() {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.StepFinish()
@@ -250,7 +269,7 @@ func (s *TurnStream) StepFinish() {
 
 // Metadata merges message metadata for the turn.
 func (s *TurnStream) Metadata(metadata map[string]any) {
-	if s == nil || s.turn == nil {
+	if !s.valid() {
 		return
 	}
 	s.turn.SetMetadata(metadata)
@@ -259,6 +278,15 @@ func (s *TurnStream) Metadata(metadata map[string]any) {
 // ApprovalController is the turn-owned approval surface.
 type ApprovalController struct {
 	turn *Turn
+}
+
+func (a *ApprovalController) valid() bool { return a != nil && a.turn != nil }
+
+func (a *ApprovalController) portal() *bridgev2.Portal {
+	if !a.valid() || a.turn.conv == nil {
+		return nil
+	}
+	return a.turn.conv.portal
 }
 
 // Approvals returns the turn's approval controller.
@@ -271,7 +299,7 @@ func (t *Turn) Approvals() *ApprovalController {
 
 // SetHandler configures a provider-specific approval handler for this turn.
 func (a *ApprovalController) SetHandler(handler ApprovalHandler) {
-	if a == nil || a.turn == nil {
+	if !a.valid() {
 		return
 	}
 	if handler == nil {
@@ -283,7 +311,7 @@ func (a *ApprovalController) SetHandler(handler ApprovalHandler) {
 
 // Request creates a new approval request.
 func (a *ApprovalController) Request(req ApprovalRequest) ApprovalHandle {
-	if a == nil || a.turn == nil {
+	if !a.valid() {
 		return nil
 	}
 	return a.turn.RequestApproval(req)
@@ -291,20 +319,20 @@ func (a *ApprovalController) Request(req ApprovalRequest) ApprovalHandle {
 
 // EmitRequest emits the approval-request UI state for a provider-managed approval.
 func (a *ApprovalController) EmitRequest(approvalID, toolCallID string) {
-	if a == nil || a.turn == nil {
+	if !a.valid() {
 		return
 	}
 	a.turn.ensureStarted()
-	a.turn.emitter.EmitUIToolApprovalRequest(a.turn.turnCtx, a.turn.conv.portal, approvalID, toolCallID)
+	a.turn.emitter.EmitUIToolApprovalRequest(a.turn.turnCtx, a.portal(), approvalID, toolCallID)
 }
 
 // Respond emits the approval-response UI state for a provider-managed approval.
 func (a *ApprovalController) Respond(approvalID, toolCallID string, approved bool, reason string) {
-	if a == nil || a.turn == nil {
+	if !a.valid() {
 		return
 	}
 	a.turn.ensureStarted()
-	a.turn.emitter.EmitUIToolApprovalResponse(a.turn.turnCtx, a.turn.conv.portal, approvalID, toolCallID, approved, reason)
+	a.turn.emitter.EmitUIToolApprovalResponse(a.turn.turnCtx, a.portal(), approvalID, toolCallID, approved, reason)
 }
 
 // SetStreamTransport configures a custom turn stream transport.

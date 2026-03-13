@@ -94,19 +94,7 @@ func ParseStreamingChunk(raw string) *StreamingDirectiveResult {
 		StripReplyTags:      true,
 		NormalizeWhitespace: true,
 	})
-	text := parsed.Text
-	isSilent := IsSilentReplyText(text, SilentReplyToken) || IsSilentReplyPrefixText(text, SilentReplyToken)
-	if isSilent {
-		text = ""
-	}
-	return &StreamingDirectiveResult{
-		Text:              text,
-		ReplyToExplicitID: parsed.ReplyToExplicitID,
-		ReplyToCurrent:    parsed.ReplyToCurrent,
-		HasReplyTag:       parsed.HasReplyTag,
-		AudioAsVoice:      parsed.AudioAsVoice,
-		IsSilent:          isSilent,
-	}
+	return parsed.toStreamingResult()
 }
 
 // HasRenderableStreamingContent checks whether a streaming result has text or audio to render.

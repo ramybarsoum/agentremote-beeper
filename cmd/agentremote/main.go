@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,17 +10,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/beeper/bridge-manager/api/beeperapi"
 	"github.com/beeper/bridge-manager/api/hungryapi"
-	"gopkg.in/yaml.v3"
 	"maunium.net/go/mautrix"
 
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 var (
@@ -206,7 +203,7 @@ func cmdLogin(args []string) error {
 		return fmt.Errorf("invalid env %q", *env)
 	}
 	if *email == "" {
-		v, err := promptLine("Email: ")
+		v, err := bridgeutil.PromptLine("Email: ")
 		if err != nil {
 			return err
 		}
@@ -223,7 +220,7 @@ func cmdLogin(args []string) error {
 		return err
 	}
 	if *code == "" {
-		v, err := promptLine("Code: ")
+		v, err := bridgeutil.PromptLine("Code: ")
 		if err != nil {
 			return err
 		}
@@ -418,7 +415,7 @@ func cmdStart(args []string) error {
 	if err = ensureRegistration(*profile, meta, bridgeType); err != nil {
 		return err
 	}
-	running, pid := processAliveFromPIDFile(meta.PIDPath)
+	running, pid := bridgeutil.ProcessAliveFromPIDFile(meta.PIDPath)
 	if running {
 		fmt.Printf("%s already running (pid %d)\n", instName, pid)
 		if *wait {
@@ -426,7 +423,7 @@ func cmdStart(args []string) error {
 		}
 		return nil
 	}
-	if err = startBridge(meta, bridgeType); err != nil {
+	if err = startBridgeProcess(meta, bridgeType); err != nil {
 		return err
 	}
 	fmt.Printf("started %s\n", instName)
@@ -516,7 +513,7 @@ func cmdStop(args []string) error {
 	meta, err := readMetadata(sp)
 	if err != nil {
 		// If no metadata, try to stop by PID file directly
-		stopped, stopErr := stopByPIDFile(sp.PIDPath)
+		stopped, stopErr := bridgeutil.StopByPIDFile(sp.PIDPath)
 		if stopErr != nil {
 			return stopErr
 		}
@@ -527,7 +524,7 @@ func cmdStop(args []string) error {
 		}
 		return nil
 	}
-	stopped, err := stopBridge(meta)
+	stopped, err := bridgeutil.StopByPIDFile(meta.PIDPath)
 	if err != nil {
 		return err
 	}
@@ -559,7 +556,7 @@ func cmdStopAll(args []string) error {
 			fmt.Fprintf(os.Stderr, "%s: error: %v\n", inst, err)
 			continue
 		}
-		stopped, err := stopByPIDFile(sp.PIDPath)
+		stopped, err := bridgeutil.StopByPIDFile(sp.PIDPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: error stopping: %v\n", inst, err)
 			continue
@@ -678,7 +675,7 @@ func cmdStatus(args []string) error {
 		if hasLocal {
 			sp, err := getInstancePaths(*profile, localName)
 			if err == nil {
-				running, pid := processAliveFromPIDFile(sp.PIDPath)
+				running, pid := bridgeutil.ProcessAliveFromPIDFile(sp.PIDPath)
 				ls := &localStatus{Running: running, ConfigPath: sp.ConfigPath}
 				if running {
 					ls.PID = pid
@@ -801,7 +798,7 @@ func cmdDelete(args []string) error {
 		return err
 	}
 	// Stop if running
-	if _, err := stopByPIDFile(sp.PIDPath); err != nil {
+	if _, err := bridgeutil.StopByPIDFile(sp.PIDPath); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to stop: %v\n", err)
 	}
 	if *remote {
@@ -867,7 +864,7 @@ func ensureInitialized(instName, bridgeType, beeperName string, sp *instancePath
 			"beeper.com": "admin",
 		},
 	}
-	if err = applyConfigOverrides(meta.ConfigPath, overrides); err != nil {
+	if err = bridgeutil.ApplyConfigOverrides(meta.ConfigPath, overrides); err != nil {
 		return nil, err
 	}
 	if err = writeMetadata(meta, sp.MetaPath); err != nil {
@@ -969,7 +966,7 @@ func ensureRegistration(profile string, meta *metadata, bridgeType string) error
 		return err
 	}
 	userID := fmt.Sprintf("@%s:%s", auth.Username, auth.Domain)
-	if err = patchConfigWithRegistration(meta.ConfigPath, &reg, hc.HomeserverURL.String(), meta.BeeperBridgeName, bridgeType, auth.Domain, reg.AppToken, userID, auth.Token, who.User.AsmuxData.LoginToken); err != nil {
+	if err = bridgeutil.PatchConfigWithRegistration(meta.ConfigPath, &reg, hc.HomeserverURL.String(), meta.BeeperBridgeName, bridgeType, auth.Domain, reg.AppToken, userID, auth.Token, who.User.AsmuxData.LoginToken); err != nil {
 		return err
 	}
 
@@ -1015,239 +1012,12 @@ func deleteRemoteBridge(profile, beeperName string) error {
 
 // ── Process lifecycle ──
 
-func startBridge(meta *metadata, bridgeType string) error {
+func startBridgeProcess(meta *metadata, bridgeType string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to find own executable: %w", err)
 	}
-	logFile, err := os.OpenFile(meta.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(exe, "__bridge", bridgeType, "-c", meta.ConfigPath)
-	cmd.Dir = filepath.Dir(meta.ConfigPath)
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	if err = cmd.Start(); err != nil {
-		_ = logFile.Close()
-		return err
-	}
-	pid := cmd.Process.Pid
-	if err = os.WriteFile(meta.PIDPath, []byte(strconv.Itoa(pid)), 0o600); err != nil {
-		_ = logFile.Close()
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		_ = cmd.Wait()
-		return err
-	}
-	go func() {
-		_ = cmd.Wait()
-		_ = logFile.Close()
-	}()
-	return nil
-}
-
-func stopBridge(meta *metadata) (bool, error) {
-	return stopByPIDFile(meta.PIDPath)
-}
-
-func stopByPIDFile(pidPath string) (bool, error) {
-	running, pid := processAliveFromPIDFile(pidPath)
-	if !running {
-		_ = os.Remove(pidPath)
-		return false, nil
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false, err
-	}
-	if err = proc.Signal(syscall.SIGTERM); err != nil {
-		return false, err
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if !processAlive(pid) {
-			_ = os.Remove(pidPath)
-			return true, nil
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-	if err = proc.Signal(syscall.SIGKILL); err != nil {
-		return false, err
-	}
-	_ = os.Remove(pidPath)
-	return true, nil
-}
-
-func processAliveFromPIDFile(path string) (bool, int) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false, 0
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid <= 0 {
-		return false, 0
-	}
-	return processAlive(pid), pid
-}
-
-func processAlive(pid int) bool {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = proc.Signal(syscall.Signal(0))
-	return err == nil
-}
-
-// ── Config helpers ──
-
-func patchConfigWithRegistration(configPath string, reg any, homeserverURL, bridgeName, bridgeType, beeperDomain, asToken, userID, matrixToken, provisioningSecret string) error {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return err
-	}
-	var doc map[string]any
-	if err = yaml.Unmarshal(data, &doc); err != nil {
-		return err
-	}
-	regMap := jsonutil.ToMap(reg)
-
-	setPath(doc, []string{"homeserver", "address"}, homeserverURL)
-	setPath(doc, []string{"homeserver", "domain"}, "beeper.local")
-	setPath(doc, []string{"homeserver", "software"}, "hungry")
-	setPath(doc, []string{"homeserver", "async_media"}, true)
-	setPath(doc, []string{"homeserver", "websocket"}, true)
-	setPath(doc, []string{"homeserver", "ping_interval_seconds"}, 180)
-
-	setPath(doc, []string{"appservice", "address"}, "irrelevant")
-	setPath(doc, []string{"appservice", "as_token"}, regMap["as_token"])
-	setPath(doc, []string{"appservice", "hs_token"}, regMap["hs_token"])
-	if v, ok := regMap["id"]; ok {
-		setPath(doc, []string{"appservice", "id"}, v)
-	}
-	if v, ok := regMap["sender_localpart"]; ok {
-		if s, ok2 := v.(string); ok2 {
-			setPath(doc, []string{"appservice", "bot", "username"}, s)
-		}
-	}
-	setPath(doc, []string{"appservice", "username_template"}, fmt.Sprintf("%s_{{.}}", bridgeName))
-
-	setPath(doc, []string{"bridge", "personal_filtering_spaces"}, true)
-	setPath(doc, []string{"bridge", "private_chat_portal_meta"}, false)
-	setPath(doc, []string{"bridge", "split_portals"}, true)
-	setPath(doc, []string{"bridge", "bridge_status_notices"}, "none")
-	setPath(doc, []string{"bridge", "cross_room_replies"}, true)
-	setPath(doc, []string{"bridge", "cleanup_on_logout", "enabled"}, true)
-	setPath(doc, []string{"bridge", "cleanup_on_logout", "manual", "private"}, "delete")
-	setPath(doc, []string{"bridge", "cleanup_on_logout", "manual", "relayed"}, "delete")
-	setPath(doc, []string{"bridge", "cleanup_on_logout", "manual", "shared_no_users"}, "delete")
-	setPath(doc, []string{"bridge", "cleanup_on_logout", "manual", "shared_has_users"}, "delete")
-	setPath(doc, []string{"bridge", "permissions", userID}, "admin")
-
-	setPath(doc, []string{"database", "type"}, "sqlite3-fk-wal")
-	setPath(doc, []string{"database", "uri"}, "file:ai.db?_txlock=immediate")
-
-	setPath(doc, []string{"matrix", "message_status_events"}, true)
-	setPath(doc, []string{"matrix", "message_error_notices"}, false)
-	setPath(doc, []string{"matrix", "sync_direct_chat_list"}, false)
-	setPath(doc, []string{"matrix", "federate_rooms"}, false)
-
-	if provisioningSecret != "" {
-		setPath(doc, []string{"provisioning", "shared_secret"}, provisioningSecret)
-	}
-	setPath(doc, []string{"provisioning", "allow_matrix_auth"}, true)
-	setPath(doc, []string{"provisioning", "debug_endpoints"}, true)
-
-	setPath(doc, []string{"network", "beeper", "user_mxid"}, userID)
-	setPath(doc, []string{"network", "beeper", "base_url"}, homeserverURL)
-	setPath(doc, []string{"network", "beeper", "token"}, matrixToken)
-
-	setPath(doc, []string{"double_puppet", "servers", beeperDomain}, homeserverURL)
-	setPath(doc, []string{"double_puppet", "secrets", beeperDomain}, "as_token:"+asToken)
-	setPath(doc, []string{"double_puppet", "allow_discovery"}, false)
-
-	setPath(doc, []string{"backfill", "enabled"}, true)
-	setPath(doc, []string{"backfill", "queue", "enabled"}, true)
-	setPath(doc, []string{"backfill", "queue", "batch_size"}, 50)
-	setPath(doc, []string{"backfill", "queue", "max_batches"}, 0)
-
-	setPath(doc, []string{"encryption", "allow"}, true)
-	setPath(doc, []string{"encryption", "default"}, true)
-	setPath(doc, []string{"encryption", "require"}, true)
-	setPath(doc, []string{"encryption", "appservice"}, true)
-	setPath(doc, []string{"encryption", "allow_key_sharing"}, true)
-	setPath(doc, []string{"encryption", "delete_keys", "delete_outbound_on_ack"}, true)
-	setPath(doc, []string{"encryption", "delete_keys", "ratchet_on_decrypt"}, true)
-	setPath(doc, []string{"encryption", "delete_keys", "delete_fully_used_on_decrypt"}, true)
-	setPath(doc, []string{"encryption", "delete_keys", "delete_prev_on_new_session"}, true)
-	setPath(doc, []string{"encryption", "delete_keys", "delete_on_device_delete"}, true)
-	setPath(doc, []string{"encryption", "delete_keys", "periodically_delete_expired"}, true)
-	setPath(doc, []string{"encryption", "verification_levels", "receive"}, "cross-signed-tofu")
-	setPath(doc, []string{"encryption", "verification_levels", "send"}, "cross-signed-tofu")
-	setPath(doc, []string{"encryption", "verification_levels", "share"}, "cross-signed-tofu")
-	setPath(doc, []string{"encryption", "rotation", "enable_custom"}, true)
-	setPath(doc, []string{"encryption", "rotation", "milliseconds"}, 2592000000)
-	setPath(doc, []string{"encryption", "rotation", "messages"}, 10000)
-	setPath(doc, []string{"encryption", "rotation", "disable_device_change_key_rotation"}, true)
-
-	if bridgeType != "" {
-		setPath(doc, []string{"network", "bridge_type"}, bridgeType)
-	}
-
-	out, err := yaml.Marshal(doc)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(configPath, out, 0o600)
-}
-
-func applyConfigOverrides(configPath string, overrides map[string]any) error {
-	if len(overrides) == 0 {
-		return nil
-	}
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return err
-	}
-	var doc map[string]any
-	if err = yaml.Unmarshal(data, &doc); err != nil {
-		return err
-	}
-	for k, v := range overrides {
-		parts := strings.Split(k, ".")
-		setPath(doc, parts, v)
-	}
-	out, err := yaml.Marshal(doc)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(configPath, out, 0o600)
-}
-
-func setPath(root map[string]any, parts []string, value any) {
-	if len(parts) == 0 {
-		return
-	}
-	cur := root
-	for i := range len(parts) - 1 {
-		key := parts[i]
-		next, ok := cur[key]
-		if !ok {
-			nm := map[string]any{}
-			cur[key] = nm
-			cur = nm
-			continue
-		}
-		nm, ok := next.(map[string]any)
-		if !ok {
-			nm = map[string]any{}
-			cur[key] = nm
-		}
-		cur = nm
-	}
-	cur[parts[len(parts)-1]] = value
+	return bridgeutil.StartBridgeFromConfig(exe, []string{"__bridge", bridgeType, "-c", meta.ConfigPath}, meta.ConfigPath, meta.LogPath, meta.PIDPath)
 }
 
 func printRuntimePaths(meta *metadata) {
@@ -1256,14 +1026,4 @@ func printRuntimePaths(meta *metadata) {
 	fmt.Printf("  registration: %s\n", meta.RegistrationPath)
 	fmt.Printf("  log: %s\n", meta.LogPath)
 	fmt.Printf("  pid: %s\n", meta.PIDPath)
-}
-
-func promptLine(label string) (string, error) {
-	fmt.Fprint(os.Stdout, label)
-	r := bufio.NewReader(os.Stdin)
-	s, err := r.ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-	return strings.TrimSpace(s), nil
 }

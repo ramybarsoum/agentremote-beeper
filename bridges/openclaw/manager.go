@@ -813,20 +813,7 @@ func openClawStreamMessageMetadata(meta *PortalMetadata, payload gatewayChatEven
 		FinishReason: openclawconv.StringsTrimDefault(strings.TrimSpace(payload.StopReason), strings.TrimSpace(payload.State)),
 		IncludeUsage: true,
 	}
-	if usage := normalizeOpenClawUsage(payload.Usage); len(usage) > 0 {
-		if value, ok := openClawUsageInt64(usage, "prompt_tokens"); ok {
-			params.PromptTokens = value
-		}
-		if value, ok := openClawUsageInt64(usage, "completion_tokens"); ok {
-			params.CompletionTokens = value
-		}
-		if value, ok := openClawUsageInt64(usage, "reasoning_tokens"); ok {
-			params.ReasoningTokens = value
-		}
-		if value, ok := openClawUsageInt64(usage, "total_tokens"); ok {
-			params.TotalTokens = value
-		}
-	}
+	applyNormalizedUsageToParams(normalizeOpenClawUsage(payload.Usage), &params)
 	metadata := msgconv.BuildUIMessageMetadata(params)
 	if sessionID := openclawconv.StringsTrimDefault(stringValue(payload.Message["sessionId"]), meta.OpenClawSessionID); sessionID != "" {
 		metadata["session_id"] = sessionID
@@ -884,6 +871,38 @@ func openClawUsageNumber(raw map[string]any, keys ...string) (float64, bool) {
 func openClawUsageInt64(raw map[string]any, key string) (int64, bool) {
 	value, ok := openClawUsageNumber(raw, key)
 	return int64(value), ok
+}
+
+func maybeUpdatePreviewSnippet(meta *PortalMetadata, text string, eventTS time.Time) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	meta.OpenClawPreviewSnippet = trimmed
+	if !eventTS.IsZero() {
+		meta.OpenClawLastPreviewAt = eventTS.UnixMilli()
+	} else {
+		meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
+	}
+	return true
+}
+
+func applyNormalizedUsageToParams(usage map[string]any, params *msgconv.UIMessageMetadataParams) {
+	if len(usage) == 0 {
+		return
+	}
+	if value, ok := openClawUsageInt64(usage, "prompt_tokens"); ok {
+		params.PromptTokens = value
+	}
+	if value, ok := openClawUsageInt64(usage, "completion_tokens"); ok {
+		params.CompletionTokens = value
+	}
+	if value, ok := openClawUsageInt64(usage, "reasoning_tokens"); ok {
+		params.ReasoningTokens = value
+	}
+	if value, ok := openClawUsageInt64(usage, "total_tokens"); ok {
+		params.TotalTokens = value
+	}
 }
 
 func openClawErrorText(payload gatewayChatEvent) string {
@@ -1201,14 +1220,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 			meta.TotalTokensFresh = true
 		}
 		text := extractMessageText(payload.Message)
-		if trimmed := strings.TrimSpace(text); trimmed != "" {
-			meta.OpenClawPreviewSnippet = trimmed
-			if !eventTS.IsZero() {
-				meta.OpenClawLastPreviewAt = eventTS.UnixMilli()
-			} else {
-				meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
-			}
-		}
+		maybeUpdatePreviewSnippet(meta, text, eventTS)
 		if delta := m.client.computeVisibleDelta(turnID, text); delta != "" {
 			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
 				"timestamp": eventTS.UnixMilli(),
@@ -1256,13 +1268,7 @@ func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bri
 		streamOrder: payload.Seq,
 		preBuilt:    converted,
 	})
-	if text := strings.TrimSpace(extractMessageText(payload.Message)); text != "" {
-		meta.OpenClawPreviewSnippet = text
-		if !eventTS.IsZero() {
-			meta.OpenClawLastPreviewAt = eventTS.UnixMilli()
-		} else {
-			meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
-		}
+	if maybeUpdatePreviewSnippet(meta, extractMessageText(payload.Message), eventTS) {
 		_ = portal.Save(ctx)
 	}
 }
@@ -1300,13 +1306,7 @@ func (m *openClawManager) emitLatestUserMessageFromHistory(ctx context.Context, 
 			timestamp: eventTS,
 			preBuilt:  converted,
 		})
-		if text := strings.TrimSpace(extractMessageText(message)); text != "" {
-			meta.OpenClawPreviewSnippet = text
-			if !eventTS.IsZero() {
-				meta.OpenClawLastPreviewAt = eventTS.UnixMilli()
-			} else {
-				meta.OpenClawLastPreviewAt = time.Now().UnixMilli()
-			}
+		if maybeUpdatePreviewSnippet(meta, extractMessageText(message), eventTS) {
 			_ = portal.Save(ctx)
 		}
 		return
@@ -1920,20 +1920,7 @@ func convertHistoryToCanonicalUI(message map[string]any, role string, meta *Port
 		CompletionID: stringValue(message["runId"]),
 		IncludeUsage: true,
 	}
-	if usage := normalizeOpenClawUsage(jsonutil.ToMap(message["usage"])); len(usage) > 0 {
-		if value, ok := openClawUsageInt64(usage, "prompt_tokens"); ok {
-			params.PromptTokens = value
-		}
-		if value, ok := openClawUsageInt64(usage, "completion_tokens"); ok {
-			params.CompletionTokens = value
-		}
-		if value, ok := openClawUsageInt64(usage, "reasoning_tokens"); ok {
-			params.ReasoningTokens = value
-		}
-		if value, ok := openClawUsageInt64(usage, "total_tokens"); ok {
-			params.TotalTokens = value
-		}
-	}
+	applyNormalizedUsageToParams(normalizeOpenClawUsage(jsonutil.ToMap(message["usage"])), &params)
 	metadata := msgconv.BuildUIMessageMetadata(params)
 	if sessionID := openclawconv.StringsTrimDefault(stringValue(message["sessionId"]), meta.OpenClawSessionID); sessionID != "" {
 		metadata["session_id"] = sessionID

@@ -26,6 +26,43 @@ type InlineDirectiveParseResult struct {
 	IsSilent          bool
 }
 
+// toStreamingResult converts the parse result into a StreamingDirectiveResult,
+// applying silent-reply detection and clearing the text when silent.
+func (p *InlineDirectiveParseResult) toStreamingResult() *StreamingDirectiveResult {
+	text := p.Text
+	isSilent := IsSilentReplyText(text, SilentReplyToken) || IsSilentReplyPrefixText(text, SilentReplyToken)
+	if isSilent {
+		text = ""
+	}
+	return &StreamingDirectiveResult{
+		Text:              text,
+		ReplyToExplicitID: p.ReplyToExplicitID,
+		ReplyToCurrent:    p.ReplyToCurrent,
+		HasReplyTag:       p.HasReplyTag,
+		AudioAsVoice:      p.AudioAsVoice,
+		IsSilent:          isSilent,
+	}
+}
+
+// toReplyResult converts the parse result into a ReplyDirectiveResult,
+// applying silent-reply detection and clearing the text when silent.
+func (p *InlineDirectiveParseResult) toReplyResult() ReplyDirectiveResult {
+	text := p.Text
+	isSilent := IsSilentReplyText(text, SilentReplyToken)
+	if isSilent {
+		text = ""
+	}
+	return ReplyDirectiveResult{
+		Text:              text,
+		ReplyToID:         p.ReplyToID,
+		ReplyToExplicitID: p.ReplyToExplicitID,
+		ReplyToCurrent:    p.ReplyToCurrent,
+		HasReplyTag:       p.HasReplyTag,
+		AudioAsVoice:      p.AudioAsVoice,
+		IsSilent:          isSilent,
+	}
+}
+
 var (
 	audioTagRE          = regexp.MustCompile(`(?i)\[\[\s*audio_as_voice\s*\]\]`)
 	replyTagRE          = regexp.MustCompile(`(?i)\[\[\s*(?:reply_to_current|reply_to\s*:\s*([^\]\n]+))\s*\]\]`)

@@ -157,19 +157,7 @@ func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 		resultPayload = "Denied"
 	}
 	resultEventID := oc.sendToolResultEvent(ctx, portal, state, tool, resultPayload, ResultStatusError)
-	state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-		CallID:        tool.callID,
-		ToolName:      tool.toolName,
-		ToolType:      string(tool.toolType),
-		Output:        output,
-		Status:        string(ToolStatusFailed),
-		ResultStatus:  string(ResultStatusError),
-		ErrorMessage:  errorText,
-		StartedAtMs:   tool.startedAtMs,
-		CompletedAtMs: time.Now().UnixMilli(),
-		CallEventID:   string(tool.eventID),
-		ResultEventID: string(resultEventID),
-	})
+	recordToolCallResult(state, tool, ToolStatusFailed, ResultStatusError, errorText, output, nil, string(resultEventID))
 }
 
 // gateMcpToolApproval handles an MCP approval request item: registers the
@@ -363,20 +351,7 @@ func (oc *AIClient) handleResponseOutputItemDone(
 		outputMap = map[string]any{"result": result}
 	}
 
-	state.toolCalls = append(state.toolCalls, ToolCallMetadata{
-		CallID:        tool.callID,
-		ToolName:      tool.toolName,
-		ToolType:      string(tool.toolType),
-		Input:         parseToolInputPayload(tool.input.String()),
-		Output:        outputMap,
-		Status:        string(ToolStatusCompleted),
-		ResultStatus:  string(resultStatus),
-		ErrorMessage:  errorText,
-		StartedAtMs:   tool.startedAtMs,
-		CompletedAtMs: time.Now().UnixMilli(),
-		CallEventID:   string(tool.eventID),
-		ResultEventID: string(resultEventID),
-	})
+	recordToolCallResult(state, tool, ToolStatusCompleted, resultStatus, errorText, outputMap, parseToolInputPayload(tool.input.String()), string(resultEventID))
 }
 
 // Response stream output helpers.

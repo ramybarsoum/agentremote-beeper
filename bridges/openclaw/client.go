@@ -514,6 +514,19 @@ func (oc *OpenClawClient) displayNameForPortal(meta *PortalMetadata) string {
 	return "OpenClaw"
 }
 
+func appendDedupedPart(parts []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return parts
+	}
+	for _, existing := range parts {
+		if strings.EqualFold(existing, value) {
+			return parts
+		}
+	}
+	return append(parts, value)
+}
+
 func (oc *OpenClawClient) topicForPortal(meta *PortalMetadata) string {
 	if meta == nil {
 		return ""
@@ -522,39 +535,27 @@ func (oc *OpenClawClient) topicForPortal(meta *PortalMetadata) string {
 		return "OpenClaw agent DM"
 	}
 	parts := make([]string, 0, 8)
-	appendPart := func(value string) {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return
-		}
-		for _, existing := range parts {
-			if strings.EqualFold(existing, value) {
-				return
-			}
-		}
-		parts = append(parts, value)
-	}
-	appendPart(normalizeOpenClawChatType(meta.OpenClawChatType))
-	appendPart(meta.OpenClawChannel)
-	appendPart(openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject))
-	appendPart(summarizeOpenClawOrigin(meta.OpenClawOrigin, meta.OpenClawChannel))
-	appendPart(meta.ModelProvider)
-	appendPart(meta.Model)
+	parts = appendDedupedPart(parts, normalizeOpenClawChatType(meta.OpenClawChatType))
+	parts = appendDedupedPart(parts, meta.OpenClawChannel)
+	parts = appendDedupedPart(parts, openClawSourceLabel(meta.OpenClawSpace, meta.OpenClawGroupChannel, meta.OpenClawSubject))
+	parts = appendDedupedPart(parts, summarizeOpenClawOrigin(meta.OpenClawOrigin, meta.OpenClawChannel))
+	parts = appendDedupedPart(parts, meta.ModelProvider)
+	parts = appendDedupedPart(parts, meta.Model)
 	if preview := openclawconv.StringsTrimDefault(meta.OpenClawPreviewSnippet, meta.OpenClawLastMessagePreview); preview != "" {
-		appendPart("Recent: " + preview)
+		parts = appendDedupedPart(parts, "Recent: "+preview)
 	}
 	if meta.HistoryMode != "" {
-		appendPart("History: " + meta.HistoryMode)
+		parts = appendDedupedPart(parts, "History: "+meta.HistoryMode)
 	}
 	if meta.OpenClawToolCount > 0 {
 		toolSummary := "Tools: " + fmt.Sprintf("%d", meta.OpenClawToolCount)
 		if profile := strings.TrimSpace(meta.OpenClawToolProfile); profile != "" {
 			toolSummary += " (" + profile + ")"
 		}
-		appendPart(toolSummary)
+		parts = appendDedupedPart(parts, toolSummary)
 	}
 	if meta.OpenClawKnownModelCount > 0 {
-		appendPart(fmt.Sprintf("Models: %d", meta.OpenClawKnownModelCount))
+		parts = appendDedupedPart(parts, fmt.Sprintf("Models: %d", meta.OpenClawKnownModelCount))
 	}
 	return strings.Join(parts, " | ")
 }
@@ -638,24 +639,12 @@ func summarizeOpenClawOrigin(origin, channel string) string {
 		return compactOpenClawOrigin(origin)
 	}
 	parts := make([]string, 0, 5)
-	appendPart := func(value string) {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return
-		}
-		for _, existing := range parts {
-			if strings.EqualFold(existing, value) {
-				return
-			}
-		}
-		parts = append(parts, value)
-	}
 	provider := openclawconv.StringsTrimDefault(stringValue(structured["provider"]), stringValue(structured["source"]))
 	if provider != "" && !strings.EqualFold(provider, strings.TrimSpace(channel)) {
-		appendPart(provider)
+		parts = appendDedupedPart(parts, provider)
 	}
-	appendPart(openclawconv.StringsTrimDefault(stringValue(structured["label"]), stringValue(structured["name"])))
-	appendPart(openclawconv.StringsTrimDefault(
+	parts = appendDedupedPart(parts, openclawconv.StringsTrimDefault(stringValue(structured["label"]), stringValue(structured["name"])))
+	parts = appendDedupedPart(parts, openclawconv.StringsTrimDefault(
 		openclawconv.StringsTrimDefault(stringValue(structured["workspace"]), stringValue(structured["space"])),
 		stringValue(structured["team"]),
 	))
@@ -663,13 +652,13 @@ func summarizeOpenClawOrigin(origin, channel string) string {
 		openclawconv.StringsTrimDefault(stringValue(structured["channel"]), stringValue(structured["channelId"])),
 		stringValue(structured["groupChannel"]),
 	); value != "" {
-		appendPart("Channel " + value)
+		parts = appendDedupedPart(parts, "Channel "+value)
 	}
 	if value := openclawconv.StringsTrimDefault(stringValue(structured["threadId"]), stringValue(structured["threadID"])); value != "" {
-		appendPart("Thread " + value)
+		parts = appendDedupedPart(parts, "Thread "+value)
 	}
 	if value := openclawconv.StringsTrimDefault(stringValue(structured["account"]), stringValue(structured["accountId"])); value != "" {
-		appendPart("Account " + value)
+		parts = appendDedupedPart(parts, "Account "+value)
 	}
 	if len(parts) == 0 {
 		return compactOpenClawOrigin(origin)

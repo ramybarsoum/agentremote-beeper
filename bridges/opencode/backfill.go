@@ -259,12 +259,7 @@ func (b *Bridge) buildOpenCodeUserBackfillMessages(
 		if part.ID == "" {
 			continue
 		}
-		if part.MessageID == "" {
-			part.MessageID = msg.Info.ID
-		}
-		if part.SessionID == "" {
-			part.SessionID = msg.Info.SessionID
-		}
+		fillPartIDs(&part, msg.Info.ID, msg.Info.SessionID)
 		cmp, err := b.buildOpenCodeConvertedPart(ctx, portal, intent, part)
 		if err != nil {
 			if errors.Is(err, bridgev2.ErrIgnoringRemoteEvent) {

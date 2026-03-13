@@ -111,12 +111,8 @@ type ToolPolicyConfig struct {
 
 // GlobalToolPolicyConfig extends ToolPolicyConfig with subagent defaults.
 type GlobalToolPolicyConfig struct {
-	Allow      []string                    `json:"allow,omitempty" yaml:"allow"`
-	AlsoAllow  []string                    `json:"alsoAllow,omitempty" yaml:"alsoAllow"`
-	Deny       []string                    `json:"deny,omitempty" yaml:"deny"`
-	Profile    ToolProfileID               `json:"profile,omitempty" yaml:"profile"`
-	ByProvider map[string]ToolPolicyConfig `json:"byProvider,omitempty" yaml:"byProvider"`
-	Subagents  *SubagentToolPolicyConfig   `json:"subagents,omitempty" yaml:"subagents"`
+	ToolPolicyConfig `yaml:",inline"`
+	Subagents        *SubagentToolPolicyConfig `json:"subagents,omitempty" yaml:"subagents"`
 }
 
 // SubagentToolPolicyConfig configures subagent tool defaults.
@@ -342,13 +338,7 @@ func globalAsToolPolicy(global *GlobalToolPolicyConfig) *ToolPolicyConfig {
 	if global == nil {
 		return nil
 	}
-	return &ToolPolicyConfig{
-		Allow:      global.Allow,
-		AlsoAllow:  global.AlsoAllow,
-		Deny:       global.Deny,
-		Profile:    global.Profile,
-		ByProvider: global.ByProvider,
-	}
+	return &global.ToolPolicyConfig
 }
 
 func normalizeProviderKey(value string) string {

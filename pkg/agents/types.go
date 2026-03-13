@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 
+	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 )
 
@@ -29,7 +30,7 @@ type AgentDefinition struct {
 	Tools *toolpolicy.ToolPolicyConfig `json:"tools,omitempty"`
 
 	// Subagent defaults (OpenClaw-style)
-	Subagents *SubagentConfig `json:"subagents,omitempty"`
+	Subagents *agentconfig.SubagentConfig `json:"subagents,omitempty"`
 
 	// Agent behavior
 	Temperature     float64      `json:"temperature,omitempty"`
@@ -78,17 +79,13 @@ const (
 	ResponseModeSimple ResponseMode = "simple"
 )
 
+// SubagentConfig is an alias for the shared type to preserve API compatibility.
+type SubagentConfig = agentconfig.SubagentConfig
+
 // Identity represents a custom agent persona.
 type Identity struct {
 	Name    string `json:"name,omitempty"`
 	Persona string `json:"persona,omitempty"`
-}
-
-// SubagentConfig configures default subagent behavior for an agent.
-type SubagentConfig struct {
-	Model       string   `json:"model,omitempty"`
-	Thinking    string   `json:"thinking,omitempty"`
-	AllowAgents []string `json:"allowAgents,omitempty"`
 }
 
 // MemorySearchConfig configures semantic memory search (OpenClaw-style).
@@ -212,7 +209,7 @@ func (a *AgentDefinition) Clone() *AgentDefinition {
 		SystemPrompt:    a.SystemPrompt,
 		PromptMode:      a.PromptMode,
 		Tools:           a.Tools.Clone(),
-		Subagents:       cloneSubagentConfig(a.Subagents),
+		Subagents:       agentconfig.CloneSubagentConfig(a.Subagents),
 		Temperature:     a.Temperature,
 		ReasoningEffort: a.ReasoningEffort,
 		ResponseMode:    a.ResponseMode,
@@ -257,20 +254,6 @@ func cloneMemorySearchValue(src any) any {
 		return src
 	}
 	return target.Elem().Interface()
-}
-
-func cloneSubagentConfig(cfg *SubagentConfig) *SubagentConfig {
-	if cfg == nil {
-		return nil
-	}
-	out := &SubagentConfig{
-		Model:    cfg.Model,
-		Thinking: cfg.Thinking,
-	}
-	if len(cfg.AllowAgents) > 0 {
-		out.AllowAgents = slices.Clone(cfg.AllowAgents)
-	}
-	return out
 }
 
 // Clone creates a copy of the model config.
