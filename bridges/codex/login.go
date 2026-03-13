@@ -202,6 +202,14 @@ func (cl *CodexLogin) closeRPCLocked() {
 	}
 }
 
+// signalStart sends a non-blocking signal on startCh.
+func (cl *CodexLogin) signalStart(err error) {
+	select {
+	case cl.startCh <- err:
+	default:
+	}
+}
+
 func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]string) (*bridgev2.LoginStep, error) {
 	cmd := cl.resolveCodexCommand()
 	if _, err := exec.LookPath(cmd); err != nil {
@@ -370,45 +378,19 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 			}
 		})
 
-		if mode == "apiKey" {
+		if mode == "apiKey" || mode == "chatgptAuthTokens" {
+			loginParams := map[string]any{"type": mode}
+			for k, v := range credentials {
+				loginParams[k] = strings.TrimSpace(v)
+			}
 			startCtx, cancel := context.WithTimeout(bgCtx, 60*time.Second)
-			startErr := rpc.Call(startCtx, "account/login/start", map[string]any{
-				"type":   "apiKey",
-				"apiKey": strings.TrimSpace(credentials["apiKey"]),
-			}, &struct{}{})
+			startErr := rpc.Call(startCtx, "account/login/start", loginParams, &struct{}{})
 			cancel()
 			if startErr != nil {
-				log.Warn().Err(startErr).Msg("Codex apiKey login start failed")
-				select {
-				case cl.startCh <- startErr:
-				default:
-				}
-				return
+				log.Warn().Err(startErr).Str("mode", mode).Msg("Codex login start failed")
 			}
 			select {
-			case cl.startCh <- nil:
-			default:
-			}
-			return
-		}
-		if mode == "chatgptAuthTokens" {
-			startCtx, cancel := context.WithTimeout(bgCtx, 60*time.Second)
-			startErr := rpc.Call(startCtx, "account/login/start", map[string]any{
-				"type":        "chatgptAuthTokens",
-				"idToken":     strings.TrimSpace(credentials["idToken"]),
-				"accessToken": strings.TrimSpace(credentials["accessToken"]),
-			}, &struct{}{})
-			cancel()
-			if startErr != nil {
-				log.Warn().Err(startErr).Msg("Codex external token login start failed")
-				select {
-				case cl.startCh <- startErr:
-				default:
-				}
-				return
-			}
-			select {
-			case cl.startCh <- nil:
+			case cl.startCh <- startErr:
 			default:
 			}
 			return

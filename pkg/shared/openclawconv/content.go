@@ -77,19 +77,19 @@ func ExtractMessageText(message map[string]any) string {
 }
 
 func ExtractAttachmentBlocks(message map[string]any) []map[string]any {
-	blocks := ContentBlocks(message)
-	out := make([]map[string]any, 0)
-	for _, block := range blocks {
-		if !IsAttachmentBlock(block) {
-			continue
+	var out []map[string]any
+	for _, block := range ContentBlocks(message) {
+		if IsAttachmentBlock(block) {
+			out = append(out, block)
 		}
-		out = append(out, block)
 	}
 	return out
 }
 
 func IsAttachmentBlock(block map[string]any) bool {
-	blockType := strings.ToLower(strings.TrimSpace(StringValue(block["type"])))
+	str := func(key string) string { return strings.TrimSpace(StringValue(block[key])) }
+
+	blockType := strings.ToLower(str("type"))
 	switch blockType {
 	case "", "text", "input_text", "output_text", "toolcall", "tooluse", "functioncall", "source-url", "source_document", "source-document", "reasoning":
 		return false
@@ -100,22 +100,18 @@ func IsAttachmentBlock(block map[string]any) bool {
 		return true
 	}
 	for _, key := range []string{"file", "image_url", "imageUrl", "asset", "blob", "src"} {
-		value := block[key]
-		if strings.TrimSpace(StringValue(value)) != "" {
-			return true
-		}
-		if len(jsonutil.ToMap(value)) > 0 {
+		if str(key) != "" || len(jsonutil.ToMap(block[key])) > 0 {
 			return true
 		}
 	}
-	if strings.TrimSpace(StringValue(block["url"])) != "" || strings.TrimSpace(StringValue(block["href"])) != "" {
+	if str("url") != "" || str("href") != "" {
 		return true
 	}
-	if strings.TrimSpace(StringValue(block["content"])) != "" || strings.TrimSpace(StringValue(block["data"])) != "" {
+	if str("content") != "" || str("data") != "" {
 		return true
 	}
-	if strings.TrimSpace(StringValue(block["fileName"])) != "" || strings.TrimSpace(StringValue(block["filename"])) != "" {
-		if strings.TrimSpace(StringValue(block["mimeType"])) != "" || strings.TrimSpace(StringValue(block["mediaType"])) != "" || strings.TrimSpace(StringValue(block["contentType"])) != "" {
+	if str("fileName") != "" || str("filename") != "" {
+		if str("mimeType") != "" || str("mediaType") != "" || str("contentType") != "" {
 			return true
 		}
 	}

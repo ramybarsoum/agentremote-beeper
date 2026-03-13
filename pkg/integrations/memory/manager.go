@@ -460,14 +460,7 @@ func (m *MemorySearchManager) listRecentFiles(ctx context.Context, sources []str
 	queryArgs := m.baseArgs()
 	sourceSQL, sourceArgs := sourceFilterSQL(4, sources)
 	pathSQL, pathArgs := pathPrefixFilterSQL(4+len(sourceArgs), pathPrefix)
-	// Overfetch and filter client-side (extension allowlist, size cap).
-	overfetch := limit * 5
-	if overfetch < 50 {
-		overfetch = 50
-	}
-	if overfetch > 500 {
-		overfetch = 500
-	}
+	overfetch := clampOverfetch(limit, 5)
 
 	args := append(queryArgs, sourceArgs...)
 	args = append(args, pathArgs...)
@@ -630,14 +623,7 @@ func (m *MemorySearchManager) searchKeywordFiles(ctx context.Context, query stri
 		tokens[i] = strings.ToLower(strings.TrimSpace(t))
 	}
 
-	// Overfetch so we can filter by allowlist + size cap without running multiple queries.
-	overfetch := limit * 10
-	if overfetch < 50 {
-		overfetch = 50
-	}
-	if overfetch > 500 {
-		overfetch = 500
-	}
+	overfetch := clampOverfetch(limit, 10)
 
 	fileArgs := m.baseArgs()
 	sourceSQL, sourceArgs := sourceFilterSQL(4, sources)
@@ -890,6 +876,10 @@ func hashString(value string) string {
 	}
 	sum := sha256.Sum256([]byte(trimmed))
 	return hex.EncodeToString(sum[:])
+}
+
+func clampOverfetch(limit, multiplier int) int {
+	return max(50, min(500, limit*multiplier))
 }
 
 func normalizeNewlines(text string) string {

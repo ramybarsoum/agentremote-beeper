@@ -144,7 +144,7 @@ func appendCanonicalToolPart(state *streamui.UIState, part api.Part) {
 				"type":             "tool-input-start",
 				"toolCallId":       toolCallID,
 				"toolName":         toolName,
-				"title":            toolDisplayTitle(toolName),
+				"title":            streamui.ToolDisplayTitle(toolName),
 				"providerExecuted": false,
 			})
 			streamui.ApplyChunk(state, map[string]any{

@@ -281,14 +281,15 @@ func (t *Turn) ensureSession() {
 				if t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
 					return nil
 				}
+				body := strings.TrimSpace(t.visibleText.String())
 				uiMessage := streamui.SnapshotCanonicalUIMessage(t.state)
 				return agentremote.SendDebouncedStreamEdit(agentremote.SendDebouncedStreamEditParams{
 					Login:            t.conv.login,
 					Portal:           t.conv.portal,
 					Sender:           t.resolveSender(callCtx),
 					NetworkMessageID: t.networkMessageID,
-					VisibleBody:      strings.TrimSpace(t.visibleText.String()),
-					FallbackBody:     strings.TrimSpace(t.visibleText.String()),
+					VisibleBody:      body,
+					FallbackBody:     body,
 					LogKey:           identity.LogKey,
 					Force:            force,
 					UIMessage:        uiMessage,

@@ -134,10 +134,8 @@ func (c *sdkClient) setSession(s any) {
 func (c *sdkClient) Connect(ctx context.Context) {
 	if c.config().OnConnect != nil {
 		info := &LoginInfo{
-			Login: c.userLogin,
-		}
-		if c.userLogin.UserMXID != "" {
-			info.UserID = string(c.userLogin.UserMXID)
+			Login:  c.userLogin,
+			UserID: string(c.userLogin.UserMXID),
 		}
 		session, err := c.config().OnConnect(ctx, info)
 		if err != nil {
@@ -304,7 +302,7 @@ func (c *sdkClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 	if c.config().OnDelete == nil {
 		return nil
 	}
-	msgID := ""
+	var msgID string
 	if msg.TargetMessage != nil {
 		msgID = string(msg.TargetMessage.ID)
 	}

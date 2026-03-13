@@ -7,6 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/bridges/opencode/api"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 func opencodeToolCallID(part api.Part) string {
@@ -46,7 +47,7 @@ func (m *OpenCodeManager) emitToolStreamDelta(ctx context.Context, inst *openCod
 			"type":             "tool-input-start",
 			"toolCallId":       toolCallID,
 			"toolName":         toolName,
-			"title":            toolDisplayTitle(toolName),
+			"title":            streamui.ToolDisplayTitle(toolName),
 			"providerExecuted": false,
 		})
 		inst.setPartStreamInputStarted(part.SessionID, part.ID)
@@ -78,7 +79,7 @@ func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCod
 				"type":             "tool-input-start",
 				"toolCallId":       toolCallID,
 				"toolName":         toolName,
-				"title":            toolDisplayTitle(toolName),
+				"title":            streamui.ToolDisplayTitle(toolName),
 				"providerExecuted": false,
 			})
 			inst.setPartStreamInputStarted(part.SessionID, part.ID)

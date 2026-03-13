@@ -195,6 +195,3 @@ func truncateOpenCodeText(text string, max int) string {
 	return text[:max] + "..."
 }
 
-func toolDisplayTitle(toolName string) string {
-	return streamui.ToolDisplayTitle(toolName)
-}
