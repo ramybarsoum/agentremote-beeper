@@ -3,9 +3,9 @@ package search
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
+	"github.com/beeper/agentremote/pkg/shared/providerchain"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -21,21 +21,13 @@ func Search(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	registerProviders(registry, cfg)
 	order := buildOrder(cfg)
 
-	var lastErr error
-	for _, name := range order {
-		provider, ok := registry.Get(name)
-		if !ok {
-			continue
-		}
-		resp, err := provider.Search(ctx, req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if resp == nil {
-			lastErr = fmt.Errorf("provider %s returned empty response", name)
-			continue
-		}
+	return providerchain.RunFirst(
+		order,
+		registry.Get,
+		func(provider Provider) (*Response, error) {
+			return provider.Search(ctx, req)
+		},
+		func(name string, resp *Response) {
 		if resp.Provider == "" {
 			resp.Provider = name
 		}
@@ -45,12 +37,9 @@ func Search(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 		if resp.Count == 0 {
 			resp.Count = len(resp.Results)
 		}
-		return resp, nil
-	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, errors.New("no search providers available")
+		},
+		errors.New("no search providers available"),
+	)
 }
 
 func normalizeRequest(req Request) Request {

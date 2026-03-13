@@ -3,9 +3,9 @@ package fetch
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
+	"github.com/beeper/agentremote/pkg/shared/providerchain"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -21,30 +21,19 @@ func Fetch(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	registerProviders(registry, cfg)
 	order := buildOrder(cfg)
 
-	var lastErr error
-	for _, name := range order {
-		provider, ok := registry.Get(name)
-		if !ok {
-			continue
-		}
-		resp, err := provider.Fetch(ctx, req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if resp == nil {
-			lastErr = fmt.Errorf("provider %s returned empty response", name)
-			continue
-		}
+	return providerchain.RunFirst(
+		order,
+		registry.Get,
+		func(provider Provider) (*Response, error) {
+			return provider.Fetch(ctx, req)
+		},
+		func(name string, resp *Response) {
 		if resp.Provider == "" {
 			resp.Provider = name
 		}
-		return resp, nil
-	}
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, errors.New("no fetch providers available")
+		},
+		errors.New("no fetch providers available"),
+	)
 }
 
 func normalizeRequest(req Request) Request {
