@@ -56,223 +56,105 @@ func main() {
 }
 
 func run() error {
+	initCommands()
 	if len(os.Args) < 2 {
-		printUsage()
+		fmt.Print(generateUsage())
 		return nil
 	}
-	switch os.Args[1] {
-	case "__bridge":
-		return cmdInternalBridge(os.Args[2:])
-	case "login":
-		return cmdLogin(os.Args[2:])
-	case "logout":
-		return cmdLogout(os.Args[2:])
-	case "whoami":
-		return cmdWhoami(os.Args[2:])
-	case "profiles":
-		return cmdProfiles(os.Args[2:])
-	case "start":
-		return cmdStart(os.Args[2:])
-	case "run":
-		return cmdRun(os.Args[2:])
-	case "stop":
-		return cmdStop(os.Args[2:])
-	case "stop-all":
-		return cmdStopAll(os.Args[2:])
-	case "restart":
-		return cmdRestart(os.Args[2:])
-	case "status":
-		return cmdStatus(os.Args[2:])
-	case "logs":
-		return cmdLogs(os.Args[2:])
-	case "list":
-		return cmdList()
-	case "delete":
-		return cmdDelete(os.Args[2:])
-	case "version":
+	name := os.Args[1]
+	if name == "-h" || name == "--help" {
+		name = "help"
+	}
+	if name == "--version" || name == "-v" {
 		return cmdVersion()
-	case "help", "-h", "--help":
-		return cmdHelp(os.Args[2:])
+	}
+	c := findCommand(name)
+	if c == nil {
+		return didYouMean(name)
+	}
+	err := c.Run(os.Args[2:])
+	if errors.Is(err, flag.ErrHelp) {
+		// Flag parsing hit -h/--help; show our generated help instead of Go's default
+		if !c.Hidden {
+			fmt.Print(generateCommandHelp(c))
+		}
+		return nil
+	}
+	return err
+}
+
+// newFlagSet creates a FlagSet that suppresses Go's default -h output,
+// so our generated help is shown instead.
+func newFlagSet(name string) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	return fs
+}
+
+// ANSI color helpers — automatically disabled when stdout is not a terminal.
+var colorEnabled = func() bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	fi, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}()
+
+func colorize(code, s string) string {
+	if !colorEnabled {
+		return s
+	}
+	return code + s + "\033[0m"
+}
+
+func green(s string) string  { return colorize("\033[32m", s) }
+func red(s string) string    { return colorize("\033[31m", s) }
+func yellow(s string) string { return colorize("\033[33m", s) }
+func dim(s string) string    { return colorize("\033[2m", s) }
+
+func colorState(state string) string {
+	switch state {
+	case "RUNNING", "CONNECTED":
+		return green(state)
+	case "STARTING", "RECONNECTING":
+		return yellow(state)
+	case "STOPPED", "ERROR", "BRIDGE_UNREACHABLE", "TRANSIENT_DISCONNECT":
+		return red(state)
 	default:
-		return didYouMean(os.Args[1])
+		return state
 	}
 }
 
-var knownCommands = []string{
-	"login", "logout", "whoami", "profiles",
-	"start", "run", "stop", "stop-all", "restart",
-	"status", "logs", "list", "delete", "version", "help",
-}
-
-var commandHelp = map[string]string{
-	"login": `Log in to Beeper
-
-Usage: agentremote login [flags]
-
-Flags:
-  --env       Beeper environment (prod|staging|dev|local) (default: prod)
-  --profile   Profile name (default: "default")
-  --email     Email address (will prompt if not provided)
-  --code      Login code (will prompt if not provided)
-
-Examples:
-  agentremote login
-  agentremote login --env staging --email user@example.com
-`,
-	"logout": `Clear stored credentials
-
-Usage: agentremote logout [flags]
-
-Flags:
-  --profile   Profile name (default: "default")
-
-Examples:
-  agentremote logout
-  agentremote logout --profile work
-`,
-	"whoami": `Show current user info
-
-Usage: agentremote whoami [flags]
-
-Flags:
-  --profile   Profile name (default: "default")
-  --output    Output format: text or json (default: text)
-`,
-	"profiles": `List all profiles
-
-Usage: agentremote profiles [flags]
-
-Flags:
-  --output    Output format: text or json (default: text)
-`,
-	"start": `Start a bridge in the background
-
-Usage: agentremote start <bridge> [flags]
-
-Flags:
-  --profile   Profile name (default: "default")
-  --name      Instance name (for running multiple instances of the same bridge)
-  --env       Override beeper env for this bridge
-
-Examples:
-  agentremote start ai
-  agentremote start codex --name test
-  agentremote start opencode --profile work
-`,
-	"run": `Run a bridge in the foreground
-
-Usage: agentremote run <bridge> [flags]
-
-Flags:
-  --profile   Profile name (default: "default")
-  --name      Instance name (for running multiple instances of the same bridge)
-  --env       Override beeper env for this bridge
-
-Examples:
-  agentremote run ai
-  agentremote run codex --name dev
-`,
-	"stop": `Stop a running bridge
-
-Usage: agentremote stop <instance> [flags]
-
-Flags:
-  --profile   Profile name (default: "default")
-
-Examples:
-  agentremote stop ai
-  agentremote stop codex-test
-`,
-	"stop-all": `Stop all running bridges
-
-Usage: agentremote stop-all [flags]
-
-Flags:
-  --profile   Profile name (default: "default")
-`,
-	"restart": `Restart a bridge (stop + start)
-
-Usage: agentremote restart <bridge> [flags]
-
-Flags:
-  --profile   Profile name (default: "default")
-  --name      Instance name
-
-Examples:
-  agentremote restart ai
-`,
-	"status": `Show bridge status
-
-Usage: agentremote status [instance...] [flags]
-
-Shows local instance status and remote bridge state from the Beeper server.
-If no instance names are given, shows all instances.
-
-Flags:
-  --profile     Profile name (default: "default")
-  --no-remote   Skip fetching remote bridge state from server
-  --output      Output format: text or json (default: text)
-
-Examples:
-  agentremote status
-  agentremote status ai
-  agentremote status --no-remote
-`,
-	"logs": `View bridge logs
-
-Usage: agentremote logs <instance> [flags]
-
-Flags:
-  --profile   Profile name (default: "default")
-  --follow    Follow log output (like tail -f)
-
-Examples:
-  agentremote logs ai
-  agentremote logs ai --follow
-`,
-	"list": `List available bridge types
-
-Usage: agentremote list
-`,
-	"delete": `Delete a bridge instance
-
-Usage: agentremote delete <instance> [flags]
-
-Flags:
-  --profile   Profile name (default: "default")
-  --remote    Also delete the remote bridge from Beeper
-
-Examples:
-  agentremote delete ai
-  agentremote delete codex-test --remote
-`,
-	"version": `Show version info
-
-Usage: agentremote version
-`,
+func colorLocal(running bool, pid int) string {
+	if running {
+		return green("running") + fmt.Sprintf(" (pid %d)", pid)
+	}
+	return red("stopped")
 }
 
 func cmdHelp(args []string) error {
 	if len(args) == 0 {
-		printUsage()
+		fmt.Print(generateUsage())
 		return nil
 	}
-	cmd := args[0]
-	if help, ok := commandHelp[cmd]; ok {
-		fmt.Print(help)
+	if c := findCommand(args[0]); c != nil && !c.Hidden {
+		fmt.Print(generateCommandHelp(c))
 		return nil
 	}
-	return didYouMean(cmd)
+	return didYouMean(args[0])
 }
 
 func didYouMean(input string) error {
 	best := ""
 	bestDist := 4 // only suggest if distance <= 3
-	for _, cmd := range knownCommands {
-		d := levenshtein(input, cmd)
+	for _, name := range commandNames() {
+		d := levenshtein(input, name)
 		if d < bestDist {
 			bestDist = d
-			best = cmd
+			best = name
 		}
 	}
 	if best != "" {
@@ -308,39 +190,10 @@ func levenshtein(a, b string) int {
 	return prev[lb]
 }
 
-func printUsage() {
-	fmt.Println("agentremote - unified AI bridge manager for Beeper")
-	fmt.Println()
-	fmt.Println("Usage: agentremote <command> [flags] [args]")
-	fmt.Println()
-	fmt.Println("Auth:")
-	fmt.Println("  login       Log in to Beeper")
-	fmt.Println("  logout      Clear stored credentials")
-	fmt.Println("  whoami      Show current user info")
-	fmt.Println("  profiles    List all profiles")
-	fmt.Println()
-	fmt.Println("Bridges:")
-	fmt.Println("  start       Start a bridge in the background")
-	fmt.Println("  run         Run a bridge in the foreground")
-	fmt.Println("  stop        Stop a running bridge")
-	fmt.Println("  stop-all    Stop all running bridges")
-	fmt.Println("  restart     Restart a bridge")
-	fmt.Println("  status      Show bridge status")
-	fmt.Println("  logs        View bridge logs")
-	fmt.Println("  list        List available bridge types")
-	fmt.Println("  delete      Delete a bridge instance")
-	fmt.Println()
-	fmt.Println("Other:")
-	fmt.Println("  version     Show version info")
-	fmt.Println()
-	fmt.Println("Global flags:")
-	fmt.Println("  --profile   Profile name (default: \"default\")")
-}
-
 // ── Auth commands ──
 
 func cmdLogin(args []string) error {
-	fs := flag.NewFlagSet("login", flag.ContinueOnError)
+	fs := newFlagSet("login")
 	env := fs.String("env", "prod", "beeper env (prod|staging|dev|local)")
 	profile := fs.String("profile", defaultProfile, "profile name")
 	email := fs.String("email", "", "email address")
@@ -418,7 +271,7 @@ func cmdLogin(args []string) error {
 }
 
 func cmdLogout(args []string) error {
-	fs := flag.NewFlagSet("logout", flag.ContinueOnError)
+	fs := newFlagSet("logout")
 	profile := fs.String("profile", defaultProfile, "profile name")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -435,7 +288,7 @@ func cmdLogout(args []string) error {
 }
 
 func cmdWhoami(args []string) error {
-	fs := flag.NewFlagSet("whoami", flag.ContinueOnError)
+	fs := newFlagSet("whoami")
 	profile := fs.String("profile", defaultProfile, "profile name")
 	output := fs.String("output", "text", "output format (text|json)")
 	if err := fs.Parse(args); err != nil {
@@ -473,7 +326,7 @@ func cmdWhoami(args []string) error {
 }
 
 func cmdProfiles(args []string) error {
-	fs := flag.NewFlagSet("profiles", flag.ContinueOnError)
+	fs := newFlagSet("profiles")
 	output := fs.String("output", "text", "output format (text|json)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -540,8 +393,10 @@ func resolveBridgeArgs(fs *flag.FlagSet) (bridgeType string, err error) {
 }
 
 func cmdStart(args []string) error {
-	fs := flag.NewFlagSet("start", flag.ContinueOnError)
+	fs := newFlagSet("start")
 	profile, name, _ := parseBridgeFlags(fs)
+	wait := fs.Bool("wait", false, "block until bridge is connected (timeout 60s)")
+	waitTimeout := fs.Duration("wait-timeout", 60*time.Second, "timeout for --wait")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -566,6 +421,9 @@ func cmdStart(args []string) error {
 	running, pid := processAliveFromPIDFile(meta.PIDPath)
 	if running {
 		fmt.Printf("%s already running (pid %d)\n", instName, pid)
+		if *wait {
+			return waitForBridge(*profile, beeperName, *waitTimeout)
+		}
 		return nil
 	}
 	if err = startBridge(meta, bridgeType); err != nil {
@@ -573,11 +431,37 @@ func cmdStart(args []string) error {
 	}
 	fmt.Printf("started %s\n", instName)
 	printRuntimePaths(meta)
+	if *wait {
+		return waitForBridge(*profile, beeperName, *waitTimeout)
+	}
 	return nil
 }
 
+func waitForBridge(profile, beeperName string, timeout time.Duration) error {
+	cfg, err := getAuthOrEnv(profile)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("waiting for %s to be connected...\n", beeperName)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp, err := beeperapi.Whoami(cfg.Domain, cfg.Token)
+		if err == nil {
+			if bridge, ok := resp.User.Bridges[beeperName]; ok {
+				state := string(bridge.BridgeState.StateEvent)
+				if state == "RUNNING" || state == "CONNECTED" {
+					fmt.Printf("%s is %s\n", beeperName, state)
+					return nil
+				}
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("timed out waiting for %s to be connected", beeperName)
+}
+
 func cmdRun(args []string) error {
-	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	fs := newFlagSet("run")
 	profile, name, _ := parseBridgeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -614,7 +498,7 @@ func cmdRun(args []string) error {
 }
 
 func cmdStop(args []string) error {
-	fs := flag.NewFlagSet("stop", flag.ContinueOnError)
+	fs := newFlagSet("stop")
 	profile := fs.String("profile", defaultProfile, "profile name")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -656,7 +540,7 @@ func cmdStop(args []string) error {
 }
 
 func cmdStopAll(args []string) error {
-	fs := flag.NewFlagSet("stop-all", flag.ContinueOnError)
+	fs := newFlagSet("stop-all")
 	profile := fs.String("profile", defaultProfile, "profile name")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -715,7 +599,7 @@ type loginStatus struct {
 }
 
 func cmdStatus(args []string) error {
-	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs := newFlagSet("status")
 	profile := fs.String("profile", defaultProfile, "profile name")
 	noRemote := fs.Bool("no-remote", false, "skip fetching remote bridge state from server")
 	output := fs.String("output", "text", "output format (text|json)")
@@ -830,22 +714,18 @@ func cmdStatus(args []string) error {
 		if bs.State != "" {
 			selfHosted := ""
 			if bs.SelfHosted {
-				selfHosted = " (self-hosted)"
+				selfHosted = dim(" (self-hosted)")
 			}
-			fmt.Printf("  %s: %s%s\n", bs.Name, bs.State, selfHosted)
+			fmt.Printf("  %s: %s%s\n", bs.Name, colorState(bs.State), selfHosted)
 		} else if bs.Local != nil {
 			fmt.Printf("  %s:\n", bs.Name)
 		} else {
-			fmt.Printf("  %s: unknown\n", bs.Name)
+			fmt.Printf("  %s: %s\n", bs.Name, dim("unknown"))
 		}
 
 		if bs.Local != nil {
-			if bs.Local.Running {
-				fmt.Printf("    local: running (pid %d)\n", bs.Local.PID)
-			} else {
-				fmt.Printf("    local: stopped\n")
-			}
-			fmt.Printf("    config: %s\n", bs.Local.ConfigPath)
+			fmt.Printf("    local: %s\n", colorLocal(bs.Local.Running, bs.Local.PID))
+			fmt.Printf("    config: %s\n", dim(bs.Local.ConfigPath))
 		}
 
 		if len(bs.Logins) > 0 {
@@ -853,9 +733,9 @@ func cmdStatus(args []string) error {
 			for _, l := range bs.Logins {
 				name := ""
 				if l.RemoteName != "" {
-					name = fmt.Sprintf(" (%s)", l.RemoteName)
+					name = dim(fmt.Sprintf(" (%s)", l.RemoteName))
 				}
-				fmt.Printf("      - %s: %s%s\n", l.RemoteID, l.State, name)
+				fmt.Printf("      - %s: %s%s\n", l.RemoteID, colorState(l.State), name)
 			}
 		}
 	}
@@ -863,7 +743,7 @@ func cmdStatus(args []string) error {
 }
 
 func cmdLogs(args []string) error {
-	fs := flag.NewFlagSet("logs", flag.ContinueOnError)
+	fs := newFlagSet("logs")
 	profile := fs.String("profile", defaultProfile, "profile name")
 	follow := fs.Bool("follow", false, "follow logs")
 	fs.BoolVar(follow, "f", false, "follow logs (shorthand)")
@@ -904,7 +784,7 @@ func cmdList() error {
 }
 
 func cmdDelete(args []string) error {
-	fs := flag.NewFlagSet("delete", flag.ContinueOnError)
+	fs := newFlagSet("delete")
 	profile := fs.String("profile", defaultProfile, "profile name")
 	remote := fs.Bool("remote", false, "also delete remote beeper bridge")
 	if err := fs.Parse(args); err != nil {
@@ -943,6 +823,23 @@ func cmdVersion() error {
 	fmt.Printf("agentremote %s\n", Tag)
 	fmt.Printf("commit: %s\n", Commit)
 	fmt.Printf("built: %s\n", BuildTime)
+	return nil
+}
+
+func cmdCompletion(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: agentremote completion <bash|zsh|fish>")
+	}
+	switch args[0] {
+	case "bash":
+		fmt.Print(generateBashCompletion())
+	case "zsh":
+		fmt.Print(generateZshCompletion())
+	case "fish":
+		fmt.Print(generateFishCompletion())
+	default:
+		return fmt.Errorf("unsupported shell %q (supported: bash, zsh, fish)", args[0])
+	}
 	return nil
 }
 
