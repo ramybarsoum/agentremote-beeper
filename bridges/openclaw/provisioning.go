@@ -573,27 +573,22 @@ func configuredAgentMatchScore(agent gatewayAgentSummary, query string) (int, bo
 	if agent.Identity != nil {
 		candidates = append(candidates, strings.ToLower(strings.TrimSpace(agent.Identity.Name)))
 	}
-	best := 10
+	const noMatch = 10
+	best := noMatch
 	for _, candidate := range candidates {
 		if candidate == "" {
 			continue
 		}
 		switch {
 		case candidate == query:
-			if 0 < best {
-				best = 0
-			}
-		case strings.HasPrefix(candidate, query):
-			if 1 < best {
-				best = 1
-			}
-		case strings.Contains(candidate, query):
-			if 2 < best {
-				best = 2
-			}
+			return 0, true
+		case strings.HasPrefix(candidate, query) && best > 1:
+			best = 1
+		case strings.Contains(candidate, query) && best > 2:
+			best = 2
 		}
 	}
-	if best == 10 {
+	if best == noMatch {
 		return 0, false
 	}
 	return best, true

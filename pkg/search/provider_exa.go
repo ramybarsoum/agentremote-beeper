@@ -90,14 +90,7 @@ func (p *exaProvider) Search(ctx context.Context, req Request) (*Response, error
 
 	results := make([]Result, 0, len(resp.Results))
 	for _, entry := range resp.Results {
-		desc := ""
-		if len(entry.Highlights) > 0 {
-			desc = strings.TrimSpace(entry.Highlights[0])
-		} else if text := strings.TrimSpace(entry.Text); len(text) > 240 {
-			desc = text[:240] + "..."
-		} else if text != "" {
-			desc = text
-		}
+		desc := descriptionFromEntry(entry.Highlights, entry.Text)
 		results = append(results, Result{
 			ID:          strings.TrimSpace(entry.ID),
 			Title:       strings.TrimSpace(entry.Title),

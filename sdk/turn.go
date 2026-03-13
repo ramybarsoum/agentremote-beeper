@@ -315,10 +315,7 @@ func (t *Turn) ensureStarted() {
 	}
 	t.ensureSession()
 	if t.conv != nil && t.conv.portal != nil && t.conv.login != nil {
-		identity := defaultProviderIdentity()
-		if t.conv.runtime != nil {
-			identity = t.conv.runtime.providerIdentity()
-		}
+		identity := t.providerIdentity()
 		evtID, msgID, err := agentremote.SendViaPortal(agentremote.SendViaPortalParams{
 			Login:     t.conv.login,
 			Portal:    t.conv.portal,
@@ -548,10 +545,7 @@ func (t *Turn) SendStatus(status event.MessageStatus, message string) {
 	if t.conv == nil || t.conv.portal == nil || t.conv.login == nil || t.source == nil || t.source.EventID == "" {
 		return
 	}
-	identity := defaultProviderIdentity()
-	if t.conv.runtime != nil {
-		identity = t.conv.runtime.providerIdentity()
-	}
+	identity := t.providerIdentity()
 	_, _ = t.conv.login.Bridge.Bot.SendMessage(t.turnCtx, t.conv.portal.MXID, event.BeeperMessageStatus, &event.Content{
 		Parsed: &event.BeeperMessageStatusEventContent{
 			Network:   identity.StatusNetwork,

@@ -65,12 +65,21 @@ func normalizedProviderIdentity(identity ProviderIdentity) ProviderIdentity {
 	return identity
 }
 
+// NewConversationOptions configures optional parameters for NewConversation.
+type NewConversationOptions struct {
+	ApprovalFlow *agentremote.ApprovalFlow[*pendingSDKApprovalData]
+}
+
 // NewConversation creates an SDK conversation wrapper for provider bridges that
 // want to drive SDK turns without using the default sdkClient implementation.
-func NewConversation(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config, session any) *Conversation {
-	return newConversation(ctx, portal, login, sender, &staticRuntime{
+func NewConversation(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config, session any, opts ...NewConversationOptions) *Conversation {
+	rt := &staticRuntime{
 		cfg:     cfg,
 		session: session,
 		login:   login,
-	})
+	}
+	if len(opts) > 0 && opts[0].ApprovalFlow != nil {
+		rt.approval = opts[0].ApprovalFlow
+	}
+	return newConversation(ctx, portal, login, sender, rt)
 }
