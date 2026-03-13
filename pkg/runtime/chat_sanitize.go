@@ -122,16 +122,13 @@ func hasInboundMetaSentinel(line string) bool {
 }
 
 func shouldStripTrailingUntrustedContext(lines []string, idx int) bool {
-	line := lines[idx]
-	if !strings.HasPrefix(line, untrustedContextHeader) {
+	if !strings.HasPrefix(lines[idx], untrustedContextHeader) {
 		return false
 	}
-	probeEnd := idx + 8
-	if probeEnd > len(lines) {
-		probeEnd = len(lines)
-	}
-	probe := strings.Join(lines[idx+1:probeEnd], "\n")
-	return strings.Contains(probe, "<<<EXTERNAL_UNTRUSTED_CONTENT") || strings.Contains(probe, "UNTRUSTED channel metadata (") || strings.Contains(probe, "Source:")
+	probe := strings.Join(lines[idx+1:min(idx+8, len(lines))], "\n")
+	return strings.Contains(probe, "<<<EXTERNAL_UNTRUSTED_CONTENT") ||
+		strings.Contains(probe, "UNTRUSTED channel metadata (") ||
+		strings.Contains(probe, "Source:")
 }
 
 func SanitizeChatMessageForDisplay(text string, isUser bool) string {
