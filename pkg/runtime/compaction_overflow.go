@@ -361,15 +361,12 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 
 // preambleEndIndex returns the index after the last leading system/developer message.
 func preambleEndIndex(prompt []openai.ChatCompletionMessageParamUnion) int {
-	i := 0
-	for i < len(prompt) {
-		if prompt[i].OfSystem != nil || prompt[i].OfDeveloper != nil {
-			i++
-			continue
+	for i, msg := range prompt {
+		if msg.OfSystem == nil && msg.OfDeveloper == nil {
+			return i
 		}
-		break
 	}
-	return i
+	return len(prompt)
 }
 
 // insertAfterPreamble inserts a message after all leading system/developer messages.

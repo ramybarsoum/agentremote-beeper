@@ -26,14 +26,9 @@ type TurnManager struct {
 
 // NewTurnManager creates a new helper-managed turn manager.
 func NewTurnManager(cfg *TurnConfig) *TurnManager {
-	resolved := TurnConfig{
-		OneAtATime: true,
-	}
+	resolved := TurnConfig{OneAtATime: true}
 	if cfg != nil {
 		resolved = *cfg
-		if !cfg.OneAtATime {
-			resolved.OneAtATime = false
-		}
 	}
 	return &TurnManager{
 		cfg:   resolved,
@@ -44,11 +39,10 @@ func NewTurnManager(cfg *TurnConfig) *TurnManager {
 func (tm *TurnManager) gate(key string) *turnGate {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	g := tm.gates[key]
-	if g != nil {
+	if g, ok := tm.gates[key]; ok {
 		return g
 	}
-	g = &turnGate{token: make(chan struct{}, 1)}
+	g := &turnGate{token: make(chan struct{}, 1)}
 	g.token <- struct{}{}
 	tm.gates[key] = g
 	return g

@@ -56,6 +56,13 @@ func (c *Conversation) getIntent(ctx context.Context) (bridgev2.MatrixAPI, error
 	return intent, nil
 }
 
+func (c *Conversation) configOrNil() *Config {
+	if c.runtime == nil {
+		return nil
+	}
+	return c.runtime.config()
+}
+
 func (c *Conversation) state() *sdkConversationState {
 	if c == nil {
 		return &sdkConversationState{}
@@ -87,11 +94,15 @@ func (c *Conversation) resolveDefaultAgent(ctx context.Context) (*Agent, error) 
 			return agent, nil
 		}
 	}
-	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().Agent != nil {
-		return c.runtime.config().Agent, nil
+	cfg := c.configOrNil()
+	if cfg == nil {
+		return nil, nil
 	}
-	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().AgentCatalog != nil {
-		return c.runtime.config().AgentCatalog.DefaultAgent(ctx, c.login)
+	if cfg.Agent != nil {
+		return cfg.Agent, nil
+	}
+	if cfg.AgentCatalog != nil {
+		return cfg.AgentCatalog.DefaultAgent(ctx, c.login)
 	}
 	return nil, nil
 }
@@ -100,11 +111,15 @@ func (c *Conversation) resolveAgentByIdentifier(ctx context.Context, identifier 
 	if c == nil || strings.TrimSpace(identifier) == "" {
 		return nil, nil
 	}
-	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().Agent != nil && c.runtime.config().Agent.ID == identifier {
-		return c.runtime.config().Agent, nil
+	cfg := c.configOrNil()
+	if cfg == nil {
+		return nil, nil
 	}
-	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().AgentCatalog != nil {
-		return c.runtime.config().AgentCatalog.ResolveAgent(ctx, c.login, identifier)
+	if cfg.Agent != nil && cfg.Agent.ID == identifier {
+		return cfg.Agent, nil
+	}
+	if cfg.AgentCatalog != nil {
+		return cfg.AgentCatalog.ResolveAgent(ctx, c.login, identifier)
 	}
 	return nil, nil
 }
@@ -113,8 +128,9 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 	if c == nil {
 		return nil
 	}
-	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().GetCapabilities != nil {
-		if rf := c.runtime.config().GetCapabilities(c.runtime.sessionValue(), c); rf != nil {
+	cfg := c.configOrNil()
+	if cfg != nil && cfg.GetCapabilities != nil {
+		if rf := cfg.GetCapabilities(c.runtime.sessionValue(), c); rf != nil {
 			return rf
 		}
 	}
@@ -133,8 +149,8 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 		}
 	}
 	if len(agents) == 0 {
-		if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().RoomFeatures != nil {
-			return c.runtime.config().RoomFeatures
+		if cfg != nil && cfg.RoomFeatures != nil {
+			return cfg.RoomFeatures
 		}
 		return defaultSDKFeatureConfig()
 	}
@@ -208,11 +224,11 @@ func (c *Conversation) SendMedia(ctx context.Context, data []byte, mediaType, fi
 	}
 	msgType := event.MsgFile
 	switch {
-	case len(mediaType) > 5 && mediaType[:6] == "image/":
+	case strings.HasPrefix(mediaType, "image/"):
 		msgType = event.MsgImage
-	case len(mediaType) > 5 && mediaType[:6] == "audio/":
+	case strings.HasPrefix(mediaType, "audio/"):
 		msgType = event.MsgAudio
-	case len(mediaType) > 5 && mediaType[:6] == "video/":
+	case strings.HasPrefix(mediaType, "video/"):
 		msgType = event.MsgVideo
 	}
 	content := &event.MessageEventContent{
