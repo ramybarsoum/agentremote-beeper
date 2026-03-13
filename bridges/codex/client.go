@@ -378,7 +378,7 @@ func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal)
 }
 
 func (cc *CodexClient) GetUserInfo(_ context.Context, _ *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	return agentremote.BuildBotUserInfo("Codex", "codex"), nil
+	return codexSDKAgent().UserInfo(), nil
 }
 
 func (cc *CodexClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
@@ -417,7 +417,7 @@ func (cc *CodexClient) ResolveIdentifier(ctx context.Context, identifier string,
 
 	return &bridgev2.ResolveIdentifierResponse{
 		UserID:   codexGhostID,
-		UserInfo: agentremote.BuildBotUserInfo("Codex", "codex"),
+		UserInfo: codexSDKAgent().UserInfo(),
 		Ghost:    ghost,
 		Chat:     chat,
 	}, nil

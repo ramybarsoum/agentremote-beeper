@@ -2084,7 +2084,6 @@ func openClawApplyHistoryToolResult(state *streamui.UIState, message map[string]
 	})
 }
 
-
 func openClawHistoryFallbackText(uiParts []map[string]any) string {
 	for _, part := range uiParts {
 		partType := strings.TrimSpace(stringValue(part["type"]))

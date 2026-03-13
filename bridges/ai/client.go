@@ -1108,28 +1108,17 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
 		store := NewAgentStoreAdapter(oc)
 		agent, err := store.GetAgentByID(ctx, agentID)
-		displayName := "Unknown Agent"
-		modelID := ""
 		if err == nil && agent != nil {
-			displayName = oc.resolveAgentDisplayName(ctx, agent)
-			if displayName == "" {
-				displayName = agent.Name
+			if sdkAgent := oc.sdkAgentForDefinition(ctx, agent); sdkAgent != nil {
+				info := sdkAgent.UserInfo()
+				info.ExtraUpdates = updateGhostLastSync
+				return info, nil
 			}
-			if displayName == "" {
-				displayName = agent.ID
-			}
-			if modelID == "" && agent.Model.Primary != "" {
-				modelID = ResolveAlias(agent.Model.Primary)
-			}
-		}
-		identifiers := []string{agentID}
-		if modelID != "" {
-			identifiers = agentContactIdentifiers(agentID, modelID, oc.findModelInfo(modelID))
 		}
 		return &bridgev2.UserInfo{
-			Name:         ptr.Ptr(displayName),
+			Name:         ptr.Ptr("Unknown Agent"),
 			IsBot:        ptr.Ptr(true),
-			Identifiers:  stringutil.DedupeStrings(identifiers),
+			Identifiers:  stringutil.DedupeStrings([]string{agentID}),
 			ExtraUpdates: updateGhostLastSync,
 		}, nil
 	}

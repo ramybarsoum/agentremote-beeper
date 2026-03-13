@@ -140,8 +140,7 @@ type RoomFeatures struct {
 
 // RoomAgentSet tracks the agents available in a conversation.
 type RoomAgentSet struct {
-	PrimaryAgentID string
-	AgentIDs       []string
+	AgentIDs []string
 }
 
 // ConversationKind identifies the runtime shape of a conversation.
@@ -168,7 +167,6 @@ type ConversationSpec struct {
 	ParentConversationID string
 	ParentEventID        string
 	Title                string
-	PrimaryAgentID       string
 	Metadata             map[string]any
 	ArchiveOnCompletion  bool
 }

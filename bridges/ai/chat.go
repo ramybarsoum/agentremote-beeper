@@ -208,17 +208,15 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 			continue
 		}
 
-		modelID := oc.agentDefaultModel(agent)
 		userID := oc.agentUserID(agent.ID)
-		displayName := agentName
+		sdkAgent := oc.sdkAgentForDefinition(ctx, agent)
+		if sdkAgent == nil {
+			continue
+		}
 
 		results = append(results, &bridgev2.ResolveIdentifierResponse{
-			UserID: userID,
-			UserInfo: &bridgev2.UserInfo{
-				Name:        ptr.Ptr(displayName),
-				IsBot:       ptr.Ptr(true),
-				Identifiers: agentContactIdentifiers(agent.ID, modelID, oc.findModelInfo(modelID)),
-			},
+			UserID:   userID,
+			UserInfo: sdkAgent.UserInfo(),
 		})
 		seen[userID] = struct{}{}
 	}
@@ -272,19 +270,15 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 	contacts := make([]*bridgev2.ResolveIdentifierResponse, 0, len(agentsMap))
 
 	for _, agent := range agentsMap {
-		modelID := oc.agentDefaultModel(agent)
 		userID := oc.agentUserID(agent.ID)
-
-		agentName := oc.resolveAgentDisplayName(ctx, agent)
-		displayName := agentName
+		sdkAgent := oc.sdkAgentForDefinition(ctx, agent)
+		if sdkAgent == nil {
+			continue
+		}
 
 		contacts = append(contacts, &bridgev2.ResolveIdentifierResponse{
-			UserID: userID,
-			UserInfo: &bridgev2.UserInfo{
-				Name:        ptr.Ptr(displayName),
-				IsBot:       ptr.Ptr(true),
-				Identifiers: agentContactIdentifiers(agent.ID, modelID, oc.findModelInfo(modelID)),
-			},
+			UserID:   userID,
+			UserInfo: sdkAgent.UserInfo(),
 		})
 	}
 

@@ -26,8 +26,7 @@ func TestConversationStateRoundTripGenericMetadata(t *testing.T) {
 		ArchiveOnCompletion:  true,
 		Metadata:             map[string]any{"label": "child"},
 		RoomAgents: RoomAgentSet{
-			PrimaryAgentID: "agent-a",
-			AgentIDs:       []string{"agent-a", "agent-a", "agent-b"},
+			AgentIDs: []string{"agent-a", "agent-a", "agent-b"},
 		},
 	}
 	if ok := saveConversationStateToGenericMetadata(&holder, state); !ok {
@@ -49,8 +48,5 @@ func TestConversationStateRoundTripGenericMetadata(t *testing.T) {
 	}
 	if len(loaded.RoomAgents.AgentIDs) != 2 {
 		t.Fatalf("expected deduped agent ids, got %v", loaded.RoomAgents.AgentIDs)
-	}
-	if loaded.RoomAgents.PrimaryAgentID != "agent-a" {
-		t.Fatalf("unexpected primary agent %q", loaded.RoomAgents.PrimaryAgentID)
 	}
 }

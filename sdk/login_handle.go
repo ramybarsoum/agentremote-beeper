@@ -58,10 +58,6 @@ func (l *LoginHandle) EnsureConversation(ctx context.Context, spec ConversationS
 	}
 
 	state := conversationStateFromSpec(spec)
-	if spec.PrimaryAgentID != "" {
-		state.RoomAgents.PrimaryAgentID = spec.PrimaryAgentID
-		state.RoomAgents.AgentIDs = []string{spec.PrimaryAgentID}
-	}
 
 	if portal.Metadata == nil {
 		portal.Metadata = &SDKPortalMetadata{}

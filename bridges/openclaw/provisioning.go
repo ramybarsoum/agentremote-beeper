@@ -354,11 +354,7 @@ func (oc *OpenClawClient) syntheticDMPortalInfo(agentID, displayName string) *br
 		openClawGhostUserID(agentID): {
 			EventSender: oc.senderForAgent(agentID, false),
 			Membership:  event.MembershipJoin,
-			UserInfo: &bridgev2.UserInfo{
-				Name:        ptr.Ptr(displayName),
-				IsBot:       ptr.Ptr(true),
-				Identifiers: oc.configuredAgentIdentifiers(agentID),
-			},
+			UserInfo:    oc.sdkAgentForProfile(openClawAgentProfile{AgentID: agentID, Name: displayName}).UserInfo(),
 			MemberEventExtra: map[string]any{
 				"displayname": displayName,
 			},
@@ -401,7 +397,7 @@ func (oc *OpenClawClient) resolveAgentProfile(ctx context.Context, agentID, sess
 }
 
 func (oc *OpenClawClient) userInfoForAgentProfile(profile openClawAgentProfile) *bridgev2.UserInfo {
-	displayName := oc.displayNameFromAgentProfile(profile)
+	info := oc.sdkAgentForProfile(profile).UserInfo()
 	meta := &GhostMetadata{
 		OpenClawAgentID:        profile.AgentID,
 		OpenClawAgentName:      profile.Name,
@@ -410,42 +406,37 @@ func (oc *OpenClawClient) userInfoForAgentProfile(profile openClawAgentProfile) 
 		OpenClawAgentRole:      "assistant",
 		LastSeenAt:             time.Now().UnixMilli(),
 	}
-	info := &bridgev2.UserInfo{
-		Name:        ptr.Ptr(displayName),
-		IsBot:       ptr.Ptr(true),
-		Identifiers: oc.configuredAgentIdentifiers(profile.AgentID),
-		ExtraUpdates: func(_ context.Context, ghost *bridgev2.Ghost) bool {
-			if ghost == nil {
-				return false
-			}
-			current := ghostMeta(ghost)
-			changed := false
-			if value := strings.TrimSpace(meta.OpenClawAgentID); value != "" && current.OpenClawAgentID != value {
-				current.OpenClawAgentID = value
-				changed = true
-			}
-			if value := strings.TrimSpace(meta.OpenClawAgentName); value != "" && current.OpenClawAgentName != value {
-				current.OpenClawAgentName = value
-				changed = true
-			}
-			if value := strings.TrimSpace(meta.OpenClawAgentAvatarURL); value != "" && current.OpenClawAgentAvatarURL != value {
-				current.OpenClawAgentAvatarURL = value
-				changed = true
-			}
-			if value := strings.TrimSpace(meta.OpenClawAgentEmoji); value != "" && current.OpenClawAgentEmoji != value {
-				current.OpenClawAgentEmoji = value
-				changed = true
-			}
-			if current.OpenClawAgentRole != "assistant" {
-				current.OpenClawAgentRole = "assistant"
-				changed = true
-			}
-			if current.LastSeenAt != meta.LastSeenAt {
-				current.LastSeenAt = meta.LastSeenAt
-				changed = true
-			}
-			return changed
-		},
+	info.ExtraUpdates = func(_ context.Context, ghost *bridgev2.Ghost) bool {
+		if ghost == nil {
+			return false
+		}
+		current := ghostMeta(ghost)
+		changed := false
+		if value := strings.TrimSpace(meta.OpenClawAgentID); value != "" && current.OpenClawAgentID != value {
+			current.OpenClawAgentID = value
+			changed = true
+		}
+		if value := strings.TrimSpace(meta.OpenClawAgentName); value != "" && current.OpenClawAgentName != value {
+			current.OpenClawAgentName = value
+			changed = true
+		}
+		if value := strings.TrimSpace(meta.OpenClawAgentAvatarURL); value != "" && current.OpenClawAgentAvatarURL != value {
+			current.OpenClawAgentAvatarURL = value
+			changed = true
+		}
+		if value := strings.TrimSpace(meta.OpenClawAgentEmoji); value != "" && current.OpenClawAgentEmoji != value {
+			current.OpenClawAgentEmoji = value
+			changed = true
+		}
+		if current.OpenClawAgentRole != "assistant" {
+			current.OpenClawAgentRole = "assistant"
+			changed = true
+		}
+		if current.LastSeenAt != meta.LastSeenAt {
+			current.LastSeenAt = meta.LastSeenAt
+			changed = true
+		}
+		return changed
 	}
 	if avatar := oc.agentAvatar(meta, profile.AgentID); avatar != nil {
 		info.Avatar = avatar

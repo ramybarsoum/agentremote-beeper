@@ -2,9 +2,6 @@ package opencode
 
 import (
 	"context"
-
-	"go.mau.fi/util/ptr"
-	"maunium.net/go/mautrix/bridgev2"
 )
 
 func (b *Bridge) EnsureGhostDisplayName(ctx context.Context, instanceID string) {
@@ -22,9 +19,6 @@ func (b *Bridge) EnsureGhostDisplayName(ctx context.Context, instanceID string) 
 	displayName := b.DisplayName(instanceID)
 	needsUpdate := ghost.Name == "" || !ghost.NameSet || ghost.Name != displayName || !ghost.IsBot
 	if needsUpdate {
-		ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
-			Name:  ptr.Ptr(displayName),
-			IsBot: ptr.Ptr(true),
-		})
+		ghost.UpdateInfo(ctx, openCodeSDKAgent(instanceID, displayName).UserInfo())
 	}
 }

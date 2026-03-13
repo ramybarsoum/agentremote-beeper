@@ -669,7 +669,6 @@ func codexResolveTurnTimings(turns []codexTurn, timings []codexTurnTiming) []cod
 	return resolved
 }
 
-
 func codexTurnTextPair(turn codexTurn) (string, string) {
 	var userTextParts []string
 	var assistantOrder []string

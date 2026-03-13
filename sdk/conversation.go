@@ -82,8 +82,8 @@ func (c *Conversation) resolveDefaultAgent(ctx context.Context) (*Agent, error) 
 		return nil, nil
 	}
 	state := c.state()
-	if primary := strings.TrimSpace(state.RoomAgents.PrimaryAgentID); primary != "" {
-		if agent, err := c.resolveAgentByIdentifier(ctx, primary); err == nil && agent != nil {
+	for _, agentID := range state.RoomAgents.AgentIDs {
+		if agent, err := c.resolveAgentByIdentifier(ctx, agentID); err == nil && agent != nil {
 			return agent, nil
 		}
 	}
@@ -151,7 +151,6 @@ func (c *Conversation) conversationStateSpec() ConversationSpec {
 		ParentConversationID: state.ParentConversationID,
 		ParentEventID:        state.ParentEventID,
 		Title:                c.Title,
-		PrimaryAgentID:       state.RoomAgents.PrimaryAgentID,
 		ArchiveOnCompletion:  state.ArchiveOnCompletion,
 	}
 	if len(state.Metadata) > 0 {
@@ -260,7 +259,7 @@ func (c *Conversation) StartTurn(ctx context.Context, agent *Agent, source *Sour
 	return newTurn(ctx, c, agent, source)
 }
 
-// StartDefaultTurn creates a new Turn for this conversation with the room's default agent.
+// StartDefaultTurn creates a new Turn for this conversation with the first available/default agent.
 func (c *Conversation) StartDefaultTurn(ctx context.Context, source *SourceRef) *Turn {
 	agent, _ := c.resolveDefaultAgent(ctx)
 	return newTurn(ctx, c, agent, source)
@@ -308,9 +307,6 @@ func (c *Conversation) EnsureRoomAgent(ctx context.Context, agent *Agent) error 
 	state := c.state()
 	state.RoomAgents.AgentIDs = append(state.RoomAgents.AgentIDs, agent.ID)
 	state.RoomAgents.AgentIDs = normalizeAgentIDs(state.RoomAgents.AgentIDs)
-	if strings.TrimSpace(state.RoomAgents.PrimaryAgentID) == "" {
-		state.RoomAgents.PrimaryAgentID = agent.ID
-	}
 	if err := c.saveState(ctx, state); err != nil {
 		return err
 	}
@@ -330,42 +326,12 @@ func (c *Conversation) RoomAgents(ctx context.Context) (*RoomAgentSet, error) {
 		}
 		if defaultAgent != nil {
 			state.RoomAgents.AgentIDs = []string{defaultAgent.ID}
-			state.RoomAgents.PrimaryAgentID = defaultAgent.ID
 			_ = c.saveState(ctx, state)
 		}
 	}
 	result := state.RoomAgents
 	result.AgentIDs = append([]string(nil), result.AgentIDs...)
 	return &result, nil
-}
-
-// SetPrimaryAgent updates the room's default agent.
-func (c *Conversation) SetPrimaryAgent(ctx context.Context, agentID string) error {
-	state := c.state()
-	agentID = strings.TrimSpace(agentID)
-	if agentID == "" {
-		state.RoomAgents.PrimaryAgentID = ""
-	} else {
-		found := false
-		for _, existing := range state.RoomAgents.AgentIDs {
-			if existing == agentID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			state.RoomAgents.AgentIDs = append(state.RoomAgents.AgentIDs, agentID)
-			state.RoomAgents.AgentIDs = normalizeAgentIDs(state.RoomAgents.AgentIDs)
-		}
-		state.RoomAgents.PrimaryAgentID = agentID
-	}
-	if err := c.saveState(ctx, state); err != nil {
-		return err
-	}
-	if c.portal != nil && c.login != nil {
-		c.portal.UpdateCapabilities(ctx, c.login, false)
-	}
-	return nil
 }
 
 // SetTyping sets the typing indicator for this conversation.
@@ -471,9 +437,6 @@ func conversationStateFromSpec(spec ConversationSpec) *sdkConversationState {
 		ParentEventID:        strings.TrimSpace(spec.ParentEventID),
 		ArchiveOnCompletion:  spec.ArchiveOnCompletion,
 		Metadata:             spec.Metadata,
-		RoomAgents: RoomAgentSet{
-			PrimaryAgentID: strings.TrimSpace(spec.PrimaryAgentID),
-		},
 	}
 }
 

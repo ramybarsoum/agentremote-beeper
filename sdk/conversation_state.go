@@ -60,9 +60,6 @@ func (s *sdkConversationState) ensureDefaults() {
 		s.Visibility = ConversationVisibilityNormal
 	}
 	s.RoomAgents.AgentIDs = normalizeAgentIDs(s.RoomAgents.AgentIDs)
-	if strings.TrimSpace(s.RoomAgents.PrimaryAgentID) == "" && len(s.RoomAgents.AgentIDs) > 0 {
-		s.RoomAgents.PrimaryAgentID = s.RoomAgents.AgentIDs[0]
-	}
 }
 
 // SDKPortalMetadata can be used as a connector portal metadata type when the SDK owns the portal metadata schema.

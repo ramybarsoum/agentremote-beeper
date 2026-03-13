@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
@@ -199,11 +198,11 @@ func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal)
 
 func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	if ghost == nil {
-		return agentremote.BuildBotUserInfo("OpenCode"), nil
+		return openCodeSDKAgent("", "OpenCode").UserInfo(), nil
 	}
 	instanceID, ok := ParseOpenCodeGhostID(string(ghost.ID))
 	if !ok {
-		return agentremote.BuildBotUserInfo("OpenCode"), nil
+		return openCodeSDKAgent("", "OpenCode").UserInfo(), nil
 	}
 	display := "OpenCode"
 	if oc.bridge != nil {
@@ -211,7 +210,7 @@ func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) 
 			display = name
 		}
 	}
-	return agentremote.BuildBotUserInfo(display, "opencode:"+instanceID), nil
+	return openCodeSDKAgent(instanceID, display).UserInfo(), nil
 }
 
 func (oc *OpenCodeClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
@@ -246,14 +245,10 @@ func (oc *OpenCodeClient) ResolveIdentifier(ctx context.Context, identifier stri
 		displayName = "OpenCode"
 	}
 	return &bridgev2.ResolveIdentifierResponse{
-		UserID: userID,
-		UserInfo: &bridgev2.UserInfo{
-			Name:        ptr.Ptr(displayName),
-			IsBot:       ptr.Ptr(true),
-			Identifiers: []string{"opencode:" + instanceID},
-		},
-		Ghost: ghost,
-		Chat:  chat,
+		UserID:   userID,
+		UserInfo: openCodeSDKAgent(instanceID, displayName).UserInfo(),
+		Ghost:    ghost,
+		Chat:     chat,
 	}, nil
 }
 
