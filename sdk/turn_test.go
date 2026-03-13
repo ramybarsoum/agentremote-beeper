@@ -163,3 +163,28 @@ func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
 		t.Fatal("expected approval to be registered under the provided id")
 	}
 }
+
+func TestTurnStreamSetTransportReceivesEvents(t *testing.T) {
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{}, nil)
+	turn := conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)
+
+	var gotTurnID string
+	var gotContent map[string]any
+	turn.Stream().SetTransport(StreamTransportFunc(func(turnID string, _ int, content map[string]any, _ string) bool {
+		gotTurnID = turnID
+		gotContent = content
+		return true
+	}))
+
+	turn.Stream().TextDelta("hello")
+
+	if gotTurnID != turn.ID() {
+		t.Fatalf("expected transport to receive turn id %q, got %q", turn.ID(), gotTurnID)
+	}
+	if gotContent["type"] != "text-delta" {
+		t.Fatalf("expected text-delta event, got %#v", gotContent)
+	}
+	if gotContent["delta"] != "hello" {
+		t.Fatalf("expected text delta payload, got %#v", gotContent)
+	}
+}

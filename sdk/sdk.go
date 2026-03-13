@@ -14,32 +14,20 @@ type Bridge struct {
 // New creates a new SDK bridge instance.
 func New(cfg Config) *Bridge {
 	conn := newSDKConnector(&cfg)
-
-	port := cfg.Port
-	if port == 0 {
-		port = 29400
-	}
-	dbName := cfg.DBName
-	if dbName == "" {
-		dbName = cfg.Name + ".db"
-	}
 	desc := cfg.Description
 	if desc == "" {
 		desc = "A Matrix↔" + cfg.Name + " bridge for Beeper built on agentremote SDK."
 	}
-
-	m := &mxmain.BridgeMain{
-		Name:        cfg.Name,
-		Description: desc,
-		URL:         "https://github.com/beeper/agentremote",
-		Version:     "0.1.0",
-		Connector:   conn,
-	}
-
 	return &Bridge{
 		config:    &cfg,
 		connector: conn,
-		main:      m,
+		main: &mxmain.BridgeMain{
+			Name:        cfg.Name,
+			Description: desc,
+			URL:         "https://github.com/beeper/agentremote",
+			Version:     "0.1.0",
+			Connector:   conn,
+		},
 	}
 }
 

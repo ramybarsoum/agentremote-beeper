@@ -1,0 +1,330 @@
+package sdk
+
+import (
+	"context"
+	"strings"
+
+	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
+)
+
+// StreamTransport handles SDK turn stream events for custom transports or tests.
+type StreamTransport interface {
+	HandleTurnEvent(turnID string, seq int, content map[string]any, txnID string) bool
+}
+
+// StreamTransportFunc adapts a function to StreamTransport.
+type StreamTransportFunc func(turnID string, seq int, content map[string]any, txnID string) bool
+
+func (f StreamTransportFunc) HandleTurnEvent(turnID string, seq int, content map[string]any, txnID string) bool {
+	if f == nil {
+		return false
+	}
+	return f(turnID, seq, content, txnID)
+}
+
+// ApprovalHandler handles turn approval requests for provider-driven bridges.
+type ApprovalHandler interface {
+	Request(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle
+}
+
+// ApprovalHandlerFunc adapts a function to ApprovalHandler.
+type ApprovalHandlerFunc func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle
+
+func (f ApprovalHandlerFunc) Request(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle {
+	if f == nil {
+		return nil
+	}
+	return f(ctx, turn, req)
+}
+
+// FinalMetadataProvider builds the final DB metadata object for a completed turn.
+type FinalMetadataProvider interface {
+	BuildFinalMetadata(turn *Turn, finishReason string) any
+}
+
+// FinalMetadataProviderFunc adapts a function to FinalMetadataProvider.
+type FinalMetadataProviderFunc func(turn *Turn, finishReason string) any
+
+func (f FinalMetadataProviderFunc) BuildFinalMetadata(turn *Turn, finishReason string) any {
+	if f == nil {
+		return nil
+	}
+	return f(turn, finishReason)
+}
+
+// ToolInputOptions controls how a tool input start is represented in the SDK UI stream.
+type ToolInputOptions struct {
+	ToolName         string
+	ProviderExecuted bool
+	DisplayTitle     string
+}
+
+// ToolOutputOptions controls how a tool output is represented in the SDK UI stream.
+type ToolOutputOptions struct {
+	ProviderExecuted bool
+	Streaming        bool
+}
+
+// TurnStream is the provider-facing streaming surface for a turn.
+type TurnStream struct {
+	turn *Turn
+}
+
+// Stream returns the turn's provider-facing streaming surface.
+func (t *Turn) Stream() *TurnStream {
+	if t == nil {
+		return nil
+	}
+	return &TurnStream{turn: t}
+}
+
+// Emitter returns the underlying stream emitter as an escape hatch.
+func (s *TurnStream) Emitter() *streamui.Emitter {
+	if s == nil || s.turn == nil {
+		return nil
+	}
+	return s.turn.emitter
+}
+
+// SetTransport configures a custom transport for streamed turn events.
+func (s *TurnStream) SetTransport(transport StreamTransport) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	if transport == nil {
+		s.turn.streamHook = nil
+		return
+	}
+	s.turn.streamHook = transport.HandleTurnEvent
+}
+
+// TextDelta emits a text delta.
+func (s *TurnStream) TextDelta(text string) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.WriteText(text)
+}
+
+// ReasoningDelta emits a reasoning delta.
+func (s *TurnStream) ReasoningDelta(text string) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.WriteReasoning(text)
+}
+
+// TextEnd closes the current text stream part.
+func (s *TurnStream) TextEnd() {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.FinishText()
+}
+
+// ReasoningEnd closes the current reasoning stream part.
+func (s *TurnStream) ReasoningEnd() {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.FinishReasoning()
+}
+
+// EnsureToolInputStart ensures the tool input UI exists and optionally publishes input.
+func (s *TurnStream) EnsureToolInputStart(toolCallID string, input any, opts ToolInputOptions) {
+	if s == nil || s.turn == nil || strings.TrimSpace(toolCallID) == "" {
+		return
+	}
+	s.turn.ensureStarted()
+	toolName := strings.TrimSpace(opts.ToolName)
+	displayTitle := strings.TrimSpace(opts.DisplayTitle)
+	if displayTitle == "" {
+		displayTitle = streamui.ToolDisplayTitle(toolName)
+	}
+	s.turn.emitter.EnsureUIToolInputStart(s.turn.turnCtx, s.turn.conv.portal, toolCallID, toolName, opts.ProviderExecuted, displayTitle, nil)
+	if input != nil {
+		s.turn.emitter.EmitUIToolInputAvailable(s.turn.turnCtx, s.turn.conv.portal, toolCallID, toolName, input, opts.ProviderExecuted)
+	}
+}
+
+// ToolInputDelta emits a tool input delta.
+func (s *TurnStream) ToolInputDelta(toolCallID, delta string, providerExecuted bool) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.ensureStarted()
+	s.turn.emitter.EmitUIToolInputDelta(s.turn.turnCtx, s.turn.conv.portal, toolCallID, "", delta, providerExecuted)
+}
+
+// ToolInput emits a complete tool input payload.
+func (s *TurnStream) ToolInput(toolCallID, toolName string, input any, providerExecuted bool) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.ensureStarted()
+	s.turn.emitter.EmitUIToolInputAvailable(s.turn.turnCtx, s.turn.conv.portal, toolCallID, toolName, input, providerExecuted)
+}
+
+// ToolOutput emits a tool output payload.
+func (s *TurnStream) ToolOutput(toolCallID string, output any, opts ToolOutputOptions) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.ensureStarted()
+	s.turn.emitter.EmitUIToolOutputAvailable(s.turn.turnCtx, s.turn.conv.portal, toolCallID, output, opts.ProviderExecuted, opts.Streaming)
+}
+
+// ToolOutputError emits a tool error payload.
+func (s *TurnStream) ToolOutputError(toolCallID, errText string, providerExecuted bool) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.ensureStarted()
+	s.turn.emitter.EmitUIToolOutputError(s.turn.turnCtx, s.turn.conv.portal, toolCallID, errText, providerExecuted)
+}
+
+// ToolDenied emits a denied tool result.
+func (s *TurnStream) ToolDenied(toolCallID string) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.ToolDenied(toolCallID)
+}
+
+// SourceURL emits a source URL citation.
+func (s *TurnStream) SourceURL(url, title string) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.AddSourceURL(url, title)
+}
+
+// SourceCitation emits a source URL citation from a structured citation object.
+func (s *TurnStream) SourceCitation(citation citations.SourceCitation) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.AddSourceURL(citation.URL, citation.Title)
+}
+
+// SourceDocument emits a source document citation.
+func (s *TurnStream) SourceDocument(document citations.SourceDocument) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.AddSourceDocument(document.ID, document.Title, document.MediaType, document.Filename)
+}
+
+// File emits a generated file part.
+func (s *TurnStream) File(url, mediaType string) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.AddFile(url, mediaType)
+}
+
+// GeneratedFile emits a generated file part from a structured file object.
+func (s *TurnStream) GeneratedFile(file citations.GeneratedFilePart) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.AddFile(file.URL, file.MediaType)
+}
+
+// StepStart begins a visual step group.
+func (s *TurnStream) StepStart() {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.StepStart()
+}
+
+// StepFinish ends a visual step group.
+func (s *TurnStream) StepFinish() {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.StepFinish()
+}
+
+// Metadata merges message metadata for the turn.
+func (s *TurnStream) Metadata(metadata map[string]any) {
+	if s == nil || s.turn == nil {
+		return
+	}
+	s.turn.SetMetadata(metadata)
+}
+
+// ApprovalController is the turn-owned approval surface.
+type ApprovalController struct {
+	turn *Turn
+}
+
+// Approvals returns the turn's approval controller.
+func (t *Turn) Approvals() *ApprovalController {
+	if t == nil {
+		return nil
+	}
+	return &ApprovalController{turn: t}
+}
+
+// SetHandler configures a provider-specific approval handler for this turn.
+func (a *ApprovalController) SetHandler(handler ApprovalHandler) {
+	if a == nil || a.turn == nil {
+		return
+	}
+	if handler == nil {
+		a.turn.approvalRequester = nil
+		return
+	}
+	a.turn.approvalRequester = handler.Request
+}
+
+// Request creates a new approval request.
+func (a *ApprovalController) Request(req ApprovalRequest) ApprovalHandle {
+	if a == nil || a.turn == nil {
+		return nil
+	}
+	return a.turn.RequestApproval(req)
+}
+
+// EmitRequest emits the approval-request UI state for a provider-managed approval.
+func (a *ApprovalController) EmitRequest(approvalID, toolCallID string) {
+	if a == nil || a.turn == nil {
+		return
+	}
+	a.turn.ensureStarted()
+	a.turn.emitter.EmitUIToolApprovalRequest(a.turn.turnCtx, a.turn.conv.portal, approvalID, toolCallID)
+}
+
+// Respond emits the approval-response UI state for a provider-managed approval.
+func (a *ApprovalController) Respond(approvalID, toolCallID string, approved bool, reason string) {
+	if a == nil || a.turn == nil {
+		return
+	}
+	a.turn.ensureStarted()
+	a.turn.emitter.EmitUIToolApprovalResponse(a.turn.turnCtx, a.turn.conv.portal, approvalID, toolCallID, approved, reason)
+}
+
+// SetStreamTransport configures a custom turn stream transport.
+func (t *Turn) SetStreamTransport(transport StreamTransport) {
+	t.Stream().SetTransport(transport)
+}
+
+// SetApprovalHandler configures a provider-specific approval handler for this turn.
+func (t *Turn) SetApprovalHandler(handler ApprovalHandler) {
+	t.Approvals().SetHandler(handler)
+}
+
+// SetFinalMetadataProvider overrides the final DB metadata object persisted for the assistant message.
+func (t *Turn) SetFinalMetadataProvider(provider FinalMetadataProvider) {
+	if t == nil {
+		return
+	}
+	if provider == nil {
+		t.finalMetadataBuilder = nil
+		return
+	}
+	t.finalMetadataBuilder = provider.BuildFinalMetadata
+}

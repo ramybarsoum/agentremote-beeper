@@ -157,4 +157,33 @@ func TestTurnRequestApprovalUsesCustomRequester(t *testing.T) {
 	}
 }
 
+func TestApprovalControllerUsesCustomHandler(t *testing.T) {
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config{}, nil)
+	turn := conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)
+
+	called := false
+	turn.Approvals().SetHandler(ApprovalHandlerFunc(func(_ context.Context, gotTurn *Turn, req ApprovalRequest) ApprovalHandle {
+		called = true
+		if gotTurn != turn {
+			t.Fatalf("expected handler turn to match")
+		}
+		if req.ApprovalID != "approval-2" || req.ToolCallID != "tool-2" || req.ToolName != "shell" {
+			t.Fatalf("unexpected approval request: %#v", req)
+		}
+		return &testApprovalHandle{id: "approval-2", toolCallID: req.ToolCallID}
+	}))
+
+	handle := turn.Approvals().Request(ApprovalRequest{
+		ApprovalID: "approval-2",
+		ToolCallID: "tool-2",
+		ToolName:   "shell",
+	})
+	if !called {
+		t.Fatal("expected approval handler to be called")
+	}
+	if handle.ID() != "approval-2" || handle.ToolCallID() != "tool-2" {
+		t.Fatalf("unexpected handle: id=%q tool=%q", handle.ID(), handle.ToolCallID())
+	}
+}
+
 var _ bridgev2.NetworkAPI = (*testSDKClient)(nil)

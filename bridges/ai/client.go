@@ -1769,15 +1769,13 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 // findModelInfo looks up ModelInfo from the user's model cache by ID
 func (oc *AIClient) findModelInfo(modelID string) *ModelInfo {
 	meta := loginMetadata(oc.UserLogin)
-	if meta.ModelCache == nil {
-		goto catalogFallback
-	}
-	for i := range meta.ModelCache.Models {
-		if meta.ModelCache.Models[i].ID == modelID {
-			return &meta.ModelCache.Models[i]
+	if meta.ModelCache != nil {
+		for i := range meta.ModelCache.Models {
+			if meta.ModelCache.Models[i].ID == modelID {
+				return &meta.ModelCache.Models[i]
+			}
 		}
 	}
-catalogFallback:
 	return oc.findModelInfoInCatalog(modelID)
 }
 
