@@ -95,7 +95,7 @@ func ResolveInboundReplyTarget(mode ThreadReplyMode, replyToID, threadRootID, ev
 			ThreadRoot: root,
 			Reason:     "threading_always",
 		}
-	default:
+	default: // ThreadReplyModeInbound
 		if threadRootID != "" {
 			return ReplyTargetDecision{
 				ReplyToID:  threadRootID,
@@ -104,9 +104,8 @@ func ResolveInboundReplyTarget(mode ThreadReplyMode, replyToID, threadRootID, ev
 			}
 		}
 		return ReplyTargetDecision{
-			ReplyToID:  replyToID,
-			ThreadRoot: "",
-			Reason:     "threading_inbound_reply",
+			ReplyToID: replyToID,
+			Reason:    "threading_inbound_reply",
 		}
 	}
 }

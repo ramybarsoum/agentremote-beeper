@@ -293,14 +293,16 @@ func detectCapabilities(modelID string, apiModel OpenRouterModel, hasAPIData boo
 
 // availableToolsGo returns the Go code representation of available tools
 func availableToolsGo(caps ModelCapabilities) string {
-	if caps.WebSearch && caps.ToolCalling {
+	switch {
+	case caps.WebSearch && caps.ToolCalling:
 		return "[]string{ToolWebSearch, ToolFunctionCalling}"
-	} else if caps.ToolCalling {
+	case caps.ToolCalling:
 		return "[]string{ToolFunctionCalling}"
-	} else if caps.WebSearch {
+	case caps.WebSearch:
 		return "[]string{ToolWebSearch}"
+	default:
+		return "[]string{}"
 	}
-	return "[]string{}"
 }
 
 // availableToolsJSON returns the JSON representation of available tools

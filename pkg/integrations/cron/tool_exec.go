@@ -117,7 +117,7 @@ func ExecuteTool(ctx context.Context, args map[string]any, deps ToolExecDeps) (s
 		}
 		contextMessages := agenttools.ReadIntDefault(args, "contextMessages", 0)
 		if contextMessages > 0 {
-			lines := []ReminderContextLine(nil)
+			var lines []ReminderContextLine
 			if deps.ResolveReminderLines != nil {
 				lines = deps.ResolveReminderLines(contextMessages)
 			}

@@ -132,29 +132,23 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 		return
 	}
 
-	emitted := false
+	mediaType := strings.TrimSpace(part.Mime)
+	if mediaType == "" {
+		mediaType = "application/octet-stream"
+	}
 
 	if sourceURL != "" {
-		mediaType := strings.TrimSpace(part.Mime)
-		if mediaType == "" {
-			mediaType = "application/octet-stream"
-		}
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type":      "file",
 			"url":       sourceURL,
 			"mediaType": mediaType,
 		})
-		emitted = true
 	}
 
 	if title != "" {
 		filename := strings.TrimSpace(part.Filename)
 		if filename == "" {
 			filename = title
-		}
-		mediaType := strings.TrimSpace(part.Mime)
-		if mediaType == "" {
-			mediaType = "application/octet-stream"
 		}
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type":      "source-document",
@@ -163,7 +157,6 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 			"filename":  filename,
 			"mediaType": mediaType,
 		})
-		emitted = true
 	}
 
 	if sourceURL != "" {
@@ -173,11 +166,7 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 			"url":      sourceURL,
 			"title":    title,
 		})
-		emitted = true
 	}
 
-	if !emitted {
-		return
-	}
 	inst.markPartArtifactStreamSent(part.SessionID, part.ID)
 }

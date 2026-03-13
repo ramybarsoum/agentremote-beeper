@@ -996,64 +996,43 @@ func (cc *CodexClient) handleItemStarted(ctx context.Context, portal *bridgev2.P
 	}
 	_ = json.Unmarshal(raw, &probe)
 	itemID := strings.TrimSpace(probe.ID)
+
+	// Streaming for these types comes via dedicated delta events.
+	if probe.Type == "agentMessage" || probe.Type == "reasoning" {
+		return
+	}
+
+	// All remaining item types share the same unmarshal + ensureUIToolInputStart pattern.
+	var it map[string]any
+	_ = json.Unmarshal(raw, &it)
+
+	toolName := probe.Type
 	switch probe.Type {
-	case "agentMessage":
-		// Streaming comes via item/agentMessage/delta; avoid duplicating.
-		return
-	case "reasoning":
-		// Stream deltas via item/reasoning/*; item completion will backfill if deltas are absent.
-		return
-	case "commandExecution":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.ensureUIToolInputStart(ctx, portal, state, itemID, "commandExecution", true, it)
-	case "fileChange":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.ensureUIToolInputStart(ctx, portal, state, itemID, "fileChange", true, it)
 	case "mcpToolCall":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		toolName, _ := it["tool"].(string)
-		if strings.TrimSpace(toolName) == "" {
-			toolName = "mcpToolCall"
+		if name, _ := it["tool"].(string); strings.TrimSpace(name) != "" {
+			toolName = name
 		}
-		cc.ensureUIToolInputStart(ctx, portal, state, itemID, toolName, true, it)
-	case "collabToolCall":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.ensureUIToolInputStart(ctx, portal, state, itemID, "collabToolCall", true, it)
+	case "enteredReviewMode", "exitedReviewMode":
+		toolName = "review"
+	}
+
+	cc.ensureUIToolInputStart(ctx, portal, state, itemID, toolName, true, it)
+
+	// Type-specific side effects (system notices).
+	switch probe.Type {
 	case "webSearch":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.ensureUIToolInputStart(ctx, portal, state, itemID, "webSearch", true, it)
 		notice := "Codex started web search."
-		if q, ok := it["query"].(string); ok && strings.TrimSpace(q) != "" {
+		if q, _ := it["query"].(string); strings.TrimSpace(q) != "" {
 			notice = fmt.Sprintf("Codex started web search: %s", strings.TrimSpace(q))
 		}
 		cc.sendSystemNoticeOnce(ctx, portal, state, "websearch:"+itemID, notice)
 	case "imageView":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.ensureUIToolInputStart(ctx, portal, state, itemID, "imageView", true, it)
 		cc.sendSystemNoticeOnce(ctx, portal, state, "imageview:"+itemID, "Codex viewed an image.")
-	case "plan":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.ensureUIToolInputStart(ctx, portal, state, itemID, "plan", true, it)
-	case "enteredReviewMode", "exitedReviewMode":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.ensureUIToolInputStart(ctx, portal, state, itemID, "review", true, it)
-		if probe.Type == "enteredReviewMode" {
-			cc.sendSystemNoticeOnce(ctx, portal, state, "review:entered:"+itemID, "Codex entered review mode.")
-		} else {
-			cc.sendSystemNoticeOnce(ctx, portal, state, "review:exited:"+itemID, "Codex exited review mode.")
-		}
+	case "enteredReviewMode":
+		cc.sendSystemNoticeOnce(ctx, portal, state, "review:entered:"+itemID, "Codex entered review mode.")
+	case "exitedReviewMode":
+		cc.sendSystemNoticeOnce(ctx, portal, state, "review:exited:"+itemID, "Codex exited review mode.")
 	case "contextCompaction":
-		var it map[string]any
-		_ = json.Unmarshal(raw, &it)
-		cc.ensureUIToolInputStart(ctx, portal, state, itemID, "contextCompaction", true, it)
 		cc.sendSystemNoticeOnce(ctx, portal, state, "compaction:started:"+itemID, "Codex is compacting context…")
 	}
 }

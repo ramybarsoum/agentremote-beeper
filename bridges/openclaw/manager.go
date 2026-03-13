@@ -952,24 +952,11 @@ func normalizeOpenClawLiveMessage(eventTS int64, message map[string]any) map[str
 	return normalized
 }
 
-func isOpenClawDirectChatEvent(state string, message map[string]any) bool {
+func isOpenClawDirectChatEvent(_ string, message map[string]any) bool {
 	if len(message) == 0 {
 		return false
 	}
-	role := openClawMessageRole(message)
-	if role != "user" {
-		return false
-	}
-	normalizedState := strings.ToLower(strings.TrimSpace(state))
-	if normalizedState == "" {
-		return true
-	}
-	switch normalizedState {
-	case "final", "done", "complete", "completed":
-		return true
-	default:
-		return true
-	}
+	return openClawMessageRole(message) == "user"
 }
 
 func openClawApprovalDecisionStatus(decision string) (bool, string) {

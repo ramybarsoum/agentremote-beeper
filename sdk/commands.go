@@ -24,7 +24,6 @@ func registerCommands(br *bridgev2.Bridge, cfg *Config) {
 	}
 	var handlers []commands.CommandHandler
 	for _, cmd := range cfg.Commands {
-		cmd := cmd // capture
 		handler := &commands.FullHandler{
 			Name: cmd.Name,
 			Help: commands.HelpMeta{

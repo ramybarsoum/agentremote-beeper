@@ -640,8 +640,13 @@ func (t *Turn) EndWithError(errText string) {
 		return
 	}
 	defer t.cancel()
-	t.ensureStarted()
 	t.ended = true
+	if !t.started {
+		// No content was ever written — skip placeholder message creation.
+		// Still send a fail status if we have a source event.
+		t.SendStatus(event.MessageStatusFail, errText)
+		return
+	}
 	t.emitter.EmitUIError(t.turnCtx, t.conv.portal, errText)
 	t.emitter.EmitUIFinish(t.turnCtx, t.conv.portal, "error", t.metadata)
 	if t.session != nil {

@@ -2,6 +2,15 @@ package runtime
 
 import "strings"
 
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 type streamingPendingReplyState struct {
 	explicitID string
 	sawCurrent bool
@@ -38,13 +47,7 @@ func (acc *StreamingDirectiveAccumulator) Consume(raw string, final bool) *Strea
 	parsed := ParseStreamingChunk(combined)
 	hasTag := acc.activeReply.hasTag || acc.pendingReply.hasTag || parsed.HasReplyTag
 	sawCurrent := acc.activeReply.sawCurrent || acc.pendingReply.sawCurrent || parsed.ReplyToCurrent
-	explicitID := parsed.ReplyToExplicitID
-	if explicitID == "" {
-		explicitID = acc.pendingReply.explicitID
-	}
-	if explicitID == "" {
-		explicitID = acc.activeReply.explicitID
-	}
+	explicitID := firstNonEmpty(parsed.ReplyToExplicitID, acc.pendingReply.explicitID, acc.activeReply.explicitID)
 
 	result := &StreamingDirectiveResult{
 		Text:              parsed.Text,

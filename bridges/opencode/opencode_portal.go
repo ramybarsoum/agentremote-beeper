@@ -214,13 +214,10 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 	meta := &PortalMeta{
 		IsOpenCodeRoom: true,
 		InstanceID:     instanceID,
-		SessionID:      "",
 		AwaitingPath:   true,
 		TitlePending:   pendingTitle,
 		Title:          displayTitle,
-	}
-	if meta.AgentID == "" {
-		meta.AgentID = b.host.DefaultAgentID()
+		AgentID:        b.host.DefaultAgentID(),
 	}
 
 	portal.RoomType = database.RoomTypeDM

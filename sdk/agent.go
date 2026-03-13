@@ -83,10 +83,9 @@ func (a *Agent) UserInfo() *bridgev2.UserInfo {
 	if a == nil {
 		return nil
 	}
-	info := &bridgev2.UserInfo{
+	return &bridgev2.UserInfo{
 		Name:        ptr.NonZero(a.Name),
 		IsBot:       ptr.Ptr(true),
 		Identifiers: a.Identifiers,
 	}
-	return info
 }

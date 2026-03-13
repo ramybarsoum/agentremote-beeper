@@ -74,11 +74,10 @@ func (p *directProvider) Fetch(ctx context.Context, req Request) (*Response, err
 	text := string(body)
 	extractor := "basic"
 	if strings.Contains(contentType, "text/html") {
+		text = extractTextFromHTML(text)
 		if strings.EqualFold(req.ExtractMode, "text") {
-			text = extractTextFromHTML(text)
 			extractor = "basic-text"
 		} else {
-			text = extractTextFromHTML(text)
 			extractor = "basic-markdown"
 		}
 	} else if strings.Contains(contentType, "application/json") {
