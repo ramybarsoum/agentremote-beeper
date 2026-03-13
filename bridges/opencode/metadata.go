@@ -5,6 +5,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 type UserLoginMetadata struct {
@@ -23,6 +24,7 @@ type PortalMetadata struct {
 	OpenCodeAwaitingPath bool   `json:"opencode_awaiting_path,omitempty"`
 	AgentID              string `json:"agent_id,omitempty"`
 	VerboseLevel         string `json:"verbose_level,omitempty"`
+	SDK                  bridgesdk.SDKPortalMetadata `json:"sdk,omitempty"`
 }
 
 type GhostMetadata struct{}
@@ -33,6 +35,20 @@ func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
 	return agentremote.EnsurePortalMetadata[PortalMetadata](portal)
+}
+
+func (pm *PortalMetadata) GetSDKPortalMetadata() *bridgesdk.SDKPortalMetadata {
+	if pm == nil {
+		return nil
+	}
+	return &pm.SDK
+}
+
+func (pm *PortalMetadata) SetSDKPortalMetadata(meta *bridgesdk.SDKPortalMetadata) {
+	if pm == nil || meta == nil {
+		return
+	}
+	pm.SDK = *meta
 }
 
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {

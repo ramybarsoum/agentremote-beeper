@@ -2,7 +2,7 @@ package sdk
 
 import "testing"
 
-func TestComputeRoomFeaturesForAgentsUsesStrictMinimum(t *testing.T) {
+func TestComputeRoomFeaturesForAgentsUsesUnionSemantics(t *testing.T) {
 	features := computeRoomFeaturesForAgents([]*Agent{
 		{
 			ID: "a",
@@ -22,23 +22,23 @@ func TestComputeRoomFeaturesForAgentsUsesStrictMinimum(t *testing.T) {
 				SupportsStreaming:   false,
 				SupportsReasoning:   true,
 				SupportsToolCalling: false,
-				SupportsTextInput:   true,
+				SupportsTextInput:   false,
 				SupportsImageInput:  false,
 				SupportsFilesOutput: false,
 				MaxTextLength:       5000,
 			},
 		},
 	})
-	if features.MaxTextLength != 5000 {
-		t.Fatalf("expected min text length 5000, got %d", features.MaxTextLength)
+	if features.MaxTextLength != 12000 {
+		t.Fatalf("expected max text length 12000, got %d", features.MaxTextLength)
 	}
-	if features.SupportsTyping {
-		t.Fatalf("expected typing to require all agents to support streaming")
+	if !features.SupportsTyping {
+		t.Fatalf("expected typing to be enabled when any agent supports streaming")
 	}
-	if features.SupportsImages {
-		t.Fatalf("expected image capability to require common support")
+	if !features.SupportsImages {
+		t.Fatalf("expected image capability when any agent supports image input")
 	}
 	if !features.SupportsReply {
-		t.Fatalf("expected reply support when all agents support text input")
+		t.Fatalf("expected reply support when any agent supports text input")
 	}
 }

@@ -88,6 +88,12 @@ type CreateChatParams struct {
 	Metadata map[string]any
 }
 
+// IdentifierResult describes a full identifier/contact resolution result.
+type IdentifierResult = bridgev2.ResolveIdentifierResponse
+
+// CreateChatResult describes a bridge-compatible chat creation result.
+type CreateChatResult = bridgev2.CreateChatResponse
+
 // ToolApprovalResponse is the user's decision on a tool approval request.
 type ToolApprovalResponse struct {
 	Approved bool
@@ -100,9 +106,7 @@ type ApprovalRequest struct {
 	ToolCallID   string
 	ToolName     string
 	TTL          time.Duration
-	Blocking     bool
 	Presentation *agentremote.ApprovalPromptPresentation
-	Metadata     map[string]any
 }
 
 // ApprovalHandle tracks an individual approval request.
@@ -225,6 +229,13 @@ type ModelInfo struct {
 	Capabilities []string
 }
 
+// ProviderIdentity controls provider-specific IDs and status naming used by the SDK runtime.
+type ProviderIdentity struct {
+	IDPrefix     string
+	LogKey       string
+	StatusNetwork string
+}
+
 // Config configures the SDK bridge.
 type Config struct {
 	// Required
@@ -258,10 +269,10 @@ type Config struct {
 	GetCapabilities func(session any, conv *Conversation) *RoomFeatures
 
 	// Search & chat ops (optional)
-	SearchUsers       func(query string) ([]*UserInfo, error)
-	GetContactList    func() ([]*UserInfo, error)
-	ResolveIdentifier func(id string) (*UserInfo, error)
-	CreateChat        func(params *CreateChatParams) (*ChatInfo, error)
+	SearchUsers       func(ctx context.Context, session any, query string) ([]*IdentifierResult, error)
+	GetContactList    func(ctx context.Context, session any) ([]*IdentifierResult, error)
+	ResolveIdentifier func(ctx context.Context, session any, id string, createChat bool) (*IdentifierResult, error)
+	CreateChat        func(ctx context.Context, session any, params *CreateChatParams) (*CreateChatResult, error)
 	DeleteChat        func(conv *Conversation) error
 	GetChatInfo       func(conv *Conversation) (*bridgev2.ChatInfo, error)
 	GetUserInfo       func(ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error)
@@ -276,6 +287,21 @@ type Config struct {
 	// Login — use bridgev2 types directly.
 	LoginFlows  []bridgev2.LoginFlow                                                                         // nil = single auto-login
 	CreateLogin func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) // nil = auto-login
+	AcceptLogin func(login *bridgev2.UserLogin) (bool, string)
+
+	// Connector lifecycle and overrides.
+	InitConnector         func(br *bridgev2.Bridge)
+	StartConnector        func(ctx context.Context, br *bridgev2.Bridge) error
+	StopConnector         func(ctx context.Context, br *bridgev2.Bridge)
+	BridgeName            func() bridgev2.BridgeName
+	NetworkCapabilities   func() *bridgev2.NetworkGeneralCapabilities
+	BridgeInfoVersion     func() (info, capabilities int)
+	FillBridgeInfo        func(portal *bridgev2.Portal, content *event.BridgeEventContent)
+	MakeBrokenLogin       func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient
+	CreateClient          func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error)
+	UpdateClient          func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin)
+	AfterLoadClient       func(client bridgev2.NetworkAPI)
+	ProviderIdentity      ProviderIdentity
 
 	// Backfill — use bridgev2 types directly.
 	FetchMessages func(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) // nil = no backfill

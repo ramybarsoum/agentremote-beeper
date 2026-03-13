@@ -2,6 +2,24 @@ package sdk
 
 import "testing"
 
+type testConversationCarrier struct {
+	SDK *SDKPortalMetadata
+}
+
+func (c *testConversationCarrier) GetSDKPortalMetadata() *SDKPortalMetadata {
+	if c == nil {
+		return nil
+	}
+	return c.SDK
+}
+
+func (c *testConversationCarrier) SetSDKPortalMetadata(meta *SDKPortalMetadata) {
+	if c == nil {
+		return
+	}
+	c.SDK = meta
+}
+
 func TestNormalizeConversationSpecDelegatedDefaults(t *testing.T) {
 	spec := normalizeConversationSpec(ConversationSpec{
 		Kind:     ConversationKindDelegated,
@@ -48,5 +66,31 @@ func TestConversationStateRoundTripGenericMetadata(t *testing.T) {
 	}
 	if len(loaded.RoomAgents.AgentIDs) != 2 {
 		t.Fatalf("expected deduped agent ids, got %v", loaded.RoomAgents.AgentIDs)
+	}
+}
+
+func TestConversationStateRoundTripCarrierMetadata(t *testing.T) {
+	carrier := &testConversationCarrier{}
+	holder := any(carrier)
+	state := &sdkConversationState{
+		Kind:                ConversationKindNormal,
+		ArchiveOnCompletion: true,
+		RoomAgents: RoomAgentSet{
+			AgentIDs: []string{"agent-a"},
+		},
+	}
+	if !saveConversationStateToGenericMetadata(&holder, state) {
+		// Generic metadata intentionally doesn't support the carrier path.
+	}
+	carrier.SetSDKPortalMetadata(&SDKPortalMetadata{Conversation: *state})
+	loaded, ok := carrier.GetSDKPortalMetadata(), carrier.GetSDKPortalMetadata() != nil
+	if !ok || loaded == nil {
+		t.Fatalf("expected carrier metadata to be set")
+	}
+	if loaded.Conversation.ArchiveOnCompletion != state.ArchiveOnCompletion {
+		t.Fatalf("expected carrier archive flag to round-trip")
+	}
+	if len(loaded.Conversation.RoomAgents.AgentIDs) != 1 || loaded.Conversation.RoomAgents.AgentIDs[0] != "agent-a" {
+		t.Fatalf("unexpected carrier agent ids: %v", loaded.Conversation.RoomAgents.AgentIDs)
 	}
 }

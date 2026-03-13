@@ -24,10 +24,10 @@ type Conversation struct {
 	portal *bridgev2.Portal
 	login  *bridgev2.UserLogin
 	sender bridgev2.EventSender
-	client *sdkClient
+	runtime conversationRuntime
 }
 
-func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender, client *sdkClient) *Conversation {
+func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender, runtime conversationRuntime) *Conversation {
 	id := ""
 	title := ""
 	if portal != nil {
@@ -41,7 +41,7 @@ func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridge
 		portal: portal,
 		login:  login,
 		sender: sender,
-		client: client,
+		runtime: runtime,
 	}
 }
 
@@ -60,8 +60,8 @@ func (c *Conversation) state() *sdkConversationState {
 	if c == nil {
 		return &sdkConversationState{}
 	}
-	if c.client != nil {
-		return loadConversationState(c.portal, c.client.conversationState)
+	if c.runtime != nil {
+		return loadConversationState(c.portal, c.runtime.conversationStore())
 	}
 	return loadConversationState(c.portal, nil)
 }
@@ -71,8 +71,8 @@ func (c *Conversation) saveState(ctx context.Context, state *sdkConversationStat
 		return nil
 	}
 	var store *conversationStateStore
-	if c.client != nil {
-		store = c.client.conversationState
+	if c.runtime != nil {
+		store = c.runtime.conversationStore()
 	}
 	return saveConversationState(ctx, c.portal, store, state)
 }
@@ -87,11 +87,11 @@ func (c *Conversation) resolveDefaultAgent(ctx context.Context) (*Agent, error) 
 			return agent, nil
 		}
 	}
-	if c.client != nil && c.client.cfg().Agent != nil {
-		return c.client.cfg().Agent, nil
+	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().Agent != nil {
+		return c.runtime.config().Agent, nil
 	}
-	if c.client != nil && c.client.cfg().AgentCatalog != nil {
-		return c.client.cfg().AgentCatalog.DefaultAgent(ctx, c.login)
+	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().AgentCatalog != nil {
+		return c.runtime.config().AgentCatalog.DefaultAgent(ctx, c.login)
 	}
 	return nil, nil
 }
@@ -100,11 +100,11 @@ func (c *Conversation) resolveAgentByIdentifier(ctx context.Context, identifier 
 	if c == nil || strings.TrimSpace(identifier) == "" {
 		return nil, nil
 	}
-	if c.client != nil && c.client.cfg().Agent != nil && c.client.cfg().Agent.ID == identifier {
-		return c.client.cfg().Agent, nil
+	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().Agent != nil && c.runtime.config().Agent.ID == identifier {
+		return c.runtime.config().Agent, nil
 	}
-	if c.client != nil && c.client.cfg().AgentCatalog != nil {
-		return c.client.cfg().AgentCatalog.ResolveAgent(ctx, c.login, identifier)
+	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().AgentCatalog != nil {
+		return c.runtime.config().AgentCatalog.ResolveAgent(ctx, c.login, identifier)
 	}
 	return nil, nil
 }
@@ -113,18 +113,12 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 	if c == nil {
 		return nil
 	}
-	if c.client != nil && c.client.cfg().GetCapabilities != nil {
-		if rf := c.client.cfg().GetCapabilities(c.client.getSession(), c); rf != nil {
+	if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().GetCapabilities != nil {
+		if rf := c.runtime.config().GetCapabilities(c.runtime.sessionValue(), c); rf != nil {
 			return rf
 		}
 	}
 	state := c.state()
-	if len(state.RoomAgents.AgentIDs) == 0 {
-		if c.client != nil && c.client.cfg().RoomFeatures != nil {
-			return c.client.cfg().RoomFeatures
-		}
-		return defaultSDKFeatureConfig()
-	}
 	agents := make([]*Agent, 0, len(state.RoomAgents.AgentIDs))
 	for _, agentID := range state.RoomAgents.AgentIDs {
 		agent, err := c.resolveAgentByIdentifier(ctx, agentID)
@@ -134,8 +128,13 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 		agents = append(agents, agent)
 	}
 	if len(agents) == 0 {
-		if c.client != nil && c.client.cfg().RoomFeatures != nil {
-			return c.client.cfg().RoomFeatures
+		if defaultAgent, err := c.resolveDefaultAgent(ctx); err == nil && defaultAgent != nil {
+			agents = append(agents, defaultAgent)
+		}
+	}
+	if len(agents) == 0 {
+		if c.runtime != nil && c.runtime.config() != nil && c.runtime.config().RoomFeatures != nil {
+			return c.runtime.config().RoomFeatures
 		}
 		return defaultSDKFeatureConfig()
 	}
@@ -266,10 +265,10 @@ func (c *Conversation) StartTurnWithAgent(ctx context.Context, agent *Agent) *Tu
 
 // Session returns the session state from the client, if available.
 func (c *Conversation) Session() any {
-	if c.client == nil {
+	if c.runtime == nil {
 		return nil
 	}
-	return c.client.getSession()
+	return c.runtime.sessionValue()
 }
 
 // Context returns the conversation's context.
@@ -282,7 +281,7 @@ func (c *Conversation) LoginHandle() *LoginHandle {
 	if c == nil {
 		return nil
 	}
-	return newLoginHandle(c.login, c.client)
+	return newLoginHandle(c.login, c.runtime)
 }
 
 // Spec returns the current persisted conversation spec snapshot.

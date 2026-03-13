@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -45,25 +46,29 @@ func (h *sdkApprovalHandle) ToolCallID() string {
 }
 
 func (h *sdkApprovalHandle) Wait(ctx context.Context) (ToolApprovalResponse, error) {
-	if h == nil || h.turn == nil || h.turn.conv == nil || h.turn.conv.client == nil || h.turn.turnCtx == nil {
+	if h == nil || h.turn == nil || h.turn.conv == nil || h.turn.turnCtx == nil {
 		return ToolApprovalResponse{}, nil
 	}
-	client := h.turn.conv.client
-	decision, ok := client.approvalFlow.Wait(ctx, h.approvalID)
+	runtime := h.turn.conv.runtime
+	if runtime == nil || runtime.approvalFlowValue() == nil {
+		return ToolApprovalResponse{}, nil
+	}
+	approvalFlow := runtime.approvalFlowValue()
+	decision, ok := approvalFlow.Wait(ctx, h.approvalID)
 	if !ok {
 		reason := agentremote.ApprovalReasonTimeout
 		if ctx != nil && ctx.Err() != nil {
 			reason = agentremote.ApprovalReasonCancelled
 		}
 		h.turn.emitter.EmitUIToolApprovalResponse(h.turn.turnCtx, h.turn.conv.portal, h.approvalID, h.toolCallID, false, reason)
-		client.approvalFlow.FinishResolved(h.approvalID, agentremote.ApprovalDecisionPayload{
+		approvalFlow.FinishResolved(h.approvalID, agentremote.ApprovalDecisionPayload{
 			ApprovalID: h.approvalID,
 			Reason:     reason,
 		})
 		return ToolApprovalResponse{Reason: reason}, nil
 	}
 	h.turn.emitter.EmitUIToolApprovalResponse(h.turn.turnCtx, h.turn.conv.portal, h.approvalID, h.toolCallID, decision.Approved, decision.Reason)
-	client.approvalFlow.FinishResolved(h.approvalID, decision)
+	approvalFlow.FinishResolved(h.approvalID, decision)
 	return ToolApprovalResponse{
 		Approved: decision.Approved,
 		Always:   decision.Always,
@@ -102,6 +107,10 @@ type Turn struct {
 	metadata    map[string]any
 	startErr    error
 	mu          sync.Mutex
+
+	streamHook           func(turnID string, seq int, content map[string]any, txnID string) bool
+	approvalRequester    func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle
+	finalMetadataBuilder func(turn *Turn, finishReason string) any
 }
 
 func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *SourceRef) *Turn {
@@ -221,10 +230,14 @@ func (t *Turn) buildRelatesTo() map[string]any {
 func (t *Turn) ensureSession() {
 	t.sessionOnce.Do(func() {
 		var logger zerolog.Logger
-		if t.conv != nil && t.conv.client != nil {
-			logger = t.conv.client.userLogin.Log.With().Str("component", "sdk_turn").Logger()
+		if t.conv != nil && t.conv.login != nil {
+			logger = t.conv.login.Log.With().Str("component", "sdk_turn").Logger()
 		}
 		sender := t.resolveSender(t.turnCtx)
+		identity := defaultProviderIdentity()
+		if t.conv != nil && t.conv.runtime != nil {
+			identity = t.conv.runtime.providerIdentity()
+		}
 		t.session = turns.NewStreamSession(turns.StreamSessionParams{
 			TurnID:  t.turnID,
 			AgentID: strings.TrimSpace(string(sender.Sender)),
@@ -272,11 +285,12 @@ func (t *Turn) ensureSession() {
 					NetworkMessageID: t.networkMessageID,
 					VisibleBody:      strings.TrimSpace(t.visibleText.String()),
 					FallbackBody:     strings.TrimSpace(t.visibleText.String()),
-					LogKey:           "sdk_msg_id",
+					LogKey:           identity.LogKey,
 					Force:            force,
 					UIMessage:        uiMessage,
 				})
 			},
+			SendHook: t.streamHook,
 			Logger: &logger,
 		})
 	})
@@ -297,12 +311,16 @@ func (t *Turn) ensureStarted() {
 	}
 	t.ensureSession()
 	if t.conv != nil && t.conv.portal != nil && t.conv.login != nil {
+		identity := defaultProviderIdentity()
+		if t.conv.runtime != nil {
+			identity = t.conv.runtime.providerIdentity()
+		}
 		evtID, msgID, err := agentremote.SendViaPortal(agentremote.SendViaPortalParams{
 			Login:     t.conv.login,
 			Portal:    t.conv.portal,
 			Sender:    t.resolveSender(t.turnCtx),
-			IDPrefix:  "sdk",
-			LogKey:    "sdk_msg_id",
+			IDPrefix:  identity.IDPrefix,
+			LogKey:    identity.LogKey,
 			Timestamp: time.Now(),
 			Converted: t.buildPlaceholderMessage(),
 		})
@@ -377,16 +395,19 @@ func (t *Turn) ToolDenied(toolCallID string) {
 // RequestApproval creates a new approval request and returns its handle.
 func (t *Turn) RequestApproval(req ApprovalRequest) ApprovalHandle {
 	t.ensureStarted()
-	client := t.conv.client
-	if client == nil || client.approvalFlow == nil || t.conv.portal == nil {
+	if t.approvalRequester != nil {
+		return t.approvalRequester(t.turnCtx, t, req)
+	}
+	if t.conv == nil || t.conv.portal == nil || t.conv.runtime == nil || t.conv.runtime.approvalFlowValue() == nil {
 		return &sdkApprovalHandle{turn: t, toolCallID: req.ToolCallID}
 	}
+	approvalFlow := t.conv.runtime.approvalFlowValue()
 	approvalID := "sdk-" + uuid.NewString()
 	ttl := req.TTL
 	if ttl <= 0 {
 		ttl = agentremote.DefaultApprovalExpiry
 	}
-	_, _ = client.approvalFlow.Register(approvalID, ttl, &pendingSDKApprovalData{
+	_, _ = approvalFlow.Register(approvalID, ttl, &pendingSDKApprovalData{
 		RoomID:     t.conv.portal.MXID,
 		TurnID:     t.turnID,
 		ToolCallID: req.ToolCallID,
@@ -400,7 +421,7 @@ func (t *Turn) RequestApproval(req ApprovalRequest) ApprovalHandle {
 	if req.Presentation != nil {
 		presentation = *req.Presentation
 	}
-	client.approvalFlow.SendPrompt(t.turnCtx, t.conv.portal, agentremote.SendPromptParams{
+	approvalFlow.SendPrompt(t.turnCtx, t.conv.portal, agentremote.SendPromptParams{
 		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
 			ApprovalID:   approvalID,
 			ToolCallID:   req.ToolCallID,
@@ -410,7 +431,7 @@ func (t *Turn) RequestApproval(req ApprovalRequest) ApprovalHandle {
 			ExpiresAt:    time.Now().Add(ttl),
 		},
 		RoomID:    t.conv.portal.MXID,
-		OwnerMXID: client.userLogin.UserMXID,
+		OwnerMXID: t.conv.login.UserMXID,
 	})
 	return &sdkApprovalHandle{approvalID: approvalID, toolCallID: req.ToolCallID, turn: t}
 }
@@ -472,14 +493,33 @@ func (t *Turn) SetThread(rootEventID id.EventID) {
 	t.threadRoot = rootEventID
 }
 
+// SetStreamHook captures stream envelopes instead of sending ephemeral Matrix events when provided.
+func (t *Turn) SetStreamHook(hook func(turnID string, seq int, content map[string]any, txnID string) bool) {
+	t.streamHook = hook
+}
+
+// SetApprovalRequester overrides the default SDK approval flow for this turn.
+func (t *Turn) SetApprovalRequester(requester func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle) {
+	t.approvalRequester = requester
+}
+
+// SetFinalMetadataBuilder overrides the final DB metadata object persisted for the assistant message.
+func (t *Turn) SetFinalMetadataBuilder(builder func(turn *Turn, finishReason string) any) {
+	t.finalMetadataBuilder = builder
+}
+
 // SendStatus emits a bridge-level status update for the source event when possible.
 func (t *Turn) SendStatus(status event.MessageStatus, message string) {
 	if t.conv == nil || t.conv.portal == nil || t.conv.login == nil || t.source == nil || t.source.EventID == "" {
 		return
 	}
+	identity := defaultProviderIdentity()
+	if t.conv.runtime != nil {
+		identity = t.conv.runtime.providerIdentity()
+	}
 	_, _ = t.conv.login.Bridge.Bot.SendMessage(t.turnCtx, t.conv.portal.MXID, event.BeeperMessageStatus, &event.Content{
 		Parsed: &event.BeeperMessageStatusEventContent{
-			Network:   "sdk",
+			Network:   identity.StatusNetwork,
 			RelatesTo: event.RelatesTo{EventID: id.EventID(t.source.EventID)},
 			Status:    status,
 			Message:   message,
@@ -493,7 +533,7 @@ func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadat
 	if t.agent != nil {
 		agentID = t.agent.ID
 	}
-	return agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
+	runtimeMeta := agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
 		Body:               strings.TrimSpace(t.visibleText.String()),
 		FinishReason:       finishReason,
 		TurnID:             t.turnID,
@@ -503,6 +543,9 @@ func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadat
 		CanonicalSchema:    "com.beeper.ai.message",
 		CanonicalUIMessage: uiMessage,
 	})
+	merged := supportedBaseMetadataFromMap(t.metadata)
+	merged.CopyFromBase(&runtimeMeta)
+	return merged
 }
 
 func (t *Turn) persistFinalMessage(finishReason string) {
@@ -510,16 +553,36 @@ func (t *Turn) persistFinalMessage(finishReason string) {
 		return
 	}
 	sender := t.resolveSender(t.turnCtx)
-	metadata := t.finalMetadata(finishReason)
+	metadata := any(t.finalMetadata(finishReason))
+	if t.finalMetadataBuilder != nil {
+		if custom := t.finalMetadataBuilder(t, finishReason); custom != nil {
+			metadata = custom
+		}
+	}
 	agentremote.UpsertAssistantMessage(t.turnCtx, agentremote.UpsertAssistantMessageParams{
 		Login:            t.conv.login,
 		Portal:           t.conv.portal,
 		SenderID:         sender.Sender,
 		NetworkMessageID: t.networkMessageID,
 		InitialEventID:   t.initialEventID,
-		Metadata:         &metadata,
+		Metadata:         metadata,
 		Logger:           t.conv.login.Log.With().Str("component", "sdk_turn").Logger(),
 	})
+}
+
+func supportedBaseMetadataFromMap(metadata map[string]any) agentremote.BaseMessageMetadata {
+	if len(metadata) == 0 {
+		return agentremote.BaseMessageMetadata{}
+	}
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return agentremote.BaseMessageMetadata{}
+	}
+	var decoded agentremote.BaseMessageMetadata
+	if err = json.Unmarshal(data, &decoded); err != nil {
+		return agentremote.BaseMessageMetadata{}
+	}
+	return decoded
 }
 
 // End finishes the turn with a reason.

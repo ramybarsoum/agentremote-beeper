@@ -3,7 +3,6 @@ package opencode
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync/atomic"
 
@@ -22,6 +21,7 @@ var _ bridgev2.BackfillingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.DeleteChatHandlingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.IdentifierResolvingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.ContactListingNetworkAPI = (*OpenCodeClient)(nil)
+var _ bridgev2.UserSearchingNetworkAPI = (*OpenCodeClient)(nil)
 var _ bridgev2.ReactionHandlingNetworkAPI = (*OpenCodeClient)(nil)
 
 type OpenCodeClient struct {
@@ -214,57 +214,15 @@ func (oc *OpenCodeClient) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) 
 }
 
 func (oc *OpenCodeClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
-	if oc.bridge == nil {
-		return nil, errors.New("login unavailable")
-	}
-	instanceID, ok := ParseOpenCodeIdentifier(identifier)
-	if !ok {
-		return nil, fmt.Errorf("unknown identifier: %s", identifier)
-	}
-	cfg := oc.bridge.InstanceConfig(instanceID)
-	if cfg == nil {
-		return nil, errors.New("OpenCode instance not found")
-	}
-	userID := OpenCodeUserID(instanceID)
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get OpenCode ghost: %w", err)
-	}
-	oc.bridge.EnsureGhostDisplayName(ctx, instanceID)
-
-	var chat *bridgev2.CreateChatResponse
-	if createChat {
-		chat, err = oc.bridge.CreateSessionChat(ctx, instanceID, "", true)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create OpenCode chat: %w", err)
-		}
-	}
-
-	displayName := oc.bridge.DisplayName(instanceID)
-	if displayName == "" {
-		displayName = "OpenCode"
-	}
-	return &bridgev2.ResolveIdentifierResponse{
-		UserID:   userID,
-		UserInfo: openCodeSDKAgent(instanceID, displayName).UserInfo(),
-		Ghost:    ghost,
-		Chat:     chat,
-	}, nil
+	return oc.resolveOpenCodeIdentifier(ctx, identifier, createChat)
 }
 
 func (oc *OpenCodeClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	meta := loginMetadata(oc.UserLogin)
-	if meta == nil || len(meta.OpenCodeInstances) == 0 {
-		return nil, nil
-	}
-	out := make([]*bridgev2.ResolveIdentifierResponse, 0, len(meta.OpenCodeInstances))
-	for instanceID := range meta.OpenCodeInstances {
-		resp, err := oc.ResolveIdentifier(ctx, "opencode:"+instanceID, false)
-		if err == nil && resp != nil {
-			out = append(out, resp)
-		}
-	}
-	return out, nil
+	return oc.openCodeContactList(ctx)
+}
+
+func (oc *OpenCodeClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
+	return oc.searchOpenCodeUsers(ctx, query)
 }
 
 func (oc *OpenCodeClient) LogoutRemote(_ context.Context) {

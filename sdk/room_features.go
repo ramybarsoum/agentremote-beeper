@@ -17,54 +17,52 @@ func computeRoomFeaturesForAgents(agents []*Agent) *RoomFeatures {
 	if len(agents) == 0 {
 		return defaultSDKFeatureConfig()
 	}
-	minText := 0
-	allStreaming := true
-	allReasoning := true
-	allTools := true
-	allTextInput := true
-	allImageInput := true
-	allAudioInput := true
-	allVideoInput := true
-	allFileInput := true
-	allPDFInput := true
-	allImageOutput := true
-	allAudioOutput := true
-	allFilesOutput := true
+	maxText := 0
+	anyStreaming := false
+	anyReasoning := false
+	anyTools := false
+	anyTextInput := false
+	anyImageInput := false
+	anyAudioInput := false
+	anyVideoInput := false
+	anyFileInput := false
+	anyPDFInput := false
+	anyImageOutput := false
+	anyAudioOutput := false
+	anyFilesOutput := false
 	for _, agent := range agents {
 		if agent == nil {
 			continue
 		}
 		caps := agent.Capabilities
-		if minText == 0 || (caps.MaxTextLength > 0 && caps.MaxTextLength < minText) {
-			if caps.MaxTextLength > 0 {
-				minText = caps.MaxTextLength
-			}
+		if caps.MaxTextLength > maxText {
+			maxText = caps.MaxTextLength
 		}
-		allStreaming = allStreaming && caps.SupportsStreaming
-		allReasoning = allReasoning && caps.SupportsReasoning
-		allTools = allTools && caps.SupportsToolCalling
-		allTextInput = allTextInput && caps.SupportsTextInput
-		allImageInput = allImageInput && caps.SupportsImageInput
-		allAudioInput = allAudioInput && caps.SupportsAudioInput
-		allVideoInput = allVideoInput && caps.SupportsVideoInput
-		allFileInput = allFileInput && caps.SupportsFileInput
-		allPDFInput = allPDFInput && caps.SupportsPDFInput
-		allImageOutput = allImageOutput && caps.SupportsImageOutput
-		allAudioOutput = allAudioOutput && caps.SupportsAudioOutput
-		allFilesOutput = allFilesOutput && caps.SupportsFilesOutput
+		anyStreaming = anyStreaming || caps.SupportsStreaming
+		anyReasoning = anyReasoning || caps.SupportsReasoning
+		anyTools = anyTools || caps.SupportsToolCalling
+		anyTextInput = anyTextInput || caps.SupportsTextInput
+		anyImageInput = anyImageInput || caps.SupportsImageInput
+		anyAudioInput = anyAudioInput || caps.SupportsAudioInput
+		anyVideoInput = anyVideoInput || caps.SupportsVideoInput
+		anyFileInput = anyFileInput || caps.SupportsFileInput
+		anyPDFInput = anyPDFInput || caps.SupportsPDFInput
+		anyImageOutput = anyImageOutput || caps.SupportsImageOutput
+		anyAudioOutput = anyAudioOutput || caps.SupportsAudioOutput
+		anyFilesOutput = anyFilesOutput || caps.SupportsFilesOutput
 	}
 
 	base := defaultSDKFeatureConfig()
-	if minText > 0 {
-		base.MaxTextLength = minText
+	if maxText > 0 {
+		base.MaxTextLength = maxText
 	}
-	base.SupportsImages = allImageInput || allImageOutput
-	base.SupportsAudio = allAudioInput || allAudioOutput
-	base.SupportsVideo = allVideoInput
-	base.SupportsFiles = allFileInput || allPDFInput || allFilesOutput
-	base.SupportsReply = allTextInput
-	base.SupportsTyping = allStreaming
-	base.SupportsReactions = allTools || allReasoning || allTextInput
+	base.SupportsImages = anyImageInput || anyImageOutput
+	base.SupportsAudio = anyAudioInput || anyAudioOutput
+	base.SupportsVideo = anyVideoInput
+	base.SupportsFiles = anyFileInput || anyPDFInput || anyFilesOutput
+	base.SupportsReply = anyTextInput
+	base.SupportsTyping = anyStreaming
+	base.SupportsReactions = anyTools || anyReasoning || anyTextInput
 	base.SupportsReadReceipts = true
 	base.SupportsDeleteChat = true
 	return base

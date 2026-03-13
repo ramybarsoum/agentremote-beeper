@@ -3,44 +3,67 @@ package sdk
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote"
 )
 
 type sdkConnector struct {
 	*agentremote.ConnectorBase
-	cfg     *Config
-	br      *bridgev2.Bridge
-	mu      sync.Mutex
-	clients map[networkid.UserLoginID]bridgev2.NetworkAPI
+	cfg *Config
 }
 
 func newSDKConnector(cfg *Config) *sdkConnector {
-	sc := &sdkConnector{cfg: cfg}
+	sc := &sdkConnector{
+		cfg:           cfg,
+		ConnectorBase: NewConnectorBase(cfg),
+	}
+	return sc
+}
+
+// NewConnectorBase builds an SDK-backed connector base that can be embedded by custom bridges.
+func NewConnectorBase(cfg *Config) *agentremote.ConnectorBase {
+	var mu sync.Mutex
+	var clients map[networkid.UserLoginID]bridgev2.NetworkAPI
+	var br *bridgev2.Bridge
+
 	protocolID := cfg.ProtocolID
 	if protocolID == "" {
 		protocolID = "sdk-" + cfg.Name
 	}
-	sc.ConnectorBase = agentremote.NewConnector(agentremote.ConnectorSpec{
+	return agentremote.NewConnector(agentremote.ConnectorSpec{
 		ProtocolID: protocolID,
-		Init: func(br *bridgev2.Bridge) {
-			sc.br = br
-			agentremote.EnsureClientMap(&sc.mu, &sc.clients)
+		Init: func(bridge *bridgev2.Bridge) {
+			br = bridge
+			agentremote.EnsureClientMap(&mu, &clients)
+			if cfg.InitConnector != nil {
+				cfg.InitConnector(bridge)
+			}
 		},
-		Start: func(context.Context) error {
-			registerCommands(sc.br, cfg)
+		Start: func(ctx context.Context) error {
+			registerCommands(br, cfg)
+			if cfg.StartConnector != nil {
+				return cfg.StartConnector(ctx, br)
+			}
 			return nil
 		},
-		Stop: func(context.Context) {
-			agentremote.StopClients(&sc.mu, &sc.clients)
+		Stop: func(ctx context.Context) {
+			agentremote.StopClients(&mu, &clients)
+			if cfg.StopConnector != nil {
+				cfg.StopConnector(ctx, br)
+			}
 		},
 		Name: func() bridgev2.BridgeName {
+			if cfg.BridgeName != nil {
+				return cfg.BridgeName()
+			}
 			desc := cfg.Description
 			if desc == "" {
 				desc = fmt.Sprintf("A Matrix↔%s bridge for Beeper.", cfg.Name)
@@ -76,24 +99,66 @@ func newSDKConnector(cfg *Config) *sdkConnector {
 			}
 		},
 		Capabilities: func() *bridgev2.NetworkGeneralCapabilities {
+			if cfg.NetworkCapabilities != nil {
+				return cfg.NetworkCapabilities()
+			}
 			return agentremote.DefaultNetworkCapabilities()
 		},
-		LoadLogin: agentremote.TypedClientLoader(agentremote.TypedClientLoaderSpec[*sdkClient]{
-			Accept: func(_ *bridgev2.UserLogin) (bool, string) {
-				return true, ""
-			},
-			LoadUserLoginConfig: agentremote.LoadUserLoginConfig[*sdkClient]{
-				Mu:         &sc.mu,
-				Clients:    sc.clients,
+		BridgeInfoVersion: func() (info, capabilities int) {
+			if cfg.BridgeInfoVersion != nil {
+				return cfg.BridgeInfoVersion()
+			}
+			return agentremote.DefaultBridgeInfoVersion()
+		},
+		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
+			if cfg.FillBridgeInfo != nil {
+				cfg.FillBridgeInfo(portal, content)
+			}
+		},
+		LoadLogin: func(_ context.Context, login *bridgev2.UserLogin) error {
+			if cfg.AcceptLogin != nil {
+				ok, reason := cfg.AcceptLogin(login)
+				if !ok {
+					if strings.TrimSpace(reason) == "" {
+						reason = "This login is not supported."
+					}
+					makeBroken := cfg.MakeBrokenLogin
+					if makeBroken == nil {
+						makeBroken = func(l *bridgev2.UserLogin, msg string) *agentremote.BrokenLoginClient {
+							return agentremote.NewBrokenLoginClient(l, msg)
+						}
+					}
+					login.Client = makeBroken(login, reason)
+					return nil
+				}
+			}
+			return agentremote.LoadUserLogin(login, agentremote.LoadUserLoginConfig[bridgev2.NetworkAPI]{
+				Mu:         &mu,
+				Clients:    clients,
 				BridgeName: cfg.Name,
-				Update: func(c *sdkClient, l *bridgev2.UserLogin) {
-					c.SetUserLogin(l)
+				MakeBroken: cfg.MakeBrokenLogin,
+				Update: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
+					if cfg.UpdateClient != nil {
+						cfg.UpdateClient(client, login)
+						return
+					}
+					if typed, ok := client.(*sdkClient); ok {
+						typed.SetUserLogin(login)
+					}
 				},
-				Create: func(l *bridgev2.UserLogin) (*sdkClient, error) {
-					return newSDKClient(l, sc), nil
+				Create: func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
+					if cfg.CreateClient != nil {
+						return cfg.CreateClient(login)
+					}
+					return newSDKClient(login, &sdkConnector{cfg: cfg}), nil
 				},
-			},
-		}),
+				AfterLoad: func(client bridgev2.NetworkAPI) {
+					if cfg.AfterLoadClient != nil {
+						cfg.AfterLoadClient(client)
+					}
+				},
+			})
+		},
 		LoginFlows: func() []bridgev2.LoginFlow {
 			if len(cfg.LoginFlows) > 0 {
 				return cfg.LoginFlows
@@ -114,5 +179,4 @@ func newSDKConnector(cfg *Config) *sdkConnector {
 			return nil, bridgev2.ErrInvalidLoginFlowID
 		},
 	})
-	return sc
 }

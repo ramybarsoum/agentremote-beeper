@@ -67,6 +67,13 @@ type SDKPortalMetadata struct {
 	Conversation sdkConversationState `json:"conversation,omitempty"`
 }
 
+// ConversationStateCarrier allows bridge-specific portal metadata types to
+// preserve SDK conversation state alongside their own fields.
+type ConversationStateCarrier interface {
+	GetSDKPortalMetadata() *SDKPortalMetadata
+	SetSDKPortalMetadata(*SDKPortalMetadata)
+}
+
 const sdkConversationMetadataKey = "sdk_conversation"
 
 type conversationStateStore struct {
@@ -127,6 +134,16 @@ func loadConversationState(portal *bridgev2.Portal, store *conversationStateStor
 		}
 		return state
 	}
+	if carrier, ok := portal.Metadata.(ConversationStateCarrier); ok && carrier != nil {
+		if meta := carrier.GetSDKPortalMetadata(); meta != nil {
+			state := meta.Conversation.clone()
+			state.ensureDefaults()
+			if store != nil {
+				store.set(portal, state)
+			}
+			return state
+		}
+	}
 	if state, ok := loadConversationStateFromGenericMetadata(portal.Metadata); ok {
 		state.ensureDefaults()
 		if store != nil {
@@ -149,6 +166,19 @@ func saveConversationState(ctx context.Context, portal *bridgev2.Portal, store *
 	}
 	if meta, ok := portal.Metadata.(*SDKPortalMetadata); ok && meta != nil {
 		meta.Conversation = *state.clone()
+		if err := portal.Save(ctx); err != nil {
+			if store != nil {
+				store.set(portal, state)
+			}
+			return err
+		}
+	} else if carrier, ok := portal.Metadata.(ConversationStateCarrier); ok && carrier != nil {
+		meta := carrier.GetSDKPortalMetadata()
+		if meta == nil {
+			meta = &SDKPortalMetadata{}
+		}
+		meta.Conversation = *state.clone()
+		carrier.SetSDKPortalMetadata(meta)
 		if err := portal.Save(ctx); err != nil {
 			if store != nil {
 				store.set(portal, state)

@@ -13,20 +13,20 @@ import (
 // conversations and accessing login state.
 type LoginHandle struct {
 	login  *bridgev2.UserLogin
-	client *sdkClient
+	runtime conversationRuntime
 }
 
-func newLoginHandle(login *bridgev2.UserLogin, client *sdkClient) *LoginHandle {
+func newLoginHandle(login *bridgev2.UserLogin, runtime conversationRuntime) *LoginHandle {
 	return &LoginHandle{
-		login:  login,
-		client: client,
+		login:   login,
+		runtime: runtime,
 	}
 }
 
 // Conversation returns a Conversation for the given portal ID.
 func (l *LoginHandle) Conversation(ctx context.Context, portalID string) *Conversation {
 	if l.login == nil || l.login.Bridge == nil {
-		return newConversation(ctx, nil, l.login, bridgev2.EventSender{}, l.client)
+		return newConversation(ctx, nil, l.login, bridgev2.EventSender{}, l.runtime)
 	}
 	portalKey := networkid.PortalKey{
 		ID: networkid.PortalID(portalID),
@@ -36,14 +36,14 @@ func (l *LoginHandle) Conversation(ctx context.Context, portalID string) *Conver
 	}
 	portal, err := l.login.Bridge.GetExistingPortalByKey(ctx, portalKey)
 	if err != nil || portal == nil {
-		return newConversation(ctx, nil, l.login, bridgev2.EventSender{}, l.client)
+		return newConversation(ctx, nil, l.login, bridgev2.EventSender{}, l.runtime)
 	}
-	return newConversation(ctx, portal, l.login, bridgev2.EventSender{}, l.client)
+	return newConversation(ctx, portal, l.login, bridgev2.EventSender{}, l.runtime)
 }
 
 // ConversationByPortal returns a Conversation for the given bridgev2.Portal.
 func (l *LoginHandle) ConversationByPortal(ctx context.Context, portal *bridgev2.Portal) *Conversation {
-	return newConversation(ctx, portal, l.login, bridgev2.EventSender{}, l.client)
+	return newConversation(ctx, portal, l.login, bridgev2.EventSender{}, l.runtime)
 }
 
 // EnsureConversation resolves or creates a conversation for the given spec.
@@ -63,13 +63,13 @@ func (l *LoginHandle) EnsureConversation(ctx context.Context, spec ConversationS
 		portal.Metadata = &SDKPortalMetadata{}
 	}
 	var store *conversationStateStore
-	if l.client != nil {
-		store = l.client.conversationState
+	if l.runtime != nil {
+		store = l.runtime.conversationStore()
 	}
 	if err := saveConversationState(ctx, portal, store, state); err != nil {
 		return nil, err
 	}
-	conv := newConversation(ctx, portal, l.login, bridgev2.EventSender{}, l.client)
+	conv := newConversation(ctx, portal, l.login, bridgev2.EventSender{}, l.runtime)
 	if portal.MXID == "" {
 		info := &bridgev2.ChatInfo{Name: ptr.NonZero(portal.Name)}
 		if err := portal.CreateMatrixRoom(ctx, l.login, info); err != nil {
