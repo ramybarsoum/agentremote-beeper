@@ -165,23 +165,30 @@ func pruneHistoryForContextSharePrompt(
 	}
 }
 
+func insufficientPromptResult(
+	prompt []openai.ChatCompletionMessageParamUnion,
+	totalChars int,
+	droppedCount int,
+	applied bool,
+) OverflowCompactionResult {
+	return OverflowCompactionResult{
+		Prompt: prompt,
+		Decision: CompactionDecision{
+			Applied:       applied,
+			DroppedCount:  droppedCount,
+			OriginalChars: totalChars,
+			FinalChars:    totalChars,
+			Reason:        "insufficient_prompt",
+		},
+	}
+}
+
 // CompactPromptOnOverflow applies deterministic compaction + smart truncation for overflow retries.
 func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionResult {
 	workingPrompt := slices.Clone(input.Prompt)
 	if len(workingPrompt) <= 2 {
 		_, totalChars := PromptTextPayloads(workingPrompt)
-		decision := CompactionDecision{
-			Applied:       false,
-			DroppedCount:  0,
-			OriginalChars: totalChars,
-			FinalChars:    totalChars,
-			Reason:        "insufficient_prompt",
-		}
-		return OverflowCompactionResult{
-			Prompt:   workingPrompt,
-			Decision: decision,
-			Success:  false,
-		}
+		return insufficientPromptResult(workingPrompt, totalChars, 0, false)
 	}
 
 	protectedTail := input.ProtectedTail
@@ -206,18 +213,7 @@ func CompactPromptOnOverflow(input OverflowCompactionInput) OverflowCompactionRe
 	}
 	charInputs, totalChars := PromptTextPayloads(workingPrompt)
 	if totalChars <= 0 {
-		decision := CompactionDecision{
-			Applied:       historyPrune.Applied,
-			DroppedCount:  historyPrune.DroppedCount,
-			OriginalChars: totalChars,
-			FinalChars:    totalChars,
-			Reason:        "insufficient_prompt",
-		}
-		return OverflowCompactionResult{
-			Prompt:   workingPrompt,
-			Decision: decision,
-			Success:  false,
-		}
+		return insufficientPromptResult(workingPrompt, totalChars, historyPrune.DroppedCount, historyPrune.Applied)
 	}
 	currentPromptTokens := input.CurrentPromptTokens
 	if currentPromptTokens <= 0 {
