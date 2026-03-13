@@ -372,11 +372,7 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 	}
 	inlineButtonsEnabled := runtimeCapabilitiesLower["inlinebuttons"]
 	messageChannelOptions := strings.Join(listDeliverableMessageChannels(), "|")
-	promptMode := params.PromptMode
-	if promptMode == "" {
-		promptMode = PromptModeFull
-	}
-	isMinimal := promptMode == PromptModeMinimal || promptMode == PromptModeNone
+	isMinimal := promptMode == PromptModeMinimal
 
 	skillsSection := buildSkillsSection(skillsPrompt, isMinimal, readToolName)
 	memorySection := buildMemorySection(isMinimal, availableTools, params.MemoryCitations)
@@ -388,10 +384,6 @@ func BuildSystemPrompt(params SystemPromptParams) string {
 		if trimmed != "" {
 			workspaceNotes = append(workspaceNotes, trimmed)
 		}
-	}
-
-	if promptMode == PromptModeNone {
-		return "You are a personal assistant running inside Beeper."
 	}
 
 	toolingLines := ""
