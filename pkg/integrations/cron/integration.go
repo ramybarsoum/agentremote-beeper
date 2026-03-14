@@ -219,38 +219,32 @@ func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.Tool
 	deps := ToolExecDeps{
 		NowMs: func() int64 { return i.host.Now().UnixMilli() },
 		ResolveCreateContext: func() ToolCreateContext {
-			agentID := "default"
-			if ah, ok := i.host.(iruntime.AgentHelper); ok {
-				if metaAccess, ok := i.host.(iruntime.MetadataAccess); ok && scope.Meta != nil {
-					if resolved := strings.TrimSpace(metaAccess.AgentIDFromMeta(scope.Meta)); resolved != "" {
-						agentID = resolved
-					} else {
-						agentID = ah.DefaultAgentID()
-					}
-				} else {
-					agentID = ah.DefaultAgentID()
+			agentID := i.host.DefaultAgentID()
+			if scope.Meta != nil {
+				if resolved := strings.TrimSpace(i.host.AgentIDFromMeta(scope.Meta)); resolved != "" {
+					agentID = resolved
 				}
 			}
 			roomID := ""
-			if portalManager, ok := i.host.(iruntime.PortalManager); ok && scope.Portal != nil {
-				roomID = portalManager.PortalRoomID(scope.Portal)
+			if scope.Portal != nil {
+				roomID = i.host.PortalRoomID(scope.Portal)
 			}
 			sourceInternal := false
-			if metaAccess, ok := i.host.(iruntime.MetadataAccess); ok && scope.Meta != nil {
-				sourceInternal = metaAccess.IsInternalRoom(scope.Meta)
+			if scope.Meta != nil {
+				sourceInternal = i.host.IsInternalRoom(scope.Meta)
 			}
 			return ToolCreateContext{AgentID: agentID, SourceInternal: sourceInternal, SourceRoomID: roomID}
 		},
 		ResolveReminderLines: func(count int) []ReminderContextLine {
-			if mh, ok := i.host.(iruntime.MessageHelper); ok && scope.Portal != nil {
-				msgs := mh.RecentMessages(ctx, scope.Portal, count)
-				lines := make([]ReminderContextLine, 0, len(msgs))
-				for _, msg := range msgs {
-					lines = append(lines, ReminderContextLine{Role: msg.Role, Text: msg.Body})
-				}
-				return lines
+			if scope.Portal == nil {
+				return nil
 			}
-			return nil
+			msgs := i.host.RecentMessages(ctx, scope.Portal, count)
+			lines := make([]ReminderContextLine, 0, len(msgs))
+			for _, msg := range msgs {
+				lines = append(lines, ReminderContextLine{Role: msg.Role, Text: msg.Body})
+			}
+			return lines
 		},
 		ValidateDeliveryTo: ValidateDeliveryTo,
 	}
@@ -286,6 +280,8 @@ func commandScopeToToolScope(scope iruntime.CommandScope) iruntime.ToolScope {
 	}
 }
 
-var _ iruntime.ToolIntegration = (*Integration)(nil)
-var _ iruntime.CommandIntegration = (*Integration)(nil)
-var _ iruntime.LifecycleIntegration = (*Integration)(nil)
+var (
+	_ iruntime.ToolIntegration      = (*Integration)(nil)
+	_ iruntime.CommandIntegration   = (*Integration)(nil)
+	_ iruntime.LifecycleIntegration = (*Integration)(nil)
+)

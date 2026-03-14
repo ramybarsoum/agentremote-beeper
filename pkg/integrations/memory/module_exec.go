@@ -400,9 +400,8 @@ func readStringList(args map[string]any, key string) []string {
 	if args == nil {
 		return nil
 	}
-	raw := args[key]
 	var items []string
-	switch list := raw.(type) {
+	switch list := args[key].(type) {
 	case []any:
 		for _, item := range list {
 			if s, ok := item.(string); ok {

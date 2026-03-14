@@ -1,8 +1,6 @@
 package cron
 
-import (
-	"strings"
-)
+import "strings"
 
 type DeliveryTarget struct {
 	Portal  any
@@ -64,13 +62,10 @@ func resolveLastTarget(agentID string, deps DeliveryResolverDeps) string {
 		if ok {
 			lastChannel = strings.TrimSpace(lastChannel)
 			candidate = strings.TrimSpace(candidate)
-			if (lastChannel == "" || strings.EqualFold(lastChannel, "matrix")) && candidate != "" {
-				if strings.HasPrefix(candidate, "!") && deps.IsStaleTarget != nil && deps.IsStaleTarget(candidate, agentID) {
-					candidate = ""
-				}
-				if candidate != "" {
-					return candidate
-				}
+			isMatrix := lastChannel == "" || strings.EqualFold(lastChannel, "matrix")
+			isStale := strings.HasPrefix(candidate, "!") && deps.IsStaleTarget != nil && deps.IsStaleTarget(candidate, agentID)
+			if isMatrix && candidate != "" && !isStale {
+				return candidate
 			}
 		}
 	}

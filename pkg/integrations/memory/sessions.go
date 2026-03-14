@@ -109,17 +109,9 @@ func (m *MemorySearchManager) syncSessions(ctx context.Context, force bool, sess
 		if !shouldIndex {
 			thresholdBytes := m.cfg.Sync.Sessions.DeltaBytes
 			thresholdMessages := m.cfg.Sync.Sessions.DeltaMessages
-			bytesHit := thresholdBytes <= 0 && state.pendingBytes > 0
-			if thresholdBytes > 0 && state.pendingBytes >= thresholdBytes {
-				bytesHit = true
-			}
-			messagesHit := thresholdMessages <= 0 && state.pendingMessages > 0
-			if thresholdMessages > 0 && state.pendingMessages >= thresholdMessages {
-				messagesHit = true
-			}
-			if bytesHit || messagesHit {
-				shouldIndex = true
-			}
+			bytesHit := state.pendingBytes > 0 && (thresholdBytes <= 0 || state.pendingBytes >= thresholdBytes)
+			messagesHit := state.pendingMessages > 0 && (thresholdMessages <= 0 || state.pendingMessages >= thresholdMessages)
+			shouldIndex = bytesHit || messagesHit
 		}
 
 		if shouldIndex {

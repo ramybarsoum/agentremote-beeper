@@ -218,13 +218,10 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	if m == nil {
 		return nil, errors.New("memory search unavailable")
 	}
-	// Memory status reflects the current lexical-only runtime behavior.
-	// Keep the report truthful and avoid placeholder vector/embedding fields.
 	statusCtx, cancel := context.WithTimeout(ctx, memoryStatusTimeout)
 	defer cancel()
 	start := time.Now()
 
-	// Snapshot mutable fields under mu to avoid data races with sync().
 	m.mu.Lock()
 	dirty := m.dirty
 	indexGen := m.indexGen
@@ -324,9 +321,6 @@ func (m *MemorySearchManager) Search(ctx context.Context, query string, opts mem
 		return nil, errors.New("memory search unavailable")
 	}
 
-	// Snapshot indexGen under mu to avoid data races with sync().
-	// TryLock: if sync() holds mu we read a potentially stale value, which is
-	// acceptable — the generation filter only affects which chunks are returned.
 	var indexGen string
 	var shouldSync bool
 	if m.mu.TryLock() {

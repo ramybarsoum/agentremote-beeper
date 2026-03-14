@@ -41,7 +41,7 @@ func (m *MemorySearchManager) purgeSessionData(ctx context.Context, sessionKey, 
 // pruneExpiredSessions removes session files and their index entries that are older
 // than the configured retention window. No-op if retention_days is 0 (unlimited).
 func (m *MemorySearchManager) pruneExpiredSessions(ctx context.Context) {
-	if m == nil || m.cfg == nil {
+	if m == nil {
 		return
 	}
 	days := m.cfg.Sync.Sessions.RetentionDays

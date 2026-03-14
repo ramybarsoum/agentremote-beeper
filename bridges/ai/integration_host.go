@@ -31,53 +31,13 @@ func newRuntimeIntegrationHost(client *AIClient) *runtimeIntegrationHost {
 // ---- Core Host interface ----
 
 func (h *runtimeIntegrationHost) Logger() integrationruntime.Logger {
-	return &runtimeLogger{client: h.client}
+	if h == nil || h.client == nil {
+		return nil
+	}
+	return h
 }
 
 func (h *runtimeIntegrationHost) Now() time.Time { return time.Now() }
-
-func (h *runtimeIntegrationHost) PortalResolver() integrationruntime.PortalResolver {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return &hostPortalResolver{client: h.client}
-}
-
-func (h *runtimeIntegrationHost) Dispatch() integrationruntime.Dispatch {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return &hostDispatch{client: h.client}
-}
-
-func (h *runtimeIntegrationHost) Heartbeat() integrationruntime.Heartbeat {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return &hostHeartbeat{client: h.client}
-}
-
-func (h *runtimeIntegrationHost) ToolExec() integrationruntime.ToolExec {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return &hostToolExec{client: h.client}
-}
-
-func (h *runtimeIntegrationHost) PromptContext() integrationruntime.PromptContext {
-	return &hostPromptContext{}
-}
-
-func (h *runtimeIntegrationHost) DBAccess() integrationruntime.DBAccess {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return &hostDBAccess{client: h.client}
-}
-
-func (h *runtimeIntegrationHost) ConfigLookup() integrationruntime.ConfigLookup { return h }
-
-// ---- ConfigLookup ----
 
 func (h *runtimeIntegrationHost) ModuleEnabled(name string) bool {
 	if h == nil || h.client == nil || h.client.connector == nil {
@@ -157,7 +117,7 @@ func (h *runtimeIntegrationHost) AgentModuleConfig(agentID string, module string
 	return moduleData
 }
 
-// ---- Optional Host capability: RawLoggerAccess ----
+// ---- Host methods: logger access ----
 
 func (h *runtimeIntegrationHost) RawLogger() any {
 	if h == nil || h.client == nil {
@@ -166,7 +126,7 @@ func (h *runtimeIntegrationHost) RawLogger() any {
 	return h.client.log
 }
 
-// ---- Optional Host capability: PortalManager ----
+// ---- Host methods: portal management ----
 
 func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID string, receiver string, displayName string, setupMeta func(meta any)) (portal any, roomID string, err error) {
 	if h == nil || h.client == nil || h.client.UserLogin == nil {
@@ -222,7 +182,7 @@ func (h *runtimeIntegrationHost) PortalKeyString(portal any) string {
 	return p.PortalKey.String()
 }
 
-// ---- Optional Host capability: MetadataAccess ----
+// ---- Host methods: metadata access ----
 
 func (h *runtimeIntegrationHost) GetModuleMeta(meta any, key string) any {
 	m, _ := meta.(*PortalMetadata)
@@ -300,7 +260,7 @@ func (h *runtimeIntegrationHost) SetMetaField(meta any, key string, value any) {
 	}
 }
 
-// ---- Optional Host capability: MessageHelper ----
+// ---- Host methods: message helpers ----
 
 func (h *runtimeIntegrationHost) RecentMessages(ctx context.Context, portal any, count int) []integrationruntime.MessageSummary {
 	if h == nil || h.client == nil {
@@ -366,7 +326,7 @@ func (h *runtimeIntegrationHost) WaitForAssistantMessage(ctx context.Context, po
 	}, true
 }
 
-// ---- Optional Host capability: HeartbeatHelper ----
+// ---- Host methods: heartbeat helpers ----
 
 func (h *runtimeIntegrationHost) RunHeartbeatOnce(ctx context.Context, reason string) (status string, reasonMsg string) {
 	if h == nil || h.client == nil || h.client.scheduler == nil {
@@ -426,7 +386,7 @@ func (h *runtimeIntegrationHost) ResolveLastTarget(agentID string) (channel stri
 	return entry.LastChannel, entry.LastTo, true
 }
 
-// ---- Optional Host capability: AgentHelper ----
+// ---- Host methods: agent helpers ----
 
 func (h *runtimeIntegrationHost) ResolveAgentID(raw string, fallbackDefault string) string {
 	if h == nil || h.client == nil {
@@ -492,7 +452,7 @@ func (h *runtimeIntegrationHost) NormalizeThinkingLevel(raw string) (string, boo
 	return normalizeThinkingLevel(raw)
 }
 
-// ---- Optional Host capability: ModelHelper ----
+// ---- Host methods: model helpers ----
 
 func (h *runtimeIntegrationHost) EffectiveModel(meta any) string {
 	if h == nil || h.client == nil {
@@ -510,7 +470,7 @@ func (h *runtimeIntegrationHost) ContextWindow(meta any) int {
 	return h.client.getModelContextWindow(m)
 }
 
-// ---- Optional Host capability: ContextHelper ----
+// ---- Host methods: context helpers ----
 
 func (h *runtimeIntegrationHost) MergeDisconnectContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if h == nil || h.client == nil {
@@ -551,7 +511,7 @@ func (h *runtimeIntegrationHost) BackgroundContext(ctx context.Context) context.
 	return h.client.backgroundContext(ctx)
 }
 
-// ---- Optional Host capability: ChatCompletionAPI ----
+// ---- Host methods: chat completions ----
 
 func (h *runtimeIntegrationHost) NewCompletion(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, toolParams any) (*integrationruntime.CompletionResult, error) {
 	if h == nil || h.client == nil {
@@ -591,7 +551,7 @@ func (h *runtimeIntegrationHost) NewCompletion(ctx context.Context, model string
 	return result, nil
 }
 
-// ---- Optional Host capability: ToolPolicyHelper ----
+// ---- Host methods: tool policy ----
 
 func (h *runtimeIntegrationHost) IsToolEnabled(meta any, toolName string) bool {
 	if h == nil || h.client == nil {
@@ -637,7 +597,7 @@ func (h *runtimeIntegrationHost) ToolsToOpenAIParams(tools []integrationruntime.
 	return dedupeChatToolParams(params)
 }
 
-// ---- Optional Host capability: TextFileHelper ----
+// ---- Host methods: text file access ----
 
 func (h *runtimeIntegrationHost) ReadTextFile(ctx context.Context, agentID string, path string) (content string, filePath string, found bool, err error) {
 	if h == nil || h.client == nil {
@@ -701,7 +661,7 @@ func (h *runtimeIntegrationHost) WriteTextFile(ctx context.Context, portal any, 
 	return path, nil
 }
 
-// ---- Optional Host capability: OverflowHelper ----
+// ---- Host methods: overflow helpers ----
 
 func (h *runtimeIntegrationHost) SmartTruncatePrompt(prompt []openai.ChatCompletionMessageParamUnion, ratio float64) []openai.ChatCompletionMessageParamUnion {
 	return airuntime.SmartTruncatePrompt(prompt, ratio)
@@ -739,7 +699,7 @@ func (h *runtimeIntegrationHost) OverflowFlushConfig() (enabled *bool, softThres
 	return cfg.Enabled, cfg.SoftThresholdTokens, cfg.Prompt, cfg.SystemPrompt
 }
 
-// ---- Optional Host capability: LoginHelper ----
+// ---- Host methods: login helpers ----
 
 func (h *runtimeIntegrationHost) IsLoggedIn() bool {
 	if h == nil || h.client == nil {
@@ -816,39 +776,31 @@ func (h *runtimeIntegrationHost) LoginDB() any {
 	return h.client.bridgeDB()
 }
 
-// ---- Core Host sub-adapters ----
+// ---- Host methods: dispatch/lookup primitives ----
 
-type hostPortalResolver struct {
-	client *AIClient
-}
-
-func (r *hostPortalResolver) ResolvePortalByRoomID(ctx context.Context, roomID string) any {
-	if r == nil || r.client == nil || strings.TrimSpace(roomID) == "" {
+func (h *runtimeIntegrationHost) ResolvePortalByRoomID(ctx context.Context, roomID string) any {
+	if h == nil || h.client == nil || strings.TrimSpace(roomID) == "" {
 		return nil
 	}
-	return r.client.portalByRoomID(ctx, portalRoomIDFromString(roomID))
+	return h.client.portalByRoomID(ctx, portalRoomIDFromString(roomID))
 }
 
-func (r *hostPortalResolver) ResolveDefaultPortal(ctx context.Context) any {
-	if r == nil || r.client == nil {
+func (h *runtimeIntegrationHost) ResolveDefaultPortal(ctx context.Context) any {
+	if h == nil || h.client == nil {
 		return nil
 	}
-	return r.client.defaultChatPortal()
+	return h.client.defaultChatPortal()
 }
 
-func (r *hostPortalResolver) ResolveLastActivePortal(ctx context.Context, agentID string) any {
-	if r == nil || r.client == nil {
+func (h *runtimeIntegrationHost) ResolveLastActivePortal(ctx context.Context, agentID string) any {
+	if h == nil || h.client == nil {
 		return nil
 	}
-	return r.client.lastActivePortal(agentID)
+	return h.client.lastActivePortal(agentID)
 }
 
-type hostDispatch struct {
-	client *AIClient
-}
-
-func (d *hostDispatch) DispatchInternalMessage(ctx context.Context, portal any, meta any, message string, source string) error {
-	if d == nil || d.client == nil {
+func (h *runtimeIntegrationHost) DispatchInternalMessage(ctx context.Context, portal any, meta any, message string, source string) error {
+	if h == nil || h.client == nil {
 		return fmt.Errorf("missing client")
 	}
 	p, _ := portal.(*bridgev2.Portal)
@@ -859,37 +811,29 @@ func (d *hostDispatch) DispatchInternalMessage(ctx context.Context, portal any, 
 	if m == nil {
 		m = &PortalMetadata{}
 	}
-	_, _, err := d.client.dispatchInternalMessage(ctx, p, m, message, source, false)
+	_, _, err := h.client.dispatchInternalMessage(ctx, p, m, message, source, false)
 	return err
 }
 
-func (d *hostDispatch) SendAssistantMessage(ctx context.Context, portal any, body string) error {
-	if d == nil || d.client == nil {
+func (h *runtimeIntegrationHost) SendAssistantMessage(ctx context.Context, portal any, body string) error {
+	if h == nil || h.client == nil {
 		return fmt.Errorf("missing client")
 	}
 	p, _ := portal.(*bridgev2.Portal)
 	if p == nil {
 		return fmt.Errorf("missing portal")
 	}
-	return d.client.sendPlainAssistantMessageWithResult(ctx, p, body)
+	return h.client.sendPlainAssistantMessageWithResult(ctx, p, body)
 }
 
-type hostHeartbeat struct {
-	client *AIClient
-}
-
-func (hb *hostHeartbeat) RequestNow(ctx context.Context, reason string) {
-	if hb == nil || hb.client == nil || hb.client.scheduler == nil {
+func (h *runtimeIntegrationHost) RequestNow(ctx context.Context, reason string) {
+	if h == nil || h.client == nil || h.client.scheduler == nil {
 		return
 	}
-	hb.client.scheduler.RequestHeartbeatNow(ctx, reason)
+	h.client.scheduler.RequestHeartbeatNow(ctx, reason)
 }
 
-type hostToolExec struct {
-	client *AIClient
-}
-
-func (t *hostToolExec) ToolDefinitionByName(name string) (integrationruntime.ToolDefinition, bool) {
+func (h *runtimeIntegrationHost) ToolDefinitionByName(name string) (integrationruntime.ToolDefinition, bool) {
 	for _, def := range BuiltinTools() {
 		if def.Name == name {
 			return def, true
@@ -898,56 +842,46 @@ func (t *hostToolExec) ToolDefinitionByName(name string) (integrationruntime.Too
 	return integrationruntime.ToolDefinition{}, false
 }
 
-func (t *hostToolExec) ExecuteBuiltinTool(ctx context.Context, scope integrationruntime.ToolScope, name string, rawArgsJSON string) (string, error) {
-	if t == nil || t.client == nil {
+func (h *runtimeIntegrationHost) ExecuteBuiltinTool(ctx context.Context, scope integrationruntime.ToolScope, name string, rawArgsJSON string) (string, error) {
+	if h == nil || h.client == nil {
 		return "", fmt.Errorf("missing client")
 	}
 	portal, _ := scope.Portal.(*bridgev2.Portal)
-	return t.client.executeBuiltinTool(ctx, portal, name, rawArgsJSON)
+	return h.client.executeBuiltinTool(ctx, portal, name, rawArgsJSON)
 }
 
-type hostPromptContext struct{}
-
-func (p *hostPromptContext) ResolveWorkspaceDir() string {
+func (h *runtimeIntegrationHost) ResolveWorkspaceDir() string {
 	return resolvePromptWorkspaceDir()
 }
 
-type hostDBAccess struct {
-	client *AIClient
-}
-
-func (d *hostDBAccess) BridgeDB() any {
-	if d == nil || d.client == nil {
+func (h *runtimeIntegrationHost) BridgeDB() any {
+	if h == nil || h.client == nil {
 		return nil
 	}
-	return d.client.bridgeDB()
+	return h.client.bridgeDB()
 }
 
-func (d *hostDBAccess) BridgeID() string {
-	if d == nil || d.client == nil || d.client.UserLogin == nil || d.client.UserLogin.Bridge == nil || d.client.UserLogin.Bridge.DB == nil {
+func (h *runtimeIntegrationHost) BridgeID() string {
+	if h == nil || h.client == nil || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
 		return ""
 	}
-	return string(d.client.UserLogin.Bridge.DB.BridgeID)
+	return string(h.client.UserLogin.Bridge.DB.BridgeID)
 }
 
-func (d *hostDBAccess) LoginID() string {
-	if d == nil || d.client == nil || d.client.UserLogin == nil {
+func (h *runtimeIntegrationHost) LoginID() string {
+	if h == nil || h.client == nil || h.client.UserLogin == nil {
 		return ""
 	}
-	return string(d.client.UserLogin.ID)
+	return string(h.client.UserLogin.ID)
 }
 
 // ---- Logger ----
 
-type runtimeLogger struct {
-	client *AIClient
-}
-
-func (l *runtimeLogger) emit(level string, msg string, fields map[string]any) {
-	if l == nil || l.client == nil {
+func (h *runtimeIntegrationHost) emit(level string, msg string, fields map[string]any) {
+	if h == nil || h.client == nil {
 		return
 	}
-	logger := l.client.log.With().Fields(fields).Logger()
+	logger := h.client.log.With().Fields(fields).Logger()
 	switch level {
 	case "debug":
 		logger.Debug().Msg(msg)
@@ -960,10 +894,14 @@ func (l *runtimeLogger) emit(level string, msg string, fields map[string]any) {
 	}
 }
 
-func (l *runtimeLogger) Debug(msg string, fields map[string]any) { l.emit("debug", msg, fields) }
-func (l *runtimeLogger) Info(msg string, fields map[string]any)  { l.emit("info", msg, fields) }
-func (l *runtimeLogger) Warn(msg string, fields map[string]any)  { l.emit("warn", msg, fields) }
-func (l *runtimeLogger) Error(msg string, fields map[string]any) { l.emit("error", msg, fields) }
+func (h *runtimeIntegrationHost) Debug(msg string, fields map[string]any) {
+	h.emit("debug", msg, fields)
+}
+func (h *runtimeIntegrationHost) Info(msg string, fields map[string]any) { h.emit("info", msg, fields) }
+func (h *runtimeIntegrationHost) Warn(msg string, fields map[string]any) { h.emit("warn", msg, fields) }
+func (h *runtimeIntegrationHost) Error(msg string, fields map[string]any) {
+	h.emit("error", msg, fields)
+}
 
 // ---- AIClient message helpers (called from sessions_tools.go) ----
 

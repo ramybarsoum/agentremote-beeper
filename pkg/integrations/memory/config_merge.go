@@ -95,25 +95,27 @@ func normalizeSources(input []string, sessionMemoryEnabled bool) []string {
 	if len(input) == 0 {
 		input = []string{DefaultMemorySource, "workspace"}
 	}
-	normalized := make(map[string]bool)
+	seen := make(map[string]struct{})
+	var out []string
 	for _, source := range input {
-		switch strings.ToLower(strings.TrimSpace(source)) {
-		case "memory":
-			normalized["memory"] = true
-		case "workspace":
-			normalized["workspace"] = true
+		key := strings.ToLower(strings.TrimSpace(source))
+		switch key {
+		case "memory", "workspace":
 		case "sessions":
-			if sessionMemoryEnabled {
-				normalized["sessions"] = true
+			if !sessionMemoryEnabled {
+				continue
 			}
+		default:
+			continue
 		}
-	}
-	if len(normalized) == 0 {
-		normalized["memory"] = true
-	}
-	out := make([]string, 0, len(normalized))
-	for key := range normalized {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
 		out = append(out, key)
+	}
+	if len(out) == 0 {
+		return []string{"memory"}
 	}
 	return out
 }

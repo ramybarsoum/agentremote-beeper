@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"strings"
 
 	"go.mau.fi/util/dbutil"
 )
@@ -51,18 +50,5 @@ func PurgeTablesBestEffort(ctx context.Context, db *dbutil.Database, bridgeID, l
 }
 
 func bestEffortExec(ctx context.Context, db *dbutil.Database, query string, args ...any) {
-	if db == nil {
-		return
-	}
-	_, err := db.Exec(ctx, query, args...)
-	if err == nil {
-		return
-	}
-	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "no such table") ||
-		strings.Contains(msg, "does not exist") ||
-		strings.Contains(msg, "undefined table") ||
-		strings.Contains(msg, "no such module") {
-		return
-	}
+	_, _ = db.Exec(ctx, query, args...)
 }
