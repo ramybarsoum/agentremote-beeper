@@ -119,6 +119,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	if oc.IsStreamShuttingDown() || turn == nil {
 		return
 	}
+	tools := turn.Tools()
 	switch strings.TrimSpace(partType) {
 	case "start", "message-metadata":
 		if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
@@ -152,24 +153,32 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		toolName, _ := part["toolName"].(string)
 		toolCallID, _ := part["toolCallId"].(string)
 		providerExecuted, _ := part["providerExecuted"].(bool)
-		turn.ToolStart(toolName, toolCallID, providerExecuted)
+		tools.EnsureInputStart(toolCallID, nil, bridgesdk.ToolInputOptions{
+			ToolName:         toolName,
+			ProviderExecuted: providerExecuted,
+		})
 	case "tool-input-delta":
 		toolCallID, _ := part["toolCallId"].(string)
 		inputTextDelta, _ := part["inputTextDelta"].(string)
-		turn.ToolInputDelta(toolCallID, inputTextDelta)
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		tools.InputDelta(toolCallID, inputTextDelta, providerExecuted)
 	case "tool-input-available":
 		toolCallID, _ := part["toolCallId"].(string)
-		turn.ToolInput(toolCallID, part["input"])
+		toolName, _ := part["toolName"].(string)
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		tools.Input(toolCallID, toolName, part["input"], providerExecuted)
 	case "tool-output-available":
 		toolCallID, _ := part["toolCallId"].(string)
-		turn.ToolOutput(toolCallID, part["output"])
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		tools.Output(toolCallID, part["output"], bridgesdk.ToolOutputOptions{ProviderExecuted: providerExecuted})
 	case "tool-output-error":
 		toolCallID, _ := part["toolCallId"].(string)
 		errorText, _ := part["errorText"].(string)
-		turn.ToolOutputError(toolCallID, errorText)
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		tools.OutputError(toolCallID, errorText, providerExecuted)
 	case "tool-output-denied":
 		toolCallID, _ := part["toolCallId"].(string)
-		turn.ToolDenied(toolCallID)
+		tools.Denied(toolCallID)
 	case "tool-approval-request":
 		approvalID, _ := part["approvalId"].(string)
 		toolCallID, _ := part["toolCallId"].(string)

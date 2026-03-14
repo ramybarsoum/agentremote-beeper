@@ -42,6 +42,11 @@ type TurnStream struct {
 	turnAccessor
 }
 
+// ToolsController is the turn-owned tool streaming surface.
+type ToolsController struct {
+	turnAccessor
+}
+
 // Stream returns the turn's provider-facing streaming surface.
 func (t *Turn) Stream() *TurnStream {
 	if t == nil {
@@ -107,65 +112,116 @@ func (s *TurnStream) ReasoningEnd() {
 	s.turn.FinishReasoning()
 }
 
-// EnsureToolInputStart ensures the tool input UI exists and optionally publishes input.
-func (s *TurnStream) EnsureToolInputStart(toolCallID string, input any, opts ToolInputOptions) {
-	if !s.valid() || strings.TrimSpace(toolCallID) == "" {
+// Tools returns the turn's tool streaming controller.
+func (t *Turn) Tools() *ToolsController {
+	if t == nil {
+		return nil
+	}
+	return &ToolsController{turnAccessor{turn: t}}
+}
+
+// EnsureInputStart ensures the tool input UI exists and optionally publishes input.
+func (c *ToolsController) EnsureInputStart(toolCallID string, input any, opts ToolInputOptions) {
+	if !c.valid() || strings.TrimSpace(toolCallID) == "" {
 		return
 	}
-	s.turn.ensureStarted()
+	c.turn.ensureStarted()
 	toolName := strings.TrimSpace(opts.ToolName)
 	displayTitle := strings.TrimSpace(opts.DisplayTitle)
 	if displayTitle == "" {
 		displayTitle = streamui.ToolDisplayTitle(toolName)
 	}
-	s.turn.emitter.EnsureUIToolInputStart(s.turn.turnCtx, s.portal(), toolCallID, toolName, opts.ProviderExecuted, displayTitle, nil)
+	c.turn.emitter.EnsureUIToolInputStart(c.turn.turnCtx, c.portal(), toolCallID, toolName, opts.ProviderExecuted, displayTitle, nil)
 	if input != nil {
-		s.turn.emitter.EmitUIToolInputAvailable(s.turn.turnCtx, s.portal(), toolCallID, toolName, input, opts.ProviderExecuted)
+		c.turn.emitter.EmitUIToolInputAvailable(c.turn.turnCtx, c.portal(), toolCallID, toolName, input, opts.ProviderExecuted)
 	}
 }
 
-// ToolInputDelta emits a tool input delta.
+// InputDelta emits a tool input delta.
+func (c *ToolsController) InputDelta(toolCallID, delta string, providerExecuted bool) {
+	if !c.valid() {
+		return
+	}
+	c.turn.ensureStarted()
+	c.turn.emitter.EmitUIToolInputDelta(c.turn.turnCtx, c.portal(), toolCallID, "", delta, providerExecuted)
+}
+
+// Input emits a complete tool input payload.
+func (c *ToolsController) Input(toolCallID, toolName string, input any, providerExecuted bool) {
+	if !c.valid() {
+		return
+	}
+	c.turn.ensureStarted()
+	c.turn.emitter.EmitUIToolInputAvailable(c.turn.turnCtx, c.portal(), toolCallID, toolName, input, providerExecuted)
+}
+
+// Output emits a tool output payload.
+func (c *ToolsController) Output(toolCallID string, output any, opts ToolOutputOptions) {
+	if !c.valid() {
+		return
+	}
+	c.turn.ensureStarted()
+	c.turn.emitter.EmitUIToolOutputAvailable(c.turn.turnCtx, c.portal(), toolCallID, output, opts.ProviderExecuted, opts.Streaming)
+}
+
+// OutputError emits a tool error payload.
+func (c *ToolsController) OutputError(toolCallID, errText string, providerExecuted bool) {
+	if !c.valid() {
+		return
+	}
+	c.turn.ensureStarted()
+	c.turn.emitter.EmitUIToolOutputError(c.turn.turnCtx, c.portal(), toolCallID, errText, providerExecuted)
+}
+
+// Denied emits a denied tool result.
+func (c *ToolsController) Denied(toolCallID string) {
+	if !c.valid() {
+		return
+	}
+	c.turn.ToolDenied(toolCallID)
+}
+
+// Backward-compatible TurnStream tool helpers delegate to the turn-owned tools controller.
+func (s *TurnStream) EnsureToolInputStart(toolCallID string, input any, opts ToolInputOptions) {
+	if !s.valid() {
+		return
+	}
+	s.turn.Tools().EnsureInputStart(toolCallID, input, opts)
+}
+
 func (s *TurnStream) ToolInputDelta(toolCallID, delta string, providerExecuted bool) {
 	if !s.valid() {
 		return
 	}
-	s.turn.ensureStarted()
-	s.turn.emitter.EmitUIToolInputDelta(s.turn.turnCtx, s.portal(), toolCallID, "", delta, providerExecuted)
+	s.turn.Tools().InputDelta(toolCallID, delta, providerExecuted)
 }
 
-// ToolInput emits a complete tool input payload.
 func (s *TurnStream) ToolInput(toolCallID, toolName string, input any, providerExecuted bool) {
 	if !s.valid() {
 		return
 	}
-	s.turn.ensureStarted()
-	s.turn.emitter.EmitUIToolInputAvailable(s.turn.turnCtx, s.portal(), toolCallID, toolName, input, providerExecuted)
+	s.turn.Tools().Input(toolCallID, toolName, input, providerExecuted)
 }
 
-// ToolOutput emits a tool output payload.
 func (s *TurnStream) ToolOutput(toolCallID string, output any, opts ToolOutputOptions) {
 	if !s.valid() {
 		return
 	}
-	s.turn.ensureStarted()
-	s.turn.emitter.EmitUIToolOutputAvailable(s.turn.turnCtx, s.portal(), toolCallID, output, opts.ProviderExecuted, opts.Streaming)
+	s.turn.Tools().Output(toolCallID, output, opts)
 }
 
-// ToolOutputError emits a tool error payload.
 func (s *TurnStream) ToolOutputError(toolCallID, errText string, providerExecuted bool) {
 	if !s.valid() {
 		return
 	}
-	s.turn.ensureStarted()
-	s.turn.emitter.EmitUIToolOutputError(s.turn.turnCtx, s.portal(), toolCallID, errText, providerExecuted)
+	s.turn.Tools().OutputError(toolCallID, errText, providerExecuted)
 }
 
-// ToolDenied emits a denied tool result.
 func (s *TurnStream) ToolDenied(toolCallID string) {
 	if !s.valid() {
 		return
 	}
-	s.turn.ToolDenied(toolCallID)
+	s.turn.Tools().Denied(toolCallID)
 }
 
 // SourceURL emits a source URL citation.

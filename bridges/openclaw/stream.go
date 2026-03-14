@@ -140,6 +140,7 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		return
 	}
 	stream := turn.Stream()
+	tools := turn.Tools()
 	switch partType {
 	case "start", "message-metadata":
 		if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
@@ -161,7 +162,7 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		toolName := strings.TrimSpace(stringValue(part["toolName"]))
 		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
 		providerExecuted, _ := part["providerExecuted"].(bool)
-		stream.EnsureToolInputStart(toolCallID, nil, bridgesdk.ToolInputOptions{
+		tools.EnsureInputStart(toolCallID, nil, bridgesdk.ToolInputOptions{
 			ToolName:         toolName,
 			ProviderExecuted: providerExecuted,
 		})
@@ -169,24 +170,24 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
 		inputTextDelta := stringValue(part["inputTextDelta"])
 		providerExecuted, _ := part["providerExecuted"].(bool)
-		stream.ToolInputDelta(toolCallID, inputTextDelta, providerExecuted)
+		tools.InputDelta(toolCallID, inputTextDelta, providerExecuted)
 	case "tool-input-available":
 		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
 		toolName := strings.TrimSpace(stringValue(part["toolName"]))
 		providerExecuted, _ := part["providerExecuted"].(bool)
-		stream.ToolInput(toolCallID, toolName, part["input"], providerExecuted)
+		tools.Input(toolCallID, toolName, part["input"], providerExecuted)
 	case "tool-output-available":
 		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
 		providerExecuted, _ := part["providerExecuted"].(bool)
-		stream.ToolOutput(toolCallID, part["output"], bridgesdk.ToolOutputOptions{ProviderExecuted: providerExecuted})
+		tools.Output(toolCallID, part["output"], bridgesdk.ToolOutputOptions{ProviderExecuted: providerExecuted})
 	case "tool-output-error":
 		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
 		errorText := stringValue(part["errorText"])
 		providerExecuted, _ := part["providerExecuted"].(bool)
-		stream.ToolOutputError(toolCallID, errorText, providerExecuted)
+		tools.OutputError(toolCallID, errorText, providerExecuted)
 	case "tool-output-denied":
 		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
-		stream.ToolDenied(toolCallID)
+		tools.Denied(toolCallID)
 	case "tool-approval-request":
 		approvalID := strings.TrimSpace(stringValue(part["approvalId"]))
 		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))

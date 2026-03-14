@@ -1835,8 +1835,8 @@ func (cc *CodexClient) emitUIToolOutputAvailable(
 	providerExecuted bool,
 	streaming bool,
 ) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.ToolOutput(toolCallID, output, bridgesdk.ToolOutputOptions{
+	if state != nil && state.turn != nil {
+		state.turn.Tools().Output(toolCallID, output, bridgesdk.ToolOutputOptions{
 			ProviderExecuted: providerExecuted,
 			Streaming:        streaming,
 		})
@@ -1844,8 +1844,8 @@ func (cc *CodexClient) emitUIToolOutputAvailable(
 }
 
 func (cc *CodexClient) emitUIToolOutputDenied(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID string) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.ToolDenied(toolCallID)
+	if state != nil && state.turn != nil {
+		state.turn.Tools().Denied(toolCallID)
 	}
 }
 
@@ -1857,8 +1857,8 @@ func (cc *CodexClient) emitUIToolOutputError(
 	errText string,
 	providerExecuted bool,
 ) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.ToolOutputError(toolCallID, errText, providerExecuted)
+	if state != nil && state.turn != nil {
+		state.turn.Tools().OutputError(toolCallID, errText, providerExecuted)
 	}
 }
 
@@ -1890,8 +1890,8 @@ func (cc *CodexClient) ensureUIToolInputStart(ctx context.Context, portal *bridg
 	if toolCallID == "" {
 		return
 	}
-	if stream := cc.turnStream(state); stream != nil {
-		stream.EnsureToolInputStart(toolCallID, input, bridgesdk.ToolInputOptions{
+	if state != nil && state.turn != nil {
+		state.turn.Tools().EnsureInputStart(toolCallID, input, bridgesdk.ToolInputOptions{
 			ToolName:         toolName,
 			ProviderExecuted: providerExecuted,
 		})
@@ -2111,7 +2111,7 @@ func (h *codexSDKApprovalHandle) Wait(ctx context.Context) (bridgesdk.ToolApprov
 	if h.turn != nil {
 		h.turn.Approvals().Respond(h.approvalID, h.toolCallID, ok && decision.Approved, reason)
 		if !(ok && decision.Approved) {
-			h.turn.Stream().ToolDenied(h.toolCallID)
+			h.turn.Tools().Denied(h.toolCallID)
 		}
 	}
 	return bridgesdk.ToolApprovalResponse{
