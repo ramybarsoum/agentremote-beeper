@@ -3,8 +3,9 @@ package memory
 import (
 	"testing"
 
-	"github.com/beeper/agentremote/pkg/agents"
 	"go.mau.fi/util/ptr"
+
+	"github.com/beeper/agentremote/pkg/agents"
 )
 
 func TestMergeSearchConfig_NormalizesUnlimitedCacheEntries(t *testing.T) {
