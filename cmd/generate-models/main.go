@@ -181,33 +181,37 @@ type ModelCapabilities struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	token := flag.String("openrouter-token", "", "OpenRouter API token")
 	outputFile := flag.String("output", "bridges/ai/beeper_models_generated.go", "Output Go file")
 	jsonFile := flag.String("json", "pkg/connector/beeper_models.json", "Output JSON file for clients")
 	flag.Parse()
 
 	if *token == "" {
-		fmt.Fprintln(os.Stderr, "Error: --openrouter-token is required")
-		os.Exit(1)
+		return fmt.Errorf("--openrouter-token is required")
 	}
 
 	models, err := fetchOpenRouterModels(*token)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching models: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("fetching models: %w", err)
 	}
 
 	if err := generateGoFile(models, *outputFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Error generating file: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("generating Go file: %w", err)
 	}
 	fmt.Printf("Generated %s with %d models\n", *outputFile, len(modelConfig.Models))
 
 	if err := generateJSONFile(models, *jsonFile); err != nil {
-		fmt.Fprintf(os.Stderr, "Error generating JSON file: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("generating JSON file: %w", err)
 	}
 	fmt.Printf("Generated %s\n", *jsonFile)
+	return nil
 }
 
 func fetchOpenRouterModels(token string) (map[string]OpenRouterModel, error) {

@@ -2,6 +2,7 @@ package cliutil
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -78,7 +79,7 @@ func PrintRuntimePaths(meta *Metadata) {
 func ListDirectories(root string) ([]string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err

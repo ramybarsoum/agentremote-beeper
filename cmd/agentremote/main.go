@@ -1071,10 +1071,9 @@ func ensureInitialized(instName, bridgeType, beeperName string, sp *instancePath
 }
 
 func readOrSynthesizeMetadata(instName, bridgeType, beeperName string, sp *instancePaths) (*metadata, error) {
-	m := metadata{UpdatedAt: time.Now().UTC()}
-	if meta, err := cliutil.ReadMetadata(sp.MetaPath); err == nil {
-		// Ignore unmarshal errors; fall through to a fresh metadata.
-		m = *meta
+	var m metadata
+	if existing, err := cliutil.ReadMetadata(sp.MetaPath); err == nil {
+		m = *existing
 	}
 	// Always override paths and identity from current arguments so stale
 	// metadata files don't strand an instance on old paths.
@@ -1100,6 +1099,10 @@ func generateExampleConfig(meta *metadata) error {
 	return cmd.Run()
 }
 
+func saveAuthFunc(profile string) func(beeperauth.Config) error {
+	return func(cfg beeperauth.Config) error { return saveAuthConfig(profile, cfg) }
+}
+
 func ensureRegistration(profile string, meta *metadata, bridgeType string) error {
 	auth, err := getAuthOrEnv(profile)
 	if err != nil {
@@ -1107,7 +1110,7 @@ func ensureRegistration(profile string, meta *metadata, bridgeType string) error
 	}
 	return selfhost.EnsureRegistration(context.Background(), selfhost.RegistrationParams{
 		Auth:             auth,
-		SaveAuth:         func(cfg beeperauth.Config) error { return saveAuthConfig(profile, cfg) },
+		SaveAuth:         saveAuthFunc(profile),
 		ConfigPath:       meta.ConfigPath,
 		RegistrationPath: meta.RegistrationPath,
 		BeeperBridgeName: meta.BeeperBridgeName,
@@ -1123,7 +1126,7 @@ func deleteRemoteBridge(profile, beeperName string) error {
 	return selfhost.DeleteRemoteBridge(
 		context.Background(),
 		auth,
-		func(cfg beeperauth.Config) error { return saveAuthConfig(profile, cfg) },
+		saveAuthFunc(profile),
 		beeperName,
 	)
 }

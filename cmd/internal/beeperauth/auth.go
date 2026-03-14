@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -49,11 +51,7 @@ func DomainForEnv(env string) (string, error) {
 }
 
 func EnvNames() []string {
-	names := make([]string, 0, len(envDomains))
-	for name := range envDomains {
-		names = append(names, name)
-	}
-	return names
+	return slices.Collect(maps.Keys(envDomains))
 }
 
 func Login(ctx context.Context, params LoginParams) (Config, error) {

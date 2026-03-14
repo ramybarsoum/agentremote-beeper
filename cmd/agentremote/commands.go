@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/beeper/agentremote/cmd/internal/beeperauth"
@@ -346,7 +347,7 @@ func initCommands() {
 
 func envNames() []string {
 	names := beeperauth.EnvNames()
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 
@@ -373,12 +374,7 @@ func commandNames() []string {
 }
 
 func sortedMapKeys[T any](m map[string]T) []string {
-	names := make([]string, 0, len(m))
-	for k := range m {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return names
+	return slices.Sorted(maps.Keys(m))
 }
 
 func visibleCommandsByGroup(group string) []cmdDef {
@@ -715,11 +711,7 @@ func generateFishCompletion() string {
 		}
 	}
 	// Sort for deterministic output
-	var flagKeys []string
-	for k := range flagIndex {
-		flagKeys = append(flagKeys, k)
-	}
-	sort.Strings(flagKeys)
+	flagKeys := slices.Sorted(maps.Keys(flagIndex))
 
 	for _, key := range flagKeys {
 		fc := flagIndex[key]
