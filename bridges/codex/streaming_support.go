@@ -63,17 +63,16 @@ func newStreamingState(sourceEventID id.EventID) *streamingState {
 }
 
 func codexStreamEventTimestamp(state *streamingState, preferCompleted bool) time.Time {
-	if state == nil {
-		return time.Now()
-	}
-	if preferCompleted && state.completedAtMs > 0 {
-		return time.UnixMilli(state.completedAtMs)
-	}
-	if state.startedAtMs > 0 {
-		return time.UnixMilli(state.startedAtMs)
-	}
-	if state.completedAtMs > 0 {
-		return time.UnixMilli(state.completedAtMs)
+	if state != nil {
+		if preferCompleted && state.completedAtMs > 0 {
+			return time.UnixMilli(state.completedAtMs)
+		}
+		if state.startedAtMs > 0 {
+			return time.UnixMilli(state.startedAtMs)
+		}
+		if state.completedAtMs > 0 {
+			return time.UnixMilli(state.completedAtMs)
+		}
 	}
 	return time.Now()
 }

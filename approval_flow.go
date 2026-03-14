@@ -569,10 +569,10 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 	sender := f.senderOrEmpty(portal)
 
 	f.mu.Lock()
-	prevPrompt, hadPrevPrompt := f.promptsByApproval[approvalID], false
 	var prevPromptCopy ApprovalPromptRegistration
-	if prevPrompt != nil {
-		prevPromptCopy = *prevPrompt
+	hadPrevPrompt := false
+	if prev := f.promptsByApproval[approvalID]; prev != nil {
+		prevPromptCopy = *prev
 		hadPrevPrompt = true
 	}
 	f.registerPromptLocked(ApprovalPromptRegistration{
@@ -764,16 +764,16 @@ func (f *ApprovalFlow[D]) sendPrefillReactions(_ context.Context, portal *bridge
 	}
 	sender := f.senderOrEmpty(portal)
 	now := time.Now()
-	seenKeys := map[string]struct{}{}
+	seen := map[string]struct{}{}
 	for _, option := range options {
 		for _, key := range option.allKeys() {
 			if key == "" {
 				continue
 			}
-			if _, exists := seenKeys[key]; exists {
+			if _, dup := seen[key]; dup {
 				continue
 			}
-			seenKeys[key] = struct{}{}
+			seen[key] = struct{}{}
 			login.QueueRemoteEvent(&RemoteReaction{
 				Portal:        portal.PortalKey,
 				Sender:        sender,

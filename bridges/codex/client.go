@@ -273,7 +273,7 @@ func (cc *CodexClient) LogoutRemote(ctx context.Context) {
 	})
 }
 
-func (cc *CodexClient) purgeCodexHomeBestEffort(ctx context.Context) {
+func (cc *CodexClient) purgeCodexHomeBestEffort(_ context.Context) {
 	if cc.UserLogin == nil {
 		return
 	}
@@ -355,11 +355,11 @@ func (cc *CodexClient) purgeCodexCwdsBestEffort(ctx context.Context) {
 
 func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	meta := portalMeta(portal)
-	metaTitle := ""
-	if meta != nil {
-		metaTitle = meta.Title
-	}
 	if meta == nil || !meta.IsCodexRoom {
+		metaTitle := ""
+		if meta != nil {
+			metaTitle = meta.Title
+		}
 		return agentremote.BuildChatInfoWithFallback(metaTitle, portal.Name, "Codex", portal.Topic), nil
 	}
 	title := codexPortalTitle(portal)
@@ -421,16 +421,15 @@ func (cc *CodexClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveI
 }
 
 func codexPortalTitle(portal *bridgev2.Portal) string {
-	if portal == nil {
-		return "Codex"
-	}
-	if meta := portalMeta(portal); meta != nil {
-		if title := strings.TrimSpace(meta.Title); title != "" {
-			return title
+	if portal != nil {
+		if meta := portalMeta(portal); meta != nil {
+			if title := strings.TrimSpace(meta.Title); title != "" {
+				return title
+			}
 		}
-	}
-	if name := strings.TrimSpace(portal.Name); name != "" {
-		return name
+		if name := strings.TrimSpace(portal.Name); name != "" {
+			return name
+		}
 	}
 	return "Codex"
 }
@@ -1795,90 +1794,89 @@ func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model strin
 	})
 }
 
-func (cc *CodexClient) emitUITextDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, text string) {
-	if state != nil && state.turn != nil {
-		state.turn.WriteText(text)
+// activeTurn returns the SDK turn from the streaming state, or nil if unavailable.
+func activeTurn(state *streamingState) *bridgesdk.Turn {
+	if state == nil || state.turn == nil {
+		return nil
+	}
+	return state.turn
+}
+
+func (cc *CodexClient) emitUITextDelta(_ context.Context, _ *bridgev2.Portal, state *streamingState, text string) {
+	if turn := activeTurn(state); turn != nil {
+		turn.WriteText(text)
 	}
 }
 
-func (cc *CodexClient) emitUIReasoningDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, text string) {
-	if state != nil && state.turn != nil {
-		state.turn.WriteReasoning(text)
+func (cc *CodexClient) emitUIReasoningDelta(_ context.Context, _ *bridgev2.Portal, state *streamingState, text string) {
+	if turn := activeTurn(state); turn != nil {
+		turn.WriteReasoning(text)
 	}
 }
 
-func (cc *CodexClient) emitUIError(ctx context.Context, portal *bridgev2.Portal, state *streamingState, text string) {
-	if state != nil && state.turn != nil {
-		state.turn.Error(text)
+func (cc *CodexClient) emitUIError(_ context.Context, _ *bridgev2.Portal, state *streamingState, text string) {
+	if turn := activeTurn(state); turn != nil {
+		turn.Error(text)
 	}
 }
 
 func (cc *CodexClient) emitUIToolOutputAvailable(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	toolCallID string,
-	output any,
-	providerExecuted bool,
-	streaming bool,
+	_ context.Context, _ *bridgev2.Portal, state *streamingState,
+	toolCallID string, output any, providerExecuted, streaming bool,
 ) {
-	if state != nil && state.turn != nil {
-		state.turn.Tools().Output(toolCallID, output, bridgesdk.ToolOutputOptions{
+	if turn := activeTurn(state); turn != nil {
+		turn.Tools().Output(toolCallID, output, bridgesdk.ToolOutputOptions{
 			ProviderExecuted: providerExecuted,
 			Streaming:        streaming,
 		})
 	}
 }
 
-func (cc *CodexClient) emitUIToolOutputDenied(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID string) {
-	if state != nil && state.turn != nil {
-		state.turn.Tools().Denied(toolCallID)
+func (cc *CodexClient) emitUIToolOutputDenied(_ context.Context, _ *bridgev2.Portal, state *streamingState, toolCallID string) {
+	if turn := activeTurn(state); turn != nil {
+		turn.Tools().Denied(toolCallID)
 	}
 }
 
 func (cc *CodexClient) emitUIToolOutputError(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	toolCallID string,
-	errText string,
-	providerExecuted bool,
+	_ context.Context, _ *bridgev2.Portal, state *streamingState,
+	toolCallID, errText string, providerExecuted bool,
 ) {
-	if state != nil && state.turn != nil {
-		state.turn.Tools().OutputError(toolCallID, errText, providerExecuted)
+	if turn := activeTurn(state); turn != nil {
+		turn.Tools().OutputError(toolCallID, errText, providerExecuted)
 	}
 }
 
-func (cc *CodexClient) emitUIMessageMetadata(ctx context.Context, portal *bridgev2.Portal, state *streamingState, metadata map[string]any) {
-	if state != nil && state.turn != nil {
-		state.turn.SetMetadata(metadata)
+func (cc *CodexClient) emitUIMessageMetadata(_ context.Context, _ *bridgev2.Portal, state *streamingState, metadata map[string]any) {
+	if turn := activeTurn(state); turn != nil {
+		turn.SetMetadata(metadata)
 	}
 }
 
-func (cc *CodexClient) emitUISourceURL(ctx context.Context, portal *bridgev2.Portal, state *streamingState, citation citations.SourceCitation) {
-	if state != nil && state.turn != nil {
-		state.turn.AddSourceURL(citation.URL, citation.Title)
+func (cc *CodexClient) emitUISourceURL(_ context.Context, _ *bridgev2.Portal, state *streamingState, citation citations.SourceCitation) {
+	if turn := activeTurn(state); turn != nil {
+		turn.AddSourceURL(citation.URL, citation.Title)
 	}
 }
 
-func (cc *CodexClient) emitUISourceDocument(ctx context.Context, portal *bridgev2.Portal, state *streamingState, document citations.SourceDocument) {
-	if state != nil && state.turn != nil {
-		state.turn.AddSourceDocument(document.ID, document.Title, document.MediaType, document.Filename)
+func (cc *CodexClient) emitUISourceDocument(_ context.Context, _ *bridgev2.Portal, state *streamingState, document citations.SourceDocument) {
+	if turn := activeTurn(state); turn != nil {
+		turn.AddSourceDocument(document.ID, document.Title, document.MediaType, document.Filename)
 	}
 }
 
-func (cc *CodexClient) emitUIFile(ctx context.Context, portal *bridgev2.Portal, state *streamingState, file citations.GeneratedFilePart) {
-	if state != nil && state.turn != nil {
-		state.turn.AddFile(file.URL, file.MediaType)
+func (cc *CodexClient) emitUIFile(_ context.Context, _ *bridgev2.Portal, state *streamingState, file citations.GeneratedFilePart) {
+	if turn := activeTurn(state); turn != nil {
+		turn.AddFile(file.URL, file.MediaType)
 	}
 }
 
-func (cc *CodexClient) ensureUIToolInputStart(ctx context.Context, portal *bridgev2.Portal, state *streamingState, toolCallID, toolName string, providerExecuted bool, input any) {
+func (cc *CodexClient) ensureUIToolInputStart(_ context.Context, _ *bridgev2.Portal, state *streamingState, toolCallID, toolName string, providerExecuted bool, input any) {
 	if toolCallID == "" {
 		return
 	}
-	if state != nil && state.turn != nil {
-		state.turn.Tools().EnsureInputStart(toolCallID, input, bridgesdk.ToolInputOptions{
+	if turn := activeTurn(state); turn != nil {
+		turn.Tools().EnsureInputStart(toolCallID, input, bridgesdk.ToolInputOptions{
 			ToolName:         toolName,
 			ProviderExecuted: providerExecuted,
 		})

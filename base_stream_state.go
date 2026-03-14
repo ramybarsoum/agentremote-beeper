@@ -38,7 +38,7 @@ func (s *BaseStreamState) IsStreamShuttingDown() bool {
 
 // CloseAllSessions ends every active stream session and clears the map.
 func (s *BaseStreamState) CloseAllSessions() {
-	s.streamClosing.Store(true)
+	s.BeginStreamShutdown()
 	s.StreamMu.Lock()
 	sessions := make([]*turns.StreamSession, 0, len(s.StreamSessions))
 	for _, sess := range s.StreamSessions {

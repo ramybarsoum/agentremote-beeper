@@ -55,29 +55,24 @@ func AppendDetailsFromMap(details []ApprovalDetail, labelPrefix string, values m
 	if len(values) == 0 || max <= 0 {
 		return details
 	}
-	type detailKey struct {
-		original string
-		trimmed  string
-	}
-	keys := make([]detailKey, 0, len(values))
+	keys := make([]string, 0, len(values))
 	for key := range values {
-		trimmed := strings.TrimSpace(key)
-		if trimmed == "" {
-			continue
+		if strings.TrimSpace(key) != "" {
+			keys = append(keys, key)
 		}
-		keys = append(keys, detailKey{original: key, trimmed: trimmed})
 	}
 	sort.Slice(keys, func(i, j int) bool {
-		return keys[i].trimmed < keys[j].trimmed
+		return strings.TrimSpace(keys[i]) < strings.TrimSpace(keys[j])
 	})
 	count := 0
 	for _, key := range keys {
 		if count >= max {
 			break
 		}
-		if value := ValueSummary(values[key.original]); value != "" {
+		trimmed := strings.TrimSpace(key)
+		if value := ValueSummary(values[key]); value != "" {
 			details = append(details, ApprovalDetail{
-				Label: fmt.Sprintf("%s %s", labelPrefix, key.trimmed),
+				Label: fmt.Sprintf("%s %s", labelPrefix, trimmed),
 				Value: value,
 			})
 			count++
@@ -579,11 +574,10 @@ func normalizeApprovalPromptPresentation(presentation ApprovalPromptPresentation
 
 func normalizeApprovalOptions(options []ApprovalOption, fallback []ApprovalOption) []ApprovalOption {
 	if len(options) == 0 {
-		if len(fallback) > 0 {
-			options = fallback
-		} else {
-			return DefaultApprovalOptions()
-		}
+		options = fallback
+	}
+	if len(options) == 0 {
+		return DefaultApprovalOptions()
 	}
 	out := make([]ApprovalOption, 0, len(options))
 	for _, option := range options {

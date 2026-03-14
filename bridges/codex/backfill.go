@@ -249,11 +249,10 @@ func codexThreadTitle(thread codexThread) string {
 	}
 	preview := strings.TrimSpace(thread.Preview)
 	if preview == "" {
-		return "Codex"
+		return ""
 	}
 	// Use only the first line, truncated to 120 characters.
-	preview = strings.ReplaceAll(preview, "\r", "")
-	line, _, _ := strings.Cut(preview, "\n")
+	line, _, _ := strings.Cut(strings.ReplaceAll(preview, "\r", ""), "\n")
 	const maxLen = 120
 	if len(line) > maxLen {
 		line = line[:maxLen]
@@ -359,10 +358,7 @@ func (cc *CodexClient) FetchMessages(ctx context.Context, params bridgev2.FetchM
 	entries := codexThreadBackfillEntriesWithTimings(*thread, timings, cc.senderForHuman(), cc.senderForPortal())
 	if len(entries) == 0 {
 		return &bridgev2.FetchMessagesResponse{
-			HasMore:  false,
-			Forward:  params.Forward,
-			Cursor:   "",
-			Messages: nil,
+			Forward: params.Forward,
 		}, nil
 	}
 
@@ -717,16 +713,11 @@ func codexTurnTextPair(turn codexTurn) (string, string) {
 }
 
 func normalizeCodexThreadItemType(itemType string) string {
-	normalized := strings.ToLower(strings.TrimSpace(itemType))
-	normalized = strings.ReplaceAll(normalized, "_", "")
-	return normalized
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(itemType)), "_", "")
 }
 
 func codexBackfillMessageID(threadID, turnID, role string) networkid.MessageID {
-	trimmedThreadID := strings.TrimSpace(threadID)
-	trimmedTurnID := strings.TrimSpace(turnID)
-	trimmedRole := strings.TrimSpace(role)
-	hashInput := trimmedThreadID + "\n" + trimmedTurnID + "\n" + trimmedRole
+	hashInput := strings.TrimSpace(threadID) + "\n" + strings.TrimSpace(turnID) + "\n" + strings.TrimSpace(role)
 	sum := sha256.Sum256([]byte(hashInput))
 	return networkid.MessageID("codex:history:" + hex.EncodeToString(sum[:12]))
 }

@@ -168,15 +168,14 @@ func (cc *CodexConnector) probeHostAuth(ctx context.Context) (*hostAuthProbe, er
 	_ = rpc.Call(readCtx, "account/read", map[string]any{"refreshToken": false}, &resp)
 	readCancel()
 
-	authMode := authMethod
-	accountEmail := ""
+	probe := &hostAuthProbe{AuthMode: authMethod}
 	if resp.Account != nil {
 		if v := strings.TrimSpace(resp.Account.Type); v != "" {
-			authMode = v
+			probe.AuthMode = v
 		}
-		accountEmail = strings.TrimSpace(resp.Account.Email)
+		probe.AccountEmail = strings.TrimSpace(resp.Account.Email)
 	}
-	return &hostAuthProbe{AuthMode: authMode, AccountEmail: accountEmail}, nil
+	return probe, nil
 }
 
 func (cc *CodexConnector) ensureHostAuthLoginForUser(ctx context.Context, user *bridgev2.User) error {
@@ -256,10 +255,11 @@ func hasManagedCodexLogin(logins []*bridgev2.UserLogin, exceptID networkid.UserL
 }
 
 func resolveCodexCommandFromConfig(cfg *CodexConfig) string {
-	if cfg != nil {
-		if cmd := strings.TrimSpace(cfg.Command); cmd != "" {
-			return cmd
-		}
+	if cfg == nil {
+		return "codex"
+	}
+	if cmd := strings.TrimSpace(cfg.Command); cmd != "" {
+		return cmd
 	}
 	return "codex"
 }
@@ -302,5 +302,8 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 }
 
 func (cc *CodexConnector) codexEnabled() bool {
-	return cc.Config.Codex == nil || cc.Config.Codex.Enabled == nil || *cc.Config.Codex.Enabled
+	if cc.Config.Codex == nil || cc.Config.Codex.Enabled == nil {
+		return true
+	}
+	return *cc.Config.Codex.Enabled
 }

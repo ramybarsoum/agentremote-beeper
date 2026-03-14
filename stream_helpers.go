@@ -50,18 +50,13 @@ func UpdateExistingMessageMetadata(
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil || portal == nil || metadata == nil {
 		return
 	}
-	log := logger
-	if log == nil {
+	if logger == nil {
 		nop := zerolog.Nop()
-		log = &nop
+		logger = &nop
 	}
 	existing, errByID, errByMXID := findExistingMessage(ctx, login, portal, networkMessageID, initialEventID)
-	loadErr := errByID
-	if loadErr == nil {
-		loadErr = errByMXID
-	}
-	if loadErr != nil {
-		log.Warn().
+	if loadErr := coalesceErrors(errByID, errByMXID); loadErr != nil {
+		logger.Warn().
 			Err(loadErr).
 			Str("network_message_id", string(networkMessageID)).
 			Stringer("initial_event_id", initialEventID).
@@ -73,7 +68,7 @@ func UpdateExistingMessageMetadata(
 	}
 	existing.Metadata = metadata
 	if err := login.Bridge.DB.Message.Update(ctx, existing); err != nil {
-		log.Warn().
+		logger.Warn().
 			Err(err).
 			Str("network_message_id", string(networkMessageID)).
 			Stringer("initial_event_id", initialEventID).

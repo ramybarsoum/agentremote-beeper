@@ -59,15 +59,13 @@ type codexAccountInfo struct {
 }
 
 func (cl *CodexLogin) logger(ctx context.Context) *zerolog.Logger {
-	var fallback *zerolog.Logger
+	var l zerolog.Logger
 	if cl != nil && cl.User != nil {
-		l := cl.User.Log.With().Str("component", "codex_login").Logger()
-		fallback = &l
+		l = cl.User.Log.With().Str("component", "codex_login").Logger()
 	} else {
-		l := zerolog.Nop()
-		fallback = &l
+		l = zerolog.Nop()
 	}
-	return agentremote.LoggerFromContext(ctx, fallback)
+	return agentremote.LoggerFromContext(ctx, &l)
 }
 
 func (cl *CodexLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
@@ -562,8 +560,8 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 	if cl.User == nil {
 		return nil, errors.New("missing user")
 	}
-	persistCtx := cl.backgroundProcessContext()
-	log := cl.logger(persistCtx)
+	bgCtx := cl.backgroundProcessContext()
+	log := cl.logger(bgCtx)
 
 	loginID := agentremote.NextUserLoginID(cl.User, "codex")
 	remoteName := "Codex"
@@ -589,7 +587,7 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 	// Best-effort read account email (chatgpt mode).
 	accountEmail := ""
 	if rpc := cl.getRPC(); rpc != nil {
-		readCtx, cancelRead := context.WithTimeout(persistCtx, 10*time.Second)
+		readCtx, cancelRead := context.WithTimeout(bgCtx, 10*time.Second)
 		defer cancelRead()
 		var acct struct {
 			Account *codexAccountInfo `json:"account"`
@@ -609,7 +607,7 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 	}
 
 	login, step, err := agentremote.CreateAndCompleteLogin(
-		persistCtx,
+		bgCtx,
 		cl.backgroundProcessContext(),
 		cl.User,
 		"codex",
@@ -638,24 +636,24 @@ func (cl *CodexLogin) resolveCodexCommand() string {
 }
 
 func (cl *CodexLogin) resolveCodexHomeBaseDir() string {
-	base := ""
+	var base string
 	if cl.Connector != nil && cl.Connector.Config.Codex != nil {
 		base = strings.TrimSpace(cl.Connector.Config.Codex.HomeBaseDir)
 	}
 	if base == "" {
-		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		home, err := os.UserHomeDir()
+		if err == nil && home != "" {
 			base = filepath.Join(home, ".local", "share", "ai-bridge", "codex")
 		} else {
 			base = filepath.Join(os.TempDir(), "ai-bridge-codex")
 		}
 	}
 	if rest, ok := strings.CutPrefix(base, "~"+string(os.PathSeparator)); ok {
-		if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
 			base = filepath.Join(home, rest)
 		}
 	}
-	abs, err := filepath.Abs(base)
-	if err == nil {
+	if abs, err := filepath.Abs(base); err == nil {
 		return abs
 	}
 	return base
