@@ -393,7 +393,7 @@ func (oc *AIClient) processResponseStreamEvent(
 						state.pendingImages = append(state.pendingImages, generatedImage{
 							itemID:   imgOutput.ID,
 							imageB64: imgOutput.Result,
-							turnID:   state.turnID,
+							turnID:   state.turn.ID(),
 						})
 						log.Debug().Str("item_id", imgOutput.ID).Msg("Captured generated image from response")
 					}

@@ -49,8 +49,10 @@ func stringifyJSONValue(value any) string {
 }
 
 type responseToolDescriptor struct {
+	registryKey      string
 	itemID           string
 	callID           string
+	approvalID       string
 	toolName         string
 	toolType         ToolType
 	input            any
@@ -61,8 +63,9 @@ type responseToolDescriptor struct {
 
 func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, state *streamingState) responseToolDescriptor {
 	desc := responseToolDescriptor{
-		itemID: item.ID,
-		callID: item.ID,
+		itemID:      item.ID,
+		callID:      item.ID,
+		registryKey: streamToolItemKey(item.ID),
 	}
 	switch item.Type {
 	case "function_call":
@@ -113,6 +116,10 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc.toolType = ToolTypeMCP
 		desc.providerExecuted = true
 		desc.dynamic = true
+		desc.approvalID = strings.TrimSpace(item.ApprovalRequestID)
+		if desc.approvalID != "" {
+			desc.registryKey = streamToolApprovalKey(desc.approvalID)
+		}
 		if approvalID := strings.TrimSpace(item.ApprovalRequestID); approvalID != "" && state != nil {
 			if mapped := strings.TrimSpace(state.ui.UIToolCallIDByApproval[approvalID]); mapped != "" {
 				desc.callID = mapped
@@ -132,6 +139,8 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc.toolType = ToolTypeMCP
 		desc.providerExecuted = true
 		desc.dynamic = true
+		desc.approvalID = strings.TrimSpace(item.ID)
+		desc.registryKey = streamToolApprovalKey(desc.approvalID)
 		desc.callID = NewCallID()
 		desc.input = parseJSONOrRaw(item.Arguments)
 		desc.ok = strings.TrimSpace(item.Name) != ""
@@ -144,6 +153,12 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 	if desc.itemID == "" {
 		desc.itemID = desc.callID
 	}
+	if desc.registryKey == "" {
+		desc.registryKey = streamToolItemKey(desc.itemID)
+	}
+	if desc.registryKey == "" {
+		desc.registryKey = streamToolCallKey(desc.callID)
+	}
 	return desc
 }
 
@@ -154,6 +169,7 @@ func responseFunctionToolDescriptor(item responses.ResponseOutputItemUnion, dyna
 	}
 	toolName := strings.TrimSpace(item.Name)
 	return responseToolDescriptor{
+		registryKey:      streamToolItemKey(item.ID),
 		itemID:           item.ID,
 		callID:           callID,
 		toolName:         toolName,
@@ -171,6 +187,7 @@ func providerDynamicResponseToolDescriptor(item responses.ResponseOutputItemUnio
 		callID = item.ID
 	}
 	return responseToolDescriptor{
+		registryKey:      streamToolItemKey(item.ID),
 		itemID:           item.ID,
 		callID:           callID,
 		toolName:         toolName,

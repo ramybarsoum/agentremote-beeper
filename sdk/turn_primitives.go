@@ -38,14 +38,28 @@ func (t *Turn) Writer() *Writer {
 			t.ensureStarted()
 		},
 		onText: func(text string) {
+			t.mu.Lock()
 			t.visibleText.WriteString(text)
+			t.mu.Unlock()
 		},
 		onMetadata: func(metadata map[string]any) {
+			t.mu.Lock()
+			defer t.mu.Unlock()
 			for k, v := range metadata {
 				t.metadata[k] = v
 			}
 		},
 	}
+}
+
+// VisibleText returns the raw text body accumulated through the semantic writer.
+func (t *Turn) VisibleText() string {
+	if t == nil {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.visibleText.String()
 }
 
 func turnPortal(t *Turn) *bridgev2.Portal {

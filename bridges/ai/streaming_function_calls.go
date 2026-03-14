@@ -33,7 +33,7 @@ func (oc *AIClient) processToolMediaResult(
 			return "Error: failed to decode TTS audio", ResultStatusError
 		}
 		mimeType := detectAudioMime(audioData, "audio/mpeg")
-		if _, mediaURL, err := oc.sendGeneratedAudio(ctx, portal, audioData, mimeType, state.turnID); err != nil {
+		if _, mediaURL, err := oc.sendGeneratedAudio(ctx, portal, audioData, mimeType, state.turn.ID()); err != nil {
 			log.Warn().Err(err).Msg("Failed to send TTS audio" + logSuffix)
 			return "Error: failed to send TTS audio", ResultStatusError
 		} else {
@@ -64,7 +64,7 @@ func (oc *AIClient) processToolMediaResult(
 				log.Warn().Err(err).Msg("Failed to decode generated image" + logSuffix)
 				continue
 			}
-			_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption)
+			_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turn.ID(), imageCaption)
 			if err != nil {
 				log.Warn().Err(err).Msg("Failed to send generated image" + logSuffix)
 				continue
@@ -89,7 +89,7 @@ func (oc *AIClient) processToolMediaResult(
 			log.Warn().Err(err).Msg("Failed to decode generated image" + logSuffix)
 			return "Error: failed to decode generated image", ResultStatusError
 		}
-		if _, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turnID, imageCaption); err != nil {
+		if _, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turn.ID(), imageCaption); err != nil {
 			log.Warn().Err(err).Msg("Failed to send generated image" + logSuffix)
 			return "Error: failed to send generated image", ResultStatusError
 		} else {
@@ -110,33 +110,33 @@ func (oc *AIClient) ensureActiveToolCall(
 	portal *bridgev2.Portal,
 	state *streamingState,
 	meta *PortalMetadata,
-	activeTools map[string]*activeToolCall,
-	itemID string,
+	activeTools *streamToolRegistry,
+	key string,
 	name string,
 	toolType ToolType,
 	initialInput string,
 ) *activeToolCall {
-	tool, exists := activeTools[itemID]
-	if !exists {
-		callID := itemID
-		if strings.TrimSpace(callID) == "" {
+	tool, created := activeTools.Upsert(key, func(canonicalKey string) *activeToolCall {
+		callID := strings.TrimSpace(strings.TrimPrefix(canonicalKey, "call:"))
+		if callID == "" {
 			callID = NewCallID()
 		}
-		tool = &activeToolCall{
+		tool := &activeToolCall{
 			callID:      callID,
 			toolName:    name,
 			toolType:    toolType,
 			startedAtMs: time.Now().UnixMilli(),
-			itemID:      itemID,
 		}
 		if strings.TrimSpace(initialInput) != "" {
 			tool.input.WriteString(initialInput)
 		}
-		activeTools[itemID] = tool
-
-		if meta != nil && state != nil && !state.hasInitialMessageTarget() && !state.suppressSend {
-			oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-		}
+		return tool
+	})
+	if tool == nil {
+		return nil
+	}
+	if created && meta != nil && state != nil && !state.hasInitialMessageTarget() && !state.suppressSend {
+		oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
 	}
 	return tool
 }
@@ -146,13 +146,17 @@ func (oc *AIClient) handleFunctionCallArgumentsDelta(
 	portal *bridgev2.Portal,
 	state *streamingState,
 	meta *PortalMetadata,
-	activeTools map[string]*activeToolCall,
+	activeTools *streamToolRegistry,
 	itemID string,
 	name string,
 	delta string,
 ) {
 	lifecycle := oc.toolLifecycle(portal, state)
-	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, itemID, name, ToolTypeFunction, "")
+	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, ToolTypeFunction, "")
+	if tool == nil {
+		return
+	}
+	activeTools.BindAlias(streamToolItemKey(itemID), tool)
 	tool.itemID = itemID
 	lifecycle.appendInputDelta(ctx, tool, name, delta, tool.toolType == ToolTypeProvider)
 }
@@ -163,16 +167,21 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	portal *bridgev2.Portal,
 	state *streamingState,
 	meta *PortalMetadata,
-	activeTools map[string]*activeToolCall,
+	activeTools *streamToolRegistry,
 	itemID string,
 	name string,
 	arguments string,
 	approvalFallbackForNonObject bool,
 	logSuffix string,
 ) {
-	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, itemID, name, ToolTypeFunction, arguments)
+	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, ToolTypeFunction, arguments)
+	if tool == nil {
+		return
+	}
+	activeTools.BindAlias(streamToolItemKey(itemID), tool)
 	tool.itemID = itemID
 	execution := oc.executeStreamingBuiltinTool(ctx, log, portal, state, meta, tool, name, arguments, approvalFallbackForNonObject, logSuffix)
+	activeTools.BindAlias(streamToolCallKey(tool.callID), tool)
 
 	// Store result for API continuation.
 	tool.result = execution.result

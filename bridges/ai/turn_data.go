@@ -17,10 +17,10 @@ func canonicalTurnData(meta *MessageMetadata) (sdk.TurnData, bool) {
 
 func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any) sdk.TurnData {
 	return sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
-		ID:   state.turnID,
+		ID:   state.turn.ID(),
 		Role: "assistant",
 		Metadata: map[string]any{
-			"turn_id":             state.turnID,
+			"turn_id":             state.turn.ID(),
 			"finish_reason":       state.finishReason,
 			"prompt_tokens":       state.promptTokens,
 			"completion_tokens":   state.completionTokens,
@@ -29,8 +29,8 @@ func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any)
 			"started_at_ms":       state.startedAtMs,
 			"completed_at_ms":     state.completedAtMs,
 			"first_token_at_ms":   state.firstTokenAtMs,
-			"network_message_id":  turnNetworkMessageID(state),
-			"initial_event_id":    turnInitialEventID(state),
+			"network_message_id":  state.turn.NetworkMessageID(),
+			"initial_event_id":    state.turn.InitialEventID(),
 			"source_event_id":     state.sourceEventID,
 			"generated_file_refs": agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
 		},
@@ -48,7 +48,7 @@ func buildCanonicalTurnData(
 	if state == nil {
 		return sdk.TurnData{}
 	}
-	uiMessage := streamui.SnapshotCanonicalUIMessage(state.ui)
+	uiMessage := streamui.SnapshotCanonicalUIMessage(currentStreamingUIState(state))
 	td := turnDataFromStreamingState(state, uiMessage)
 	artifactParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, nil)
 	artifactParts = append(artifactParts, linkPreviews...)
@@ -70,7 +70,7 @@ func buildTurnDataMetadata(state *streamingState, meta *PortalMetadata) map[stri
 		modelID = strings.TrimSpace(meta.ResolvedTarget.ModelID)
 	}
 	return map[string]any{
-		"turn_id":           state.turnID,
+		"turn_id":           state.turn.ID(),
 		"agent_id":          state.agentID,
 		"model":             modelID,
 		"finish_reason":     state.finishReason,

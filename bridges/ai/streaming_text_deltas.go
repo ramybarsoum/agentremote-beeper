@@ -45,7 +45,6 @@ func (oc *AIClient) emitVisibleTextDelta(
 	if delta == "" {
 		return nil
 	}
-	state.visibleAccumulated.WriteString(delta)
 	state.trackFirstToken()
 	// Writer.TextDelta triggers Turn.ensureStarted on first call,
 	// which sends the placeholder message via the configured SendFunc.

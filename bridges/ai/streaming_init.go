@@ -10,6 +10,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/agentremote"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -21,6 +22,7 @@ func (oc *AIClient) createStreamingTurn(
 	meta *PortalMetadata,
 	state *streamingState,
 	sourceEventID id.EventID,
+	turnID string,
 ) *bridgesdk.Turn {
 	var sdkConfig *bridgesdk.Config
 	if oc.connector != nil {
@@ -32,7 +34,7 @@ func (oc *AIClient) createStreamingTurn(
 	}
 	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, sdkConfig, oc)
 	turn := conv.StartTurn(ctx, nil, &bridgesdk.SourceRef{EventID: string(sourceEventID)})
-	turn.SetID(state.turnID)
+	turn.SetID(turnID)
 	turn.SetSender(sender)
 	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(sdkTurn *bridgesdk.Turn, _ string) any {
 		if sdkTurn != nil {
@@ -49,7 +51,7 @@ func (oc *AIClient) createStreamingTurn(
 		if !state.suppressSend {
 			oc.ensureGhostDisplayName(sendCtx, oc.effectiveModel(meta))
 		}
-		evtID, msgID := oc.sendInitialStreamMessage(sendCtx, portal, "...", state.turnID, state.replyTarget)
+		evtID, msgID := oc.sendInitialStreamMessage(sendCtx, portal, "...", state.turn.ID(), state.replyTarget)
 		return evtID, msgID, nil
 	})
 
@@ -65,7 +67,21 @@ func (oc *AIClient) createStreamingTurn(
 
 	// Use bridges/ai's debounced edit with directive-processed visible text.
 	turn.SetDebouncedEditFunc(func(callCtx context.Context, force bool) error {
-		return oc.sendDebouncedStreamEdit(callCtx, portal, state, force)
+		if oc == nil || state == nil || portal == nil {
+			return nil
+		}
+		return agentremote.SendDebouncedStreamEdit(agentremote.SendDebouncedStreamEditParams{
+			Login:            oc.UserLogin,
+			Portal:           portal,
+			Sender:           oc.senderForPortal(callCtx, portal),
+			NetworkMessageID: state.turn.NetworkMessageID(),
+			SuppressSend:     state.suppressSend,
+			VisibleBody:      visibleStreamingText(state),
+			FallbackBody:     state.accumulated.String(),
+			LogKey:           "ai_edit_target",
+			Force:            force,
+			UIMessage:        oc.buildStreamUIMessage(state, nil, nil),
+		})
 	})
 
 	if state.suppressSend {
@@ -110,10 +126,10 @@ func (oc *AIClient) prepareStreamingRun(
 	if portal != nil {
 		roomID = portal.MXID
 	}
-	state := newStreamingState(ctx, meta, sourceEventID, senderID, roomID)
+	state, turnID := newStreamingState(ctx, meta, sourceEventID, senderID, roomID)
 
 	// Create SDK Turn for writer/emitter/session management.
-	turn := oc.createStreamingTurn(ctx, portal, meta, state, sourceEventID)
+	turn := oc.createStreamingTurn(ctx, portal, meta, state, sourceEventID, turnID)
 	state.turn = turn
 	state.ui = turn.UIState()
 

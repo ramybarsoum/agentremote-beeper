@@ -16,7 +16,9 @@ import (
 
 // activeToolCall tracks a tool call that's in progress
 type activeToolCall struct {
+	registryKey string
 	callID      string
+	approvalID  string
 	toolName    string
 	toolType    ToolType
 	input       strings.Builder

@@ -25,7 +25,7 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 		BaseMessageMetadata: agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
 			Body:                    state.accumulated.String(),
 			FinishReason:            state.finishReason,
-			TurnID:                  state.turnID,
+			TurnID:                  state.turn.ID(),
 			AgentID:                 state.agentID,
 			ToolCalls:               state.toolCalls,
 			StartedAtMs:             state.startedAtMs,

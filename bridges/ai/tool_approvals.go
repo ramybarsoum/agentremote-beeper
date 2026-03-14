@@ -144,7 +144,7 @@ func (oc *AIClient) approvalParamsFromRequest(portal *bridgev2.Portal, state *st
 		params.RoomID = portal.MXID
 	}
 	if state != nil {
-		params.TurnID = state.turnID
+		params.TurnID = state.turn.ID()
 	}
 	if turn != nil {
 		params.TurnID = turn.ID()
@@ -189,8 +189,8 @@ func (oc *AIClient) requestTurnApproval(
 		return &aiTurnApprovalHandle{client: oc, turn: turn, approvalID: params.ApprovalID, toolCallID: params.ToolCallID}
 	}
 	turnID := params.TurnID
-	if state != nil && state.turnID != "" {
-		turnID = state.turnID
+	if state != nil && state.turn.ID() != "" {
+		turnID = state.turn.ID()
 	}
 	replyTo := id.EventID("")
 	if state != nil {

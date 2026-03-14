@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
+	"maunium.net/go/mautrix/bridgev2"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func TestParseJSONOrRaw_EmptyStringReturnsNil(t *testing.T) {
@@ -56,7 +59,10 @@ func TestDeriveToolDescriptorForOutputItem_FunctionCallParsesArgumentsJSON(t *te
 
 func TestUpsertActiveToolFromDescriptor_RecreatesNilMapEntry(t *testing.T) {
 	oc := &AIClient{}
-	state := newStreamingState(context.Background(), nil, "", "", "")
+	state, turnID := newStreamingState(context.Background(), nil, "", "", "")
+	conv := bridgesdk.NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	state.turn = conv.StartTurn(context.Background(), nil, nil)
+	state.turn.SetID(turnID)
 	activeTools := map[string]*activeToolCall{"item_123": nil}
 
 	tool, created := oc.upsertActiveToolFromDescriptor(context.Background(), nil, state, activeTools, responseToolDescriptor{

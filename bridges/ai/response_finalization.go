@@ -155,7 +155,7 @@ func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2
 	// Handle silent replies - redact the streaming message
 	if directives.IsSilent {
 		oc.loggerForContext(ctx).Debug().
-			Str("turn_id", state.turnID).
+			Str("turn_id", state.turn.ID()).
 			Str("initial_event_id", state.turn.InitialEventID().String()).
 			Msg("Silent reply detected, redacting streaming message")
 		oc.redactInitialStreamingMessage(ctx, portal, state)
@@ -440,19 +440,7 @@ func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *b
 	}
 }
 
-func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridgev2.Portal, text string) {
-	if portal == nil || portal.MXID == "" {
-		return
-	}
-	sender := oc.senderForPortal(ctx, portal)
-	msg := NewAITextMessage(portal, text, sender)
-	oc.UserLogin.QueueRemoteEvent(msg)
-	oc.recordAgentActivity(ctx, portal, portalMeta(portal))
-}
-
-// sendPlainAssistantMessageWithResult is used by automated delivery paths where failures should be
-// observable by the caller (e.g. so a background runner doesn't get stuck on a blocked send forever).
-func (oc *AIClient) sendPlainAssistantMessageWithResult(ctx context.Context, portal *bridgev2.Portal, text string) error {
+func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridgev2.Portal, text string) error {
 	if portal == nil || portal.MXID == "" {
 		return nil
 	}
@@ -574,7 +562,7 @@ func finalRenderedBodyFallback(state *streamingState) string {
 	if state == nil {
 		return "..."
 	}
-	if body := strings.TrimSpace(state.visibleAccumulated.String()); body != "" {
+	if body := strings.TrimSpace(visibleStreamingText(state)); body != "" {
 		return body
 	}
 	if body := strings.TrimSpace(state.accumulated.String()); body != "" {
@@ -609,7 +597,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	relatesTo := msgconv.RelatesToReplace(state.turn.InitialEventID(), replyTo)
 	if relatesTo == nil && state.turn.NetworkMessageID() != "" {
 		oc.loggerForContext(ctx).Debug().
-			Str("turn_id", state.turnID).
+			Str("turn_id", state.turn.ID()).
 			Str("target_message_id", string(state.turn.NetworkMessageID())).
 			Msg("Final assistant edit using network target without initial event ID")
 	}
@@ -642,7 +630,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	}
 	if editTarget == "" {
 		oc.loggerForContext(ctx).Warn().
-			Str("turn_id", state.turnID).
+			Str("turn_id", state.turn.ID()).
 			Msg("Skipping final assistant edit: no network or initial event target")
 	} else {
 		oc.UserLogin.QueueRemoteEvent(&agentremote.RemoteEdit{
@@ -656,7 +644,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	oc.recordAgentActivity(ctx, portal, meta)
 	oc.loggerForContext(ctx).Debug().
 		Str("initial_event_id", state.turn.InitialEventID().String()).
-		Str("turn_id", state.turnID).
+		Str("turn_id", state.turn.ID()).
 		Str("mode", strings.TrimSpace(mode)).
 		Int("link_previews", len(linkPreviews)).
 		Msg("Queued final assistant turn edit")

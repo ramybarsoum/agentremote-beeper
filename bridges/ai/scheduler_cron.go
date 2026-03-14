@@ -368,7 +368,7 @@ func (s *schedulerRuntime) executeCronJob(ctx context.Context, record *scheduled
 		if target.Portal == nil || strings.TrimSpace(target.RoomID) == "" {
 			return "skipped", "delivery target unavailable", preview
 		}
-		if err := s.client.sendPlainAssistantMessageWithResult(runCtx, target.Portal.(*bridgev2.Portal), body); err != nil {
+		if err := s.client.sendPlainAssistantMessage(runCtx, target.Portal.(*bridgev2.Portal), body); err != nil {
 			return "error", err.Error(), preview
 		}
 	}

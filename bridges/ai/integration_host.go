@@ -869,7 +869,7 @@ func (h *runtimeIntegrationHost) SendAssistantMessage(ctx context.Context, porta
 	if p == nil {
 		return fmt.Errorf("missing portal")
 	}
-	return h.client.sendPlainAssistantMessageWithResult(ctx, p, body)
+	return h.client.sendPlainAssistantMessage(ctx, p, body)
 }
 
 func (h *runtimeIntegrationHost) RequestNow(ctx context.Context, reason string) {

@@ -24,7 +24,6 @@ import (
 type streamingState struct {
 	turn *sdk.Turn
 
-	turnID         string
 	agentID        string
 	startedAtMs    int64
 	firstTokenAtMs int64
@@ -38,7 +37,6 @@ type streamingState struct {
 
 	baseInput              responses.ResponseInputParam
 	accumulated            strings.Builder
-	visibleAccumulated     strings.Builder
 	reasoning              strings.Builder
 	toolCalls              []ToolCallMetadata
 	pendingImages          []generatedImage
@@ -129,7 +127,7 @@ type mcpApprovalRequest struct {
 	handle      sdk.ApprovalHandle
 }
 
-func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID id.EventID, senderID string, roomID id.RoomID) *streamingState {
+func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID id.EventID, senderID string, roomID id.RoomID) (*streamingState, string) {
 	agentID := ""
 	if meta != nil {
 		agentID = resolveAgentID(meta)
@@ -138,7 +136,6 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 	ui := &streamui.UIState{TurnID: turnID}
 	ui.InitMaps()
 	state := &streamingState{
-		turnID:                  turnID,
 		agentID:                 agentID,
 		startedAtMs:             time.Now().UnixMilli(),
 		sourceEventID:           sourceEventID,
@@ -157,7 +154,7 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 			state.suppressSend = hb.Config.SuppressSend
 		}
 	}
-	return state
+	return state, turnID
 }
 
 func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *runtimeparse.StreamingDirectiveResult) {

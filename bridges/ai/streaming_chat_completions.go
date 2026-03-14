@@ -293,7 +293,7 @@ func (a *chatCompletionsTurnAdapter) Finalize(ctx context.Context) {
 	oc.completeStreamingSuccess(ctx, a.log, portal, state, meta)
 
 	a.log.Info().
-		Str("turn_id", state.turnID).
+		Str("turn_id", state.turn.ID()).
 		Str("finish_reason", state.finishReason).
 		Int("content_length", state.accumulated.Len()).
 		Int("tool_calls", len(state.toolCalls)).

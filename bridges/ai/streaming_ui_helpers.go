@@ -8,9 +8,46 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
+
+func currentStreamingUIState(state *streamingState) *streamui.UIState {
+	if state == nil {
+		return nil
+	}
+	if state.turn != nil && state.turn.UIState() != nil {
+		return state.turn.UIState()
+	}
+	return state.ui
+}
+
+func visibleStreamingText(state *streamingState) string {
+	if state == nil {
+		return ""
+	}
+	if state.turn != nil {
+		if text := state.turn.VisibleText(); text != "" {
+			return text
+		}
+	}
+	uiMessage := streamui.SnapshotCanonicalUIMessage(currentStreamingUIState(state))
+	if len(uiMessage) == 0 {
+		return ""
+	}
+	td, ok := sdk.TurnDataFromUIMessage(uiMessage)
+	if !ok {
+		return ""
+	}
+	var visible strings.Builder
+	for _, part := range td.Parts {
+		if part.Type == "text" {
+			visible.WriteString(part.Text)
+		}
+	}
+	return visible.String()
+}
 
 func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMetadata, includeUsage bool) map[string]any {
 	td := buildCanonicalTurnData(state, meta, nil)
@@ -108,15 +145,15 @@ func maybePrependTextSeparator(state *streamingState, rawDelta string) string {
 		return rawDelta
 	}
 	// If we don't have any visible text yet, don't inject anything.
-	if state.visibleAccumulated.Len() == 0 {
+	visible := visibleStreamingText(state)
+	if visible == "" {
 		state.needsTextSeparator = false
 		return rawDelta
 	}
 
 	// Only insert when both sides are non-whitespace; avoids double-spacing if the model already
 	// starts the new round with whitespace/newlines.
-	vis := state.visibleAccumulated.String()
-	last, _ := utf8.DecodeLastRuneInString(vis)
+	last, _ := utf8.DecodeLastRuneInString(visible)
 	first, _ := utf8.DecodeRuneInString(rawDelta)
 	state.needsTextSeparator = false
 	if unicode.IsSpace(last) || unicode.IsSpace(first) {

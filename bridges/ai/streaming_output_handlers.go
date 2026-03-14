@@ -26,31 +26,41 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
-	activeTools map[string]*activeToolCall,
+	activeTools *streamToolRegistry,
 	desc responseToolDescriptor,
 ) (*activeToolCall, bool) {
-	if activeTools == nil || strings.TrimSpace(desc.itemID) == "" || strings.TrimSpace(desc.callID) == "" {
+	if activeTools == nil || strings.TrimSpace(desc.callID) == "" {
 		return nil, false
 	}
 	lifecycle := oc.toolLifecycle(portal, state)
-	tool, ok := activeTools[desc.itemID]
-	created := !ok || tool == nil
-	if ok && tool == nil {
-		// A nil map entry is unexpected here; recreate it so streaming can continue.
-		zerolog.Ctx(ctx).Warn().Str("item_id", desc.itemID).Msg("active tool map contained nil entry")
-	}
-	if !ok || tool == nil {
-		tool = &activeToolCall{
+	tool, created := activeTools.Upsert(desc.registryKey, func(canonicalKey string) *activeToolCall {
+		return &activeToolCall{
 			callID:      SanitizeToolCallID(desc.callID, "strict"),
 			toolName:    desc.toolName,
 			toolType:    desc.toolType,
 			startedAtMs: time.Now().UnixMilli(),
 			itemID:      desc.itemID,
 		}
-		activeTools[desc.itemID] = tool
+	})
+	if created && strings.TrimSpace(desc.itemID) == "" {
+		zerolog.Ctx(ctx).Warn().Str("registry_key", desc.registryKey).Msg("active tool created without item id")
+	}
+	if tool == nil {
+		return nil, false
 	}
 	if strings.TrimSpace(desc.callID) != "" {
 		tool.callID = SanitizeToolCallID(desc.callID, "strict")
+	}
+	if strings.TrimSpace(desc.approvalID) != "" {
+		tool.approvalID = strings.TrimSpace(desc.approvalID)
+	}
+	if strings.TrimSpace(desc.itemID) != "" {
+		tool.itemID = desc.itemID
+		activeTools.BindAlias(streamToolItemKey(desc.itemID), tool)
+	}
+	activeTools.BindAlias(streamToolCallKey(tool.callID), tool)
+	if tool.approvalID != "" {
+		activeTools.BindAlias(streamToolApprovalKey(tool.approvalID), tool)
 	}
 	if strings.TrimSpace(desc.toolName) != "" {
 		tool.toolName = desc.toolName
@@ -71,14 +81,14 @@ func (oc *AIClient) ensureActiveToolForStreamItem(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
-	activeTools map[string]*activeToolCall,
+	activeTools *streamToolRegistry,
 	itemID string,
 	item responses.ResponseOutputItemUnion,
 ) *activeToolCall {
 	if activeTools == nil || state == nil {
 		return nil
 	}
-	if tool, exists := activeTools[itemID]; exists {
+	if tool := activeTools.Lookup(streamToolItemKey(itemID)); tool != nil {
 		return tool
 	}
 	itemDesc := deriveToolDescriptorForOutputItem(item, state)
@@ -93,7 +103,7 @@ func (oc *AIClient) handleCustomToolInputDeltaFromOutputItem(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
-	activeTools map[string]*activeToolCall,
+	activeTools *streamToolRegistry,
 	itemID string,
 	item responses.ResponseOutputItemUnion,
 	delta string,
@@ -110,7 +120,7 @@ func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
-	activeTools map[string]*activeToolCall,
+	activeTools *streamToolRegistry,
 	itemID string,
 	item responses.ResponseOutputItemUnion,
 	inputText string,
@@ -130,7 +140,7 @@ func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
-	activeTools map[string]*activeToolCall,
+	activeTools *streamToolRegistry,
 	itemID string,
 	item responses.ResponseOutputItemUnion,
 ) {
@@ -194,7 +204,7 @@ func (oc *AIClient) gateMcpToolApproval(
 	params := ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       state.roomID,
-		TurnID:       state.turnID,
+		TurnID:       state.turn.ID(),
 		ToolCallID:   tool.callID,
 		ToolName:     tool.toolName,
 		ToolKind:     ToolApprovalKindMCP,

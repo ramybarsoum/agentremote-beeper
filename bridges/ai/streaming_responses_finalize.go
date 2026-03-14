@@ -38,7 +38,7 @@ func (oc *AIClient) finalizeResponsesStream(
 	oc.completeStreamingSuccess(ctx, log, portal, state, meta)
 
 	log.Info().
-		Str("turn_id", state.turnID).
+		Str("turn_id", state.turn.ID()).
 		Str("finish_reason", state.finishReason).
 		Int("content_length", state.accumulated.Len()).
 		Int("reasoning_length", state.reasoning.Len()).
