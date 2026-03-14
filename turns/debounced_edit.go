@@ -27,10 +27,7 @@ type DebouncedEditParams struct {
 // BuildDebouncedEditContent validates inputs and renders the edit content.
 // Returns nil if the edit should be skipped.
 func BuildDebouncedEditContent(p DebouncedEditParams) *DebouncedEditContent {
-	if strings.TrimSpace(p.PortalMXID) == "" {
-		return nil
-	}
-	if p.SuppressSend {
+	if strings.TrimSpace(p.PortalMXID) == "" || p.SuppressSend {
 		return nil
 	}
 	body := strings.TrimSpace(p.VisibleBody)

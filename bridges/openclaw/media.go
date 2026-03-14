@@ -162,7 +162,7 @@ func openClawAttachmentSourceFromValue(value any, block map[string]any) *openCla
 		URL:      strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(source["url"]), stringValue(source["href"]))),
 		Data:     strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(source["data"]), stringValue(source["content"]))),
 		MimeType: openClawSourceMimeType(source, block),
-		FileName: openclawconv.StringsTrimDefault(openclawconv.StringsTrimDefault(openclawconv.StringsTrimDefault(stringValue(source["filename"]), stringValue(source["fileName"])), openclawconv.StringsTrimDefault(stringValue(source["name"]), stringValue(source["path"]))), openClawBlockFilename(block)),
+		FileName: firstNonEmpty(stringValue(source["filename"]), stringValue(source["fileName"]), stringValue(source["name"]), stringValue(source["path"]), openClawBlockFilename(block)),
 	}
 	switch result.Kind {
 	case "base64", "url":
@@ -206,30 +206,21 @@ func openClawBlockFilename(block map[string]any) string {
 }
 
 func openClawBlockMimeType(block map[string]any) string {
-	return stringutil.NormalizeMimeType(
-		openclawconv.StringsTrimDefault(
-			openclawconv.StringsTrimDefault(
-				openclawconv.StringsTrimDefault(stringValue(block["contentType"]), stringValue(block["mimeType"])),
-				stringValue(block["mime_type"]),
-			),
-			openclawconv.StringsTrimDefault(stringValue(block["mediaType"]), stringValue(block["media_type"])),
-		),
-	)
+	for _, key := range []string{"contentType", "mimeType", "mime_type", "mediaType", "media_type"} {
+		if value := strings.TrimSpace(stringValue(block[key])); value != "" {
+			return stringutil.NormalizeMimeType(value)
+		}
+	}
+	return ""
 }
 
 func openClawSourceMimeType(source, block map[string]any) string {
-	return stringutil.NormalizeMimeType(
-		openclawconv.StringsTrimDefault(
-			openclawconv.StringsTrimDefault(
-				openclawconv.StringsTrimDefault(stringValue(source["contentType"]), stringValue(source["mimeType"])),
-				stringValue(source["mime_type"]),
-			),
-			openclawconv.StringsTrimDefault(
-				openclawconv.StringsTrimDefault(stringValue(source["mediaType"]), stringValue(source["media_type"])),
-				openClawBlockMimeType(block),
-			),
-		),
-	)
+	for _, key := range []string{"contentType", "mimeType", "mime_type", "mediaType", "media_type"} {
+		if value := strings.TrimSpace(stringValue(source[key])); value != "" {
+			return stringutil.NormalizeMimeType(value)
+		}
+	}
+	return openClawBlockMimeType(block)
 }
 
 func openClawAttachmentFilename(source *openClawAttachmentSource) string {

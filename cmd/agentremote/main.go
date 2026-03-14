@@ -510,21 +510,11 @@ func cmdStop(args []string) error {
 	if err != nil {
 		return err
 	}
-	meta, err := readMetadata(sp)
-	if err != nil {
-		// If no metadata, try to stop by PID file directly
-		stopped, stopErr := bridgeutil.StopByPIDFile(sp.PIDPath)
-		if stopErr != nil {
-			return stopErr
-		}
-		if stopped {
-			fmt.Printf("stopped %s\n", instName)
-		} else {
-			fmt.Printf("%s is not running\n", instName)
-		}
-		return nil
+	pidPath := sp.PIDPath
+	if meta, err := readMetadata(sp); err == nil {
+		pidPath = meta.PIDPath
 	}
-	stopped, err := bridgeutil.StopByPIDFile(meta.PIDPath)
+	stopped, err := bridgeutil.StopByPIDFile(pidPath)
 	if err != nil {
 		return err
 	}
