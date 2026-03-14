@@ -15,7 +15,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/turns"
 )

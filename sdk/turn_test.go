@@ -43,7 +43,7 @@ func TestTurnBuildRelatesToPrefersReplyAndThread(t *testing.T) {
 func TestTurnFinalMetadataMergesSupportedCallerMetadata(t *testing.T) {
 	turn := newTurn(context.Background(), &Conversation{}, &Agent{ID: "runtime-agent"}, nil)
 	turn.visibleText.WriteString("runtime body")
-	turn.SetMetadata(map[string]any{
+	turn.Writer().MessageMetadata(turn.Context(), map[string]any{
 		"prompt_tokens":     123,
 		"completion_tokens": 456,
 		"finish_reason":     "caller-finish",

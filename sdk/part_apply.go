@@ -1,6 +1,10 @@
 package sdk
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/beeper/agentremote/pkg/shared/citations"
+)
 
 // PartApplyOptions controls provider-specific edge cases when applying
 // streamed UI/tool parts to a turn.
@@ -25,68 +29,78 @@ func ApplyStreamPart(turn *Turn, part map[string]any, opts PartApplyOptions) boo
 		return false
 	}
 	writer := turn.Writer()
-	tools := turn.Tools()
+	tools := writer.Tools()
+	approvals := turn.Approvals()
+	ctx := turn.Context()
 	switch partType {
 	case "start", "message-metadata":
 		metadata, _ := part["messageMetadata"].(map[string]any)
 		if len(metadata) > 0 {
-			turn.SetMetadata(metadata)
+			writer.MessageMetadata(ctx, metadata)
 		} else if opts.ResetMetadataOnEmptyMessageMeta {
-			turn.SetMetadata(nil)
+			writer.MessageMetadata(ctx, nil)
 		}
 	case "start-step":
-		turn.StepStart()
+		writer.StepStart(ctx)
 	case "finish-step":
-		turn.StepFinish()
+		writer.StepFinish(ctx)
 	case "text-start", "reasoning-start":
 		if opts.ResetMetadataOnStartMarkers {
-			turn.SetMetadata(nil)
+			writer.MessageMetadata(ctx, nil)
 		}
 	case "text-delta":
 		if delta := partString(part, "delta"); delta != "" {
-			turn.WriteText(delta)
+			writer.TextDelta(ctx, delta)
 		} else if opts.ResetMetadataOnEmptyTextDelta {
-			turn.SetMetadata(nil)
+			writer.MessageMetadata(ctx, nil)
 		}
 	case "text-end":
-		turn.FinishText()
+		writer.FinishText(ctx)
 	case "reasoning-delta":
 		if delta := partString(part, "delta"); delta != "" {
-			turn.WriteReasoning(delta)
+			writer.ReasoningDelta(ctx, delta)
 		} else if opts.ResetMetadataOnEmptyTextDelta {
-			turn.SetMetadata(nil)
+			writer.MessageMetadata(ctx, nil)
 		}
 	case "reasoning-end":
-		turn.FinishReasoning()
+		writer.FinishReasoning(ctx)
 	case "tool-input-start":
-		tools.EnsureInputStart(turn.Context(), partString(part, "toolCallId"), nil, ToolInputOptions{
+		tools.EnsureInputStart(ctx, partString(part, "toolCallId"), nil, ToolInputOptions{
 			ToolName:         partString(part, "toolName"),
 			ProviderExecuted: partBool(part, "providerExecuted"),
 		})
 	case "tool-input-delta":
-		tools.InputDelta(turn.Context(), partString(part, "toolCallId"), "", partString(part, "inputTextDelta"), partBool(part, "providerExecuted"))
+		tools.InputDelta(ctx, partString(part, "toolCallId"), "", partString(part, "inputTextDelta"), partBool(part, "providerExecuted"))
 	case "tool-input-available":
-		tools.Input(turn.Context(), partString(part, "toolCallId"), partString(part, "toolName"), part["input"], partBool(part, "providerExecuted"))
+		tools.Input(ctx, partString(part, "toolCallId"), partString(part, "toolName"), part["input"], partBool(part, "providerExecuted"))
 	case "tool-output-available":
-		tools.Output(turn.Context(), partString(part, "toolCallId"), part["output"], ToolOutputOptions{
+		tools.Output(ctx, partString(part, "toolCallId"), part["output"], ToolOutputOptions{
 			ProviderExecuted: partBool(part, "providerExecuted"),
 		})
 	case "tool-output-error":
-		tools.OutputError(turn.Context(), partString(part, "toolCallId"), partString(part, "errorText"), partBool(part, "providerExecuted"))
+		tools.OutputError(ctx, partString(part, "toolCallId"), partString(part, "errorText"), partBool(part, "providerExecuted"))
 	case "tool-output-denied":
-		tools.Denied(turn.Context(), partString(part, "toolCallId"))
+		tools.Denied(ctx, partString(part, "toolCallId"))
 	case "tool-approval-request":
-		turn.Approvals().EmitRequest(turn.Context(), partString(part, "approvalId"), partString(part, "toolCallId"))
+		approvals.EmitRequest(ctx, partString(part, "approvalId"), partString(part, "toolCallId"))
 	case "tool-approval-response":
-		turn.Approvals().Respond(turn.Context(), partString(part, "approvalId"), partString(part, "toolCallId"), partBool(part, "approved"), partString(part, "reason"))
+		approvals.Respond(ctx, partString(part, "approvalId"), partString(part, "toolCallId"), partBool(part, "approved"), partString(part, "reason"))
 	case "file":
-		turn.AddFile(partString(part, "url"), partString(part, "mediaType"))
+		writer.File(ctx, partString(part, "url"), partString(part, "mediaType"))
 	case "source-document":
-		turn.AddSourceDocument(partString(part, "sourceId"), partString(part, "title"), partString(part, "mediaType"), partString(part, "filename"))
+		writer.SourceDocument(ctx, citations.SourceDocument{
+			ID:        partString(part, "sourceId"),
+			Title:     partString(part, "title"),
+			MediaType: partString(part, "mediaType"),
+			Filename:  partString(part, "filename"),
+		})
 	case "source-url":
-		turn.AddSourceURL(partString(part, "url"), partString(part, "title"))
+		writer.SourceURL(ctx, citations.SourceCitation{
+			URL:   partString(part, "url"),
+			Title: partString(part, "title"),
+		})
 	case "error":
-		turn.Error(partString(part, "errorText"))
+		writer.Error(ctx, partString(part, "errorText"))
 	case "finish":
 		if !opts.HandleTerminalEvents {
 			return false
@@ -104,15 +118,15 @@ func ApplyStreamPart(turn *Turn, part map[string]any, opts PartApplyOptions) boo
 			return false
 		}
 		if opts.ResetMetadataOnAbort {
-			turn.SetMetadata(nil)
+			writer.MessageMetadata(ctx, nil)
 		}
 		turn.Abort(partString(part, "reason"))
 	default:
 		if strings.HasPrefix(partType, "data-") {
 			if opts.ResetMetadataOnDataParts {
-				turn.SetMetadata(nil)
+				writer.MessageMetadata(ctx, nil)
 			}
-			writer.RawPart(turn.Context(), part)
+			writer.RawPart(ctx, part)
 			return true
 		}
 		return false
