@@ -184,4 +184,3 @@ func sourceDocumentKey(doc SourceDocument) string {
 	}
 	return ""
 }
-

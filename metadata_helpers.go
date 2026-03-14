@@ -31,4 +31,3 @@ func EnsurePortalMetadata[T any](portal *bridgev2.Portal) *T {
 	}
 	return EnsureMetadata[T](&portal.Metadata)
 }
-
