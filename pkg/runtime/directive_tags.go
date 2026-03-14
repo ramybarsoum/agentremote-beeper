@@ -30,7 +30,7 @@ type InlineDirectiveParseResult struct {
 // applying silent-reply detection and clearing the text when silent.
 func (p *InlineDirectiveParseResult) toStreamingResult() *StreamingDirectiveResult {
 	text := p.Text
-	isSilent := IsSilentReplyText(text, SilentReplyToken) || IsSilentReplyPrefixText(text, SilentReplyToken)
+	isSilent := isSilentForStreaming(text)
 	if isSilent {
 		text = ""
 	}
@@ -122,6 +122,10 @@ func ParseInlineDirectives(text string, options InlineDirectiveParseOptions) Inl
 
 	result.Text = cleaned
 	return result
+}
+
+func isSilentForStreaming(text string) bool {
+	return IsSilentReplyText(text, SilentReplyToken) || IsSilentReplyPrefixText(text, SilentReplyToken)
 }
 
 // IsSilentReplyText checks whether text is exactly the silent reply token (modulo whitespace).

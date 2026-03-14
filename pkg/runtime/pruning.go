@@ -484,10 +484,7 @@ func SmartTruncatePrompt(prompt []openai.ChatCompletionMessageParamUnion, target
 		SoftTrimTailChars:  500,
 	}
 
-	estimatedTokens := 0
-	for _, msg := range prompt {
-		estimatedTokens += EstimateMessageChars(msg) / CharsPerTokenEstimate
-	}
+	estimatedTokens := estimatePromptTokensForCompaction(prompt)
 	targetTokens := int(float64(estimatedTokens) * (1 - targetReduction))
 	if targetTokens < 1000 {
 		targetTokens = 1000

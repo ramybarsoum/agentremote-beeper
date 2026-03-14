@@ -77,7 +77,7 @@ func (acc *StreamingDirectiveAccumulator) Consume(raw string, final bool) *Strea
 func ParseStreamingChunk(raw string) *StreamingDirectiveResult {
 	if !strings.Contains(raw, "[[") {
 		parsed := &StreamingDirectiveResult{Text: raw}
-		if IsSilentReplyText(raw, SilentReplyToken) || IsSilentReplyPrefixText(raw, SilentReplyToken) {
+		if isSilentForStreaming(raw) {
 			parsed.IsSilent = true
 			parsed.Text = ""
 		}
