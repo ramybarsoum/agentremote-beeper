@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"context"
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/citations"
@@ -24,109 +25,79 @@ func ApplyStreamPart(turn *Turn, part map[string]any, opts PartApplyOptions) boo
 	if turn == nil || len(part) == 0 {
 		return false
 	}
-	partType := strings.TrimSpace(partString(part, "type"))
+	app := newPartApplicator(turn, part, opts)
+	partType := app.s("type")
 	if partType == "" {
 		return false
 	}
-	writer := turn.Writer()
-	tools := writer.Tools()
-	approvals := turn.Approvals()
-	ctx := turn.Context()
 	switch partType {
 	case "start", "message-metadata":
-		metadata, _ := part["messageMetadata"].(map[string]any)
-		if len(metadata) > 0 {
-			writer.MessageMetadata(ctx, metadata)
-		} else if opts.ResetMetadataOnEmptyMessageMeta {
-			writer.MessageMetadata(ctx, nil)
-		}
+		app.messageMetadata()
 	case "start-step":
-		writer.StepStart(ctx)
+		app.writer.StepStart(app.ctx)
 	case "finish-step":
-		writer.StepFinish(ctx)
+		app.writer.StepFinish(app.ctx)
 	case "text-start", "reasoning-start":
-		if opts.ResetMetadataOnStartMarkers {
-			writer.MessageMetadata(ctx, nil)
-		}
+		app.resetMetadataOn(app.opts.ResetMetadataOnStartMarkers)
 	case "text-delta":
-		if delta := partString(part, "delta"); delta != "" {
-			writer.TextDelta(ctx, delta)
-		} else if opts.ResetMetadataOnEmptyTextDelta {
-			writer.MessageMetadata(ctx, nil)
-		}
+		app.textDelta()
 	case "text-end":
-		writer.FinishText(ctx)
+		app.writer.FinishText(app.ctx)
 	case "reasoning-delta":
-		if delta := partString(part, "delta"); delta != "" {
-			writer.ReasoningDelta(ctx, delta)
-		} else if opts.ResetMetadataOnEmptyTextDelta {
-			writer.MessageMetadata(ctx, nil)
-		}
+		app.reasoningDelta()
 	case "reasoning-end":
-		writer.FinishReasoning(ctx)
+		app.writer.FinishReasoning(app.ctx)
 	case "tool-input-start":
-		tools.EnsureInputStart(ctx, partString(part, "toolCallId"), nil, ToolInputOptions{
-			ToolName:         partString(part, "toolName"),
-			ProviderExecuted: partBool(part, "providerExecuted"),
+		app.tools.EnsureInputStart(app.ctx, app.s("toolCallId"), nil, ToolInputOptions{
+			ToolName:         app.s("toolName"),
+			ProviderExecuted: app.b("providerExecuted"),
 		})
 	case "tool-input-delta":
-		tools.InputDelta(ctx, partString(part, "toolCallId"), "", partString(part, "inputTextDelta"), partBool(part, "providerExecuted"))
+		app.tools.InputDelta(app.ctx, app.s("toolCallId"), "", app.s("inputTextDelta"), app.b("providerExecuted"))
 	case "tool-input-available":
-		tools.Input(ctx, partString(part, "toolCallId"), partString(part, "toolName"), part["input"], partBool(part, "providerExecuted"))
+		app.tools.Input(app.ctx, app.s("toolCallId"), app.s("toolName"), app.part["input"], app.b("providerExecuted"))
 	case "tool-output-available":
-		tools.Output(ctx, partString(part, "toolCallId"), part["output"], ToolOutputOptions{
-			ProviderExecuted: partBool(part, "providerExecuted"),
+		app.tools.Output(app.ctx, app.s("toolCallId"), app.part["output"], ToolOutputOptions{
+			ProviderExecuted: app.b("providerExecuted"),
 		})
 	case "tool-output-error":
-		tools.OutputError(ctx, partString(part, "toolCallId"), partString(part, "errorText"), partBool(part, "providerExecuted"))
+		app.tools.OutputError(app.ctx, app.s("toolCallId"), app.s("errorText"), app.b("providerExecuted"))
 	case "tool-output-denied":
-		tools.Denied(ctx, partString(part, "toolCallId"))
+		app.tools.Denied(app.ctx, app.s("toolCallId"))
 	case "tool-approval-request":
-		approvals.EmitRequest(ctx, partString(part, "approvalId"), partString(part, "toolCallId"))
+		app.approvals.EmitRequest(app.ctx, app.s("approvalId"), app.s("toolCallId"))
 	case "tool-approval-response":
-		approvals.Respond(ctx, partString(part, "approvalId"), partString(part, "toolCallId"), partBool(part, "approved"), partString(part, "reason"))
+		app.approvals.Respond(app.ctx, app.s("approvalId"), app.s("toolCallId"), app.b("approved"), app.s("reason"))
 	case "file":
-		writer.File(ctx, partString(part, "url"), partString(part, "mediaType"))
+		app.writer.File(app.ctx, app.s("url"), app.s("mediaType"))
 	case "source-document":
-		writer.SourceDocument(ctx, citations.SourceDocument{
-			ID:        partString(part, "sourceId"),
-			Title:     partString(part, "title"),
-			MediaType: partString(part, "mediaType"),
-			Filename:  partString(part, "filename"),
-		})
+		app.writer.SourceDocument(app.ctx, app.sourceDocument())
 	case "source-url":
-		writer.SourceURL(ctx, citations.SourceCitation{
-			URL:   partString(part, "url"),
-			Title: partString(part, "title"),
-		})
+		app.writer.SourceURL(app.ctx, app.sourceURL())
 	case "error":
-		writer.Error(ctx, partString(part, "errorText"))
+		app.writer.Error(app.ctx, app.s("errorText"))
 	case "finish":
-		if !opts.HandleTerminalEvents {
+		if !app.opts.HandleTerminalEvents {
 			return false
 		}
-		finishReason := partString(part, "finishReason")
+		finishReason := app.s("finishReason")
 		if finishReason == "" {
-			finishReason = strings.TrimSpace(opts.DefaultFinishReason)
+			finishReason = strings.TrimSpace(app.opts.DefaultFinishReason)
 		}
 		if finishReason == "" {
 			finishReason = "stop"
 		}
-		turn.End(finishReason)
+		app.turn.End(finishReason)
 	case "abort":
-		if !opts.HandleTerminalEvents {
+		if !app.opts.HandleTerminalEvents {
 			return false
 		}
-		if opts.ResetMetadataOnAbort {
-			writer.MessageMetadata(ctx, nil)
-		}
-		turn.Abort(partString(part, "reason"))
+		app.resetMetadataOn(app.opts.ResetMetadataOnAbort)
+		app.turn.Abort(app.s("reason"))
 	default:
 		if strings.HasPrefix(partType, "data-") {
-			if opts.ResetMetadataOnDataParts {
-				writer.MessageMetadata(ctx, nil)
-			}
-			writer.RawPart(ctx, part)
+			app.resetMetadataOn(app.opts.ResetMetadataOnDataParts)
+			app.writer.RawPart(app.ctx, app.part)
 			return true
 		}
 		return false
@@ -134,11 +105,81 @@ func ApplyStreamPart(turn *Turn, part map[string]any, opts PartApplyOptions) boo
 	return true
 }
 
-func partString(part map[string]any, key string) string {
-	return strings.TrimSpace(stringValue(part[key]))
+type partApplicator struct {
+	turn      *Turn
+	part      map[string]any
+	opts      PartApplyOptions
+	ctx       context.Context
+	writer    *Writer
+	tools     *ToolsController
+	approvals *ApprovalController
 }
 
-func partBool(part map[string]any, key string) bool {
-	value, _ := part[key].(bool)
+func newPartApplicator(turn *Turn, part map[string]any, opts PartApplyOptions) partApplicator {
+	writer := turn.Writer()
+	return partApplicator{
+		turn:      turn,
+		part:      part,
+		opts:      opts,
+		ctx:       turn.Context(),
+		writer:    writer,
+		tools:     writer.Tools(),
+		approvals: turn.Approvals(),
+	}
+}
+
+func (a partApplicator) s(key string) string {
+	return strings.TrimSpace(stringValue(a.part[key]))
+}
+
+func (a partApplicator) b(key string) bool {
+	value, _ := a.part[key].(bool)
 	return value
+}
+
+func (a partApplicator) resetMetadataOn(enabled bool) {
+	if enabled {
+		a.writer.MessageMetadata(a.ctx, nil)
+	}
+}
+
+func (a partApplicator) messageMetadata() {
+	metadata, _ := a.part["messageMetadata"].(map[string]any)
+	if len(metadata) > 0 {
+		a.writer.MessageMetadata(a.ctx, metadata)
+		return
+	}
+	a.resetMetadataOn(a.opts.ResetMetadataOnEmptyMessageMeta)
+}
+
+func (a partApplicator) textDelta() {
+	if delta := a.s("delta"); delta != "" {
+		a.writer.TextDelta(a.ctx, delta)
+		return
+	}
+	a.resetMetadataOn(a.opts.ResetMetadataOnEmptyTextDelta)
+}
+
+func (a partApplicator) reasoningDelta() {
+	if delta := a.s("delta"); delta != "" {
+		a.writer.ReasoningDelta(a.ctx, delta)
+		return
+	}
+	a.resetMetadataOn(a.opts.ResetMetadataOnEmptyTextDelta)
+}
+
+func (a partApplicator) sourceDocument() citations.SourceDocument {
+	return citations.SourceDocument{
+		ID:        a.s("sourceId"),
+		Title:     a.s("title"),
+		MediaType: a.s("mediaType"),
+		Filename:  a.s("filename"),
+	}
+}
+
+func (a partApplicator) sourceURL() citations.SourceCitation {
+	return citations.SourceCitation{
+		URL:   a.s("url"),
+		Title: a.s("title"),
+	}
 }
