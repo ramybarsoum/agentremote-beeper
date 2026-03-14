@@ -40,14 +40,6 @@ func partTurnID(part api.Part) string {
 	return turnID
 }
 
-func (m *OpenCodeManager) emitTextStreamDelta(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part api.Part, delta string) {
-	m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "text")
-}
-
-func (m *OpenCodeManager) emitReasoningStreamDelta(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part api.Part, delta string) {
-	m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "reasoning")
-}
-
 func (m *OpenCodeManager) emitTextStreamDeltaForKind(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part api.Part, delta, kind string) {
 	if m == nil || m.bridge == nil || portal == nil || inst == nil || delta == "" {
 		return

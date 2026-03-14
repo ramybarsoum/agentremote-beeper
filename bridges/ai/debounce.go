@@ -74,12 +74,6 @@ func BuildDebounceKey(roomID id.RoomID, sender id.UserID) string {
 	return fmt.Sprintf("%s|%s", roomID, sender)
 }
 
-// Enqueue adds a message to the debounce buffer.
-// If shouldDebounce is false, the message is processed immediately.
-func (d *Debouncer) Enqueue(key string, entry DebounceEntry, shouldDebounce bool) {
-	d.EnqueueWithDelay(key, entry, shouldDebounce, 0)
-}
-
 // EnqueueWithDelay adds a message with a custom debounce delay.
 // delayMs: 0 = use default, -1 = immediate (no debounce), >0 = custom delay
 func (d *Debouncer) EnqueueWithDelay(key string, entry DebounceEntry, shouldDebounce bool, delayMs int) {
@@ -136,7 +130,7 @@ func (d *Debouncer) flush(key string) {
 }
 
 // FlushKey immediately flushes the buffer for a key (e.g., when media arrives).
-func (d *Debouncer) FlushKey(key string) {
+func (d *Debouncer) flush(key string) {
 	d.flush(key)
 }
 

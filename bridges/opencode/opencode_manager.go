@@ -1047,10 +1047,10 @@ func (m *OpenCodeManager) handlePartUpdated(ctx context.Context, inst *openCodeI
 		m.emitToolStreamDelta(ctx, inst, portal, part, delta)
 	}
 	if part.Type == "text" && delta != "" {
-		m.emitTextStreamDelta(ctx, inst, portal, part, delta)
+		m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "text")
 	}
 	if part.Type == "reasoning" && delta != "" {
-		m.emitReasoningStreamDelta(ctx, inst, portal, part, delta)
+		m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "reasoning")
 	}
 	m.emitTextStreamEnd(ctx, inst, portal, part)
 	m.handlePart(ctx, inst, portal, role, part, true)
@@ -1105,9 +1105,9 @@ func (m *OpenCodeManager) handlePartDelta(ctx context.Context, inst *openCodeIns
 
 	switch field {
 	case "text":
-		m.emitTextStreamDelta(ctx, inst, portal, part, delta)
+		m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "text")
 	case "reasoning":
-		m.emitReasoningStreamDelta(ctx, inst, portal, part, delta)
+		m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "reasoning")
 	case "tool":
 		m.emitToolStreamDelta(ctx, inst, portal, part, delta)
 	}
@@ -1163,11 +1163,11 @@ func (m *OpenCodeManager) handlePart(ctx context.Context, inst *openCodeInstance
 
 	// User-owned part handling.
 	if isNew {
-		m.bridge.emitOpenCodePart(ctx, portal, inst.cfg.ID, part, true)
+		m.bridge.emitOpenCodePartEvent(portal, inst.cfg.ID, part, true, bridgev2.RemoteEventMessage)
 		return
 	}
 	if allowEdit && (part.Type == "text" || part.Type == "reasoning") {
-		m.bridge.emitOpenCodePartEdit(ctx, portal, inst.cfg.ID, part, true)
+		m.bridge.emitOpenCodePartEvent(portal, inst.cfg.ID, part, true, bridgev2.RemoteEventEdit)
 	}
 	if part.Type == "text" || part.Type == "reasoning" {
 		m.emitTextStreamEnd(ctx, inst, portal, part)

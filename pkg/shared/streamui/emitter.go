@@ -137,16 +137,6 @@ func (e *Emitter) EmitUIStepFinish(ctx context.Context, portal *bridgev2.Portal)
 	e.Emit(ctx, portal, map[string]any{"type": "finish-step"})
 }
 
-// EnsureUIText sends "text-start" the first time it's called for a turn.
-func (e *Emitter) EnsureUIText(ctx context.Context, portal *bridgev2.Portal) {
-	e.ensureUIPartStarted(ctx, portal, &e.State.UITextID, "text")
-}
-
-// EnsureUIReasoning sends "reasoning-start" the first time it's called for a turn.
-func (e *Emitter) EnsureUIReasoning(ctx context.Context, portal *bridgev2.Portal) {
-	e.ensureUIPartStarted(ctx, portal, &e.State.UIReasoningID, "reasoning")
-}
-
 func (e *Emitter) ensureUIPartStarted(ctx context.Context, portal *bridgev2.Portal, idRef *string, partType string) {
 	if idRef == nil || *idRef != "" {
 		return
@@ -160,7 +150,7 @@ func (e *Emitter) ensureUIPartStarted(ctx context.Context, portal *bridgev2.Port
 
 // EmitUITextDelta sends a "text-delta" event, ensuring text has started.
 func (e *Emitter) EmitUITextDelta(ctx context.Context, portal *bridgev2.Portal, delta string) {
-	e.EnsureUIText(ctx, portal)
+	e.ensureUIPartStarted(ctx, portal, &e.State.UITextID, "text")
 	e.Emit(ctx, portal, map[string]any{
 		"type":  "text-delta",
 		"id":    e.State.UITextID,
@@ -170,7 +160,7 @@ func (e *Emitter) EmitUITextDelta(ctx context.Context, portal *bridgev2.Portal, 
 
 // EmitUIReasoningDelta sends a "reasoning-delta" event, ensuring reasoning has started.
 func (e *Emitter) EmitUIReasoningDelta(ctx context.Context, portal *bridgev2.Portal, delta string) {
-	e.EnsureUIReasoning(ctx, portal)
+	e.ensureUIPartStarted(ctx, portal, &e.State.UIReasoningID, "reasoning")
 	e.Emit(ctx, portal, map[string]any{
 		"type":  "reasoning-delta",
 		"id":    e.State.UIReasoningID,

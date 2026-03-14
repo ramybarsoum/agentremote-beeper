@@ -20,14 +20,6 @@ type openCodePartEvent struct {
 	Part       api.Part
 }
 
-func (b *Bridge) emitOpenCodePart(ctx context.Context, portal *bridgev2.Portal, instanceID string, part api.Part, fromMe bool) {
-	b.emitOpenCodePartEvent(portal, instanceID, part, fromMe, bridgev2.RemoteEventMessage)
-}
-
-func (b *Bridge) emitOpenCodePartEdit(ctx context.Context, portal *bridgev2.Portal, instanceID string, part api.Part, fromMe bool) {
-	b.emitOpenCodePartEvent(portal, instanceID, part, fromMe, bridgev2.RemoteEventEdit)
-}
-
 func (b *Bridge) emitOpenCodePartEvent(portal *bridgev2.Portal, instanceID string, part api.Part, fromMe bool, eventType bridgev2.RemoteEventType) {
 	if portal == nil || part.ID == "" {
 		return

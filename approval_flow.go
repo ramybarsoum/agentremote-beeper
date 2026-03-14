@@ -283,7 +283,7 @@ func (f *ApprovalFlow[D]) Drop(approvalID string) {
 	if f == nil {
 		return
 	}
-	f.finalize(approvalID, nil, false)
+	f.finalizeWithPromptVersion(approvalID, nil, false, 0)
 }
 
 // normalizeDecisionID trims the approvalID and ensures decision.ApprovalID is set.
@@ -309,7 +309,7 @@ func (f *ApprovalFlow[D]) FinishResolved(approvalID string, decision ApprovalDec
 	if !ok {
 		return
 	}
-	f.finalize(approvalID, &decision, true)
+	f.finalizeWithPromptVersion(approvalID, &decision, true, 0)
 }
 
 // ResolveExternal mirrors a concrete remote allow/deny decision into Matrix as
@@ -897,10 +897,6 @@ func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prom
 		Timestamp:     time.Now(),
 		LogKey:        f.logKey,
 	})
-}
-
-func (f *ApprovalFlow[D]) finalize(approvalID string, decision *ApprovalDecisionPayload, resolved bool) {
-	f.finalizeWithPromptVersion(approvalID, decision, resolved, 0)
 }
 
 func (f *ApprovalFlow[D]) finalizeWithPromptVersion(approvalID string, decision *ApprovalDecisionPayload, resolved bool, promptVersion uint64) bool {
