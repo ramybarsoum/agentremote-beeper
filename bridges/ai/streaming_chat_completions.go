@@ -13,9 +13,6 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote/pkg/agents/tools"
-	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
 type chatCompletionsTurnAdapter struct {
@@ -54,26 +51,8 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 	if temp := oc.effectiveTemperature(meta); temp > 0 {
 		params.Temperature = openai.Float(temp)
 	}
-	enabledTools := oc.selectedBuiltinToolsForTurn(ctx, meta)
-	chatHasAgent := resolveAgentID(meta) != ""
-	strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
 	streamUI := oc.semanticStream(state, portal)
-	if len(enabledTools) > 0 {
-		params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, strictMode, &oc.log)...)
-	}
-	if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && chatHasAgent {
-		if !hasBossAgent(meta) {
-			enabledSessions := oc.filterEnabledTools(meta, tools.SessionTools())
-			if len(enabledSessions) > 0 {
-				params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, strictMode, &oc.log)...)
-			}
-		}
-		if hasBossAgent(meta) {
-			enabledBoss := oc.filterEnabledTools(meta, tools.BossTools())
-			params.Tools = append(params.Tools, bossToolsToChatTools(enabledBoss, strictMode, &oc.log)...)
-		}
-		params.Tools = dedupeChatToolParams(params.Tools)
-	}
+	params.Tools = oc.selectedChatStreamingTools(ctx, meta)
 
 	stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
 	if stream == nil {
@@ -100,41 +79,20 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 			for _, choice := range chunk.Choices {
 				if choice.Delta.Content != "" {
 					touchTyping()
-					delta := maybePrependTextSeparator(state, choice.Delta.Content)
-					state.accumulated.WriteString(delta)
-					roundDelta := delta
-
-					parsed := (*runtimeparse.StreamingDirectiveResult)(nil)
-					if state.replyAccumulator != nil {
-						parsed = state.replyAccumulator.Consume(delta, false)
-					}
-					if parsed != nil {
-						oc.applyStreamingReplyTarget(state, parsed)
-						cleaned := parsed.Text
-						roundDelta = cleaned
-						if typingSignals != nil {
-							typingSignals.SignalTextDelta(cleaned)
-						}
-						if cleaned != "" {
-							state.visibleAccumulated.WriteString(cleaned)
-							if state.firstToken && state.visibleAccumulated.Len() > 0 {
-								state.firstToken = false
-								state.firstTokenAtMs = time.Now().UnixMilli()
-								if !state.suppressSend && !isHeartbeat {
-									oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-									state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
-									if !state.hasInitialMessageTarget() {
-										errText := "failed to send initial streaming message"
-										log.Error().Msg("Failed to send initial streaming message")
-										state.finishReason = "error"
-										streamUI.Error(ctx, errText)
-										oc.emitUIFinish(ctx, portal, state, meta)
-										return false, nil, &PreDeltaError{Err: errors.New(errText)}
-									}
-								}
-							}
-							streamUI.TextDelta(ctx, cleaned)
-						}
+					roundDelta, err := oc.processStreamingTextDelta(
+						ctx,
+						log,
+						portal,
+						state,
+						meta,
+						typingSignals,
+						isHeartbeat,
+						choice.Delta.Content,
+						"failed to send initial streaming message",
+						"Failed to send initial streaming message",
+					)
+					if err != nil {
+						return false, nil, &PreDeltaError{Err: err}
 					}
 					if roundDelta != "" {
 						roundContent.WriteString(roundDelta)
@@ -143,29 +101,22 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 
 				if choice.Delta.Refusal != "" {
 					touchTyping()
-					if typingSignals != nil {
-						typingSignals.SignalTextDelta(choice.Delta.Refusal)
-					}
 					state.accumulated.WriteString(choice.Delta.Refusal)
-					state.visibleAccumulated.WriteString(choice.Delta.Refusal)
 					roundContent.WriteString(choice.Delta.Refusal)
-					if state.firstToken && state.visibleAccumulated.Len() > 0 {
-						state.firstToken = false
-						state.firstTokenAtMs = time.Now().UnixMilli()
-						if !state.suppressSend && !isHeartbeat {
-							oc.ensureGhostDisplayName(ctx, oc.effectiveModel(meta))
-							state.initialEventID = oc.sendInitialStreamMessage(ctx, portal, state, state.visibleAccumulated.String(), state.turnID, state.replyTarget)
-							if !state.hasInitialMessageTarget() {
-								errText := "failed to send initial streaming message"
-								log.Error().Msg("Failed to send initial streaming message")
-								state.finishReason = "error"
-								streamUI.Error(ctx, errText)
-								oc.emitUIFinish(ctx, portal, state, meta)
-								return false, nil, &PreDeltaError{Err: errors.New(errText)}
-							}
-						}
+					if err := oc.emitVisibleTextDelta(
+						ctx,
+						log,
+						portal,
+						state,
+						meta,
+						typingSignals,
+						isHeartbeat,
+						choice.Delta.Refusal,
+						"failed to send initial streaming message",
+						"Failed to send initial streaming message",
+					); err != nil {
+						return false, nil, &PreDeltaError{Err: err}
 					}
-					streamUI.TextDelta(ctx, choice.Delta.Refusal)
 				}
 
 				for _, toolDelta := range choice.Delta.ToolCalls {

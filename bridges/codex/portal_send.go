@@ -6,8 +6,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote"
 )
 
 // sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
@@ -18,17 +16,7 @@ func (cc *CodexClient) sendViaPortal(
 	timestamp time.Time,
 	streamOrder int64,
 ) (id.EventID, networkid.MessageID, error) {
-	return agentremote.SendViaPortal(agentremote.SendViaPortalParams{
-		Login:       cc.UserLogin,
-		Portal:      portal,
-		Sender:      cc.senderForPortal(),
-		IDPrefix:    "codex",
-		LogKey:      "codex_msg_id",
-		MsgID:       msgID,
-		Timestamp:   timestamp,
-		StreamOrder: streamOrder,
-		Converted:   converted,
-	})
+	return cc.ClientBase.SendViaPortalWithOptions(portal, cc.senderForPortal(), msgID, timestamp, streamOrder, converted)
 }
 
 // senderForPortal returns the EventSender for the Codex ghost.
@@ -43,7 +31,7 @@ func (cc *CodexClient) senderForPortal() bridgev2.EventSender {
 func (cc *CodexClient) senderForHuman() bridgev2.EventSender {
 	sender := bridgev2.EventSender{IsFromMe: true}
 	if cc != nil && cc.UserLogin != nil {
-		sender.Sender = humanUserID(cc.UserLogin.ID)
+		sender.Sender = cc.HumanUserID()
 		sender.SenderLogin = cc.UserLogin.ID
 	}
 	return sender

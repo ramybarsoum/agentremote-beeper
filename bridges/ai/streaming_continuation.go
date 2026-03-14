@@ -7,9 +7,6 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
-
-	"github.com/beeper/agentremote/pkg/agents"
-	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 // buildContinuationParams builds params for continuing a response after tool execution
@@ -30,8 +27,6 @@ func (oc *AIClient) buildContinuationParams(
 		params.Instructions = openai.String(systemPrompt)
 	}
 
-	isOpenRouter := oc.isOpenRouterProvider()
-
 	// Build function call outputs as input
 	var input responses.ResponseInputParam
 	if len(state.baseInput) > 0 {
@@ -47,7 +42,7 @@ func (oc *AIClient) buildContinuationParams(
 			}
 			input = append(input, responses.ResponseInputItemParamOfFunctionCall(args, output.callID, output.name))
 		}
-		input = append(input, buildFunctionCallOutputItem(output.callID, output.output, isOpenRouter))
+		input = append(input, buildFunctionCallOutputItem(output.callID, output.output, oc.isOpenRouterProvider()))
 	}
 	steerItems := oc.drainSteerQueue(state.roomID)
 	if len(steerItems) > 0 {
@@ -70,32 +65,10 @@ func (oc *AIClient) buildContinuationParams(
 		}
 	}
 
-	// Add builtin function tools for this turn.
-	// In simple mode this is intentionally restricted to web_search.
-	agentID := resolveAgentID(meta)
-	strictMode := resolveToolStrictMode(isOpenRouter)
-	enabledTools := oc.selectedBuiltinToolsForTurn(ctx, meta)
-	if len(enabledTools) > 0 {
-		params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
-	}
-
-	// Add boss tools for Boss agent rooms (needed for multi-turn tool use)
-	if hasBossAgent(meta) || agents.IsBossAgent(agentID) {
-		enabledBoss := oc.filterEnabledTools(meta, tools.BossTools())
-		params.Tools = append(params.Tools, bossToolsToOpenAI(enabledBoss, strictMode, &oc.log)...)
-	}
-
-	// Add session tools for non-boss agent rooms (needed for multi-turn tool use)
-	if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && agentID != "" && !(hasBossAgent(meta) || agents.IsBossAgent(agentID)) {
-		enabledSessions := oc.filterEnabledTools(meta, tools.SessionTools())
-		if len(enabledSessions) > 0 {
-			params.Tools = append(params.Tools, bossToolsToOpenAI(enabledSessions, strictMode, &oc.log)...)
-		}
-	}
+	params.Tools = oc.selectedResponsesStreamingTools(ctx, meta, true)
 
 	// Prevent duplicate tool names (Anthropic rejects duplicates)
 	logToolParamDuplicates(&oc.log, params.Tools)
-	params.Tools = dedupeToolParams(params.Tools)
 
 	return params
 }

@@ -8,8 +8,6 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-
-	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 // buildResponsesAPIParams creates common Responses API parameters for both streaming and non-streaming paths
@@ -46,58 +44,13 @@ func (oc *AIClient) buildResponsesAPIParams(ctx context.Context, portal *bridgev
 		Str("detected_provider", loginMetadata(oc.UserLogin).Provider).
 		Msg("Provider detection for tool filtering")
 
-	// Add builtin function tools for this turn.
-	// In simple mode this is intentionally restricted to web_search.
-	hasAgent := resolveAgentID(meta) != ""
-	strictMode := resolveToolStrictMode(isOpenRouter)
-	enabledTools := oc.selectedBuiltinToolsForTurn(ctx, meta)
-	if len(enabledTools) > 0 {
-		params.Tools = append(params.Tools, ToOpenAITools(enabledTools, strictMode, &oc.log)...)
-		log.Debug().Int("count", len(enabledTools)).Msg("Added builtin function tools")
-	}
-
-	if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && hasAgent {
-		// Add session tools for non-boss agent rooms.
-		if !hasBossAgent(meta) {
-			enabledSessions := oc.filterEnabledTools(meta, tools.SessionTools())
-			if len(enabledSessions) > 0 {
-				params.Tools = append(params.Tools, bossToolsToOpenAI(enabledSessions, strictMode, &oc.log)...)
-				log.Debug().Int("count", len(enabledSessions)).Msg("Added session tools")
-			}
-		}
-	}
-
-	// Add boss tools if this is a Boss room
-	if hasBossAgent(meta) {
-		enabledBoss := oc.filterEnabledTools(meta, tools.BossTools())
-		params.Tools = append(params.Tools, bossToolsToOpenAI(enabledBoss, strictMode, &oc.log)...)
-		log.Debug().Int("count", len(enabledBoss)).Msg("Added boss agent tools")
+	params.Tools = oc.selectedResponsesStreamingTools(ctx, meta, false)
+	if len(params.Tools) > 0 {
+		log.Debug().Int("count", len(params.Tools)).Msg("Added streaming turn tools")
 	}
 
 	// Prevent duplicate tool names (Anthropic rejects duplicates)
 	logToolParamDuplicates(log, params.Tools)
-	params.Tools = dedupeToolParams(params.Tools)
 
 	return params
-}
-
-// filterEnabledTools returns the subset of tools that are enabled for the current portal.
-func (oc *AIClient) filterEnabledTools(meta *PortalMetadata, allTools []*tools.Tool) []*tools.Tool {
-	var enabled []*tools.Tool
-	for _, tool := range allTools {
-		if oc.isToolEnabled(meta, tool.Name) {
-			enabled = append(enabled, tool)
-		}
-	}
-	return enabled
-}
-
-// bossToolsToOpenAI converts boss tools to OpenAI Responses API format.
-func bossToolsToOpenAI(bossTools []*tools.Tool, strictMode ToolStrictMode, log *zerolog.Logger) []responses.ToolUnionParam {
-	return descriptorsToResponsesTools(toolDescriptorsFromBossTools(bossTools, log), strictMode)
-}
-
-// bossToolsToChatTools converts boss tools to OpenAI Chat Completions tool format.
-func bossToolsToChatTools(bossTools []*tools.Tool, strictMode ToolStrictMode, log *zerolog.Logger) []openai.ChatCompletionToolUnionParam {
-	return descriptorsToChatTools(toolDescriptorsFromBossTools(bossTools, log), strictMode)
 }

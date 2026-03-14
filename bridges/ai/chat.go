@@ -891,12 +891,12 @@ func (oc *AIClient) composeChatInfo(title, modelID string) *bridgev2.ChatInfo {
 	if title == "" {
 		title = modelName
 	}
-	chatInfo := agentremote.BuildDMChatInfo(agentremote.DMChatInfoParams{
-		Title:          title,
-		HumanUserID:    humanUserID(oc.UserLogin.ID),
-		LoginID:        oc.UserLogin.ID,
-		BotUserID:      modelUserID(modelID),
-		BotDisplayName: modelName,
+	chatInfo := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+		Title:             title,
+		Login:             oc.UserLogin,
+		HumanUserIDPrefix: oc.HumanUserIDPrefix,
+		BotUserID:         modelUserID(modelID),
+		BotDisplayName:    modelName,
 	})
 	// Override bot member with model-specific UserInfo and extra fields.
 	chatInfo.Members.MemberMap[modelUserID(modelID)] = modelJoinMember(oc.UserLogin.ID, modelID, modelName, modelInfo)

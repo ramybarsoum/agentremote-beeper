@@ -14,7 +14,7 @@ func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
 }
 
 // Minimal room capabilities for codex bridge rooms.
-var aiBaseCaps = &event.RoomFeatures{
+var aiBaseCaps = agentremote.BuildRoomFeatures(agentremote.RoomFeaturesParams{
 	ID:                  aiCapabilityID,
 	MaxTextLength:       100000,
 	Reply:               event.CapLevelFullySupported,
@@ -24,4 +24,4 @@ var aiBaseCaps = &event.RoomFeatures{
 	ReadReceipts:        true,
 	TypingNotifications: true,
 	DeleteChat:          true,
-}
+})

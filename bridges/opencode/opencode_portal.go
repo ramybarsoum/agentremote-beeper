@@ -134,10 +134,10 @@ func (b *Bridge) composeOpenCodeChatInfo(title, instanceID string) *bridgev2.Cha
 	if login == nil {
 		return nil
 	}
-	return agentremote.BuildDMChatInfo(agentremote.DMChatInfoParams{
+	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
 		Title:             title,
-		HumanUserID:       b.host.HumanUserID(login.ID),
-		LoginID:           login.ID,
+		Login:             login,
+		HumanUserIDPrefix: "opencode-user",
 		BotUserID:         OpenCodeUserID(instanceID),
 		BotDisplayName:    b.DisplayName(instanceID),
 		CanBackfill:       true,

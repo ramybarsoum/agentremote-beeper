@@ -146,6 +146,33 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 	}
 }
 
+type LoginDMChatInfoParams struct {
+	Title             string
+	Login             *bridgev2.UserLogin
+	HumanUserIDPrefix string
+	BotUserID         networkid.UserID
+	BotDisplayName    string
+	CanBackfill       bool
+	CapabilitiesEvent event.Type
+	SettingsEvent     event.Type
+}
+
+func BuildLoginDMChatInfo(p LoginDMChatInfoParams) *bridgev2.ChatInfo {
+	if p.Login == nil {
+		return nil
+	}
+	return BuildDMChatInfo(DMChatInfoParams{
+		Title:             p.Title,
+		HumanUserID:       HumanUserID(p.HumanUserIDPrefix, p.Login.ID),
+		LoginID:           p.Login.ID,
+		BotUserID:         p.BotUserID,
+		BotDisplayName:    p.BotDisplayName,
+		CanBackfill:       p.CanBackfill,
+		CapabilitiesEvent: p.CapabilitiesEvent,
+		SettingsEvent:     p.SettingsEvent,
+	})
+}
+
 // SendViaPortalParams holds the parameters for SendViaPortal.
 type SendViaPortalParams struct {
 	Login     *bridgev2.UserLogin
@@ -218,6 +245,54 @@ func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic
 		Name:  ptr.Ptr(title),
 		Topic: ptr.NonZero(portalTopic),
 	}
+}
+
+var MediaMessageTypes = []event.MessageType{
+	event.MsgImage,
+	event.MsgVideo,
+	event.MsgAudio,
+	event.MsgFile,
+	event.CapMsgVoice,
+	event.CapMsgGIF,
+	event.CapMsgSticker,
+}
+
+type RoomFeaturesParams struct {
+	ID                  string
+	File                event.FileFeatureMap
+	MaxTextLength       int
+	Reply               event.CapabilitySupportLevel
+	Thread              event.CapabilitySupportLevel
+	Edit                event.CapabilitySupportLevel
+	Delete              event.CapabilitySupportLevel
+	Reaction            event.CapabilitySupportLevel
+	ReadReceipts        bool
+	TypingNotifications bool
+	DeleteChat          bool
+}
+
+func BuildRoomFeatures(p RoomFeaturesParams) *event.RoomFeatures {
+	return &event.RoomFeatures{
+		ID:                  p.ID,
+		File:                p.File,
+		MaxTextLength:       p.MaxTextLength,
+		Reply:               p.Reply,
+		Thread:              p.Thread,
+		Edit:                p.Edit,
+		Delete:              p.Delete,
+		Reaction:            p.Reaction,
+		ReadReceipts:        p.ReadReceipts,
+		TypingNotifications: p.TypingNotifications,
+		DeleteChat:          p.DeleteChat,
+	}
+}
+
+func BuildMediaFileFeatureMap(build func() *event.FileFeatures) event.FileFeatureMap {
+	files := make(event.FileFeatureMap, len(MediaMessageTypes))
+	for _, msgType := range MediaMessageTypes {
+		files[msgType] = build()
+	}
+	return files
 }
 
 // BuildBotUserInfo returns a UserInfo for an AI bot ghost with the given name and identifiers.

@@ -60,28 +60,30 @@ func (oc *AIClient) handleResponseOutputTextDelta(
 	errText string,
 	logMessage string,
 ) error {
+	_, err := oc.processStreamingTextDelta(ctx, log, portal, state, meta, typingSignals, isHeartbeat, delta, errText, logMessage)
+	return err
+}
+
+func (oc *AIClient) emitVisibleTextDelta(
+	ctx context.Context,
+	log zerolog.Logger,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	meta *PortalMetadata,
+	typingSignals *TypingSignaler,
+	isHeartbeat bool,
+	delta string,
+	errText string,
+	logMessage string,
+) error {
 	stream := oc.semanticStream(state, portal)
-	delta = maybePrependTextSeparator(state, delta)
-	state.accumulated.WriteString(delta)
-
-	var parsed *runtimeparse.StreamingDirectiveResult
-	if state.replyAccumulator != nil {
-		parsed = state.replyAccumulator.Consume(delta, false)
-	}
-	if parsed == nil {
-		return nil
-	}
-
-	oc.applyStreamingReplyTarget(state, parsed)
-	cleaned := parsed.Text
 	if typingSignals != nil {
-		typingSignals.SignalTextDelta(cleaned)
+		typingSignals.SignalTextDelta(delta)
 	}
-	if cleaned == "" {
+	if delta == "" {
 		return nil
 	}
-
-	state.visibleAccumulated.WriteString(cleaned)
+	state.visibleAccumulated.WriteString(delta)
 	if state.firstToken && state.visibleAccumulated.Len() > 0 {
 		if err := oc.ensureInitialStreamMessage(
 			ctx,
@@ -97,8 +99,55 @@ func (oc *AIClient) handleResponseOutputTextDelta(
 			return err
 		}
 	}
-	stream.TextDelta(ctx, cleaned)
+	stream.TextDelta(ctx, delta)
 	return nil
+}
+
+func (oc *AIClient) processStreamingTextDelta(
+	ctx context.Context,
+	log zerolog.Logger,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	meta *PortalMetadata,
+	typingSignals *TypingSignaler,
+	isHeartbeat bool,
+	delta string,
+	errText string,
+	logMessage string,
+) (string, error) {
+	delta = maybePrependTextSeparator(state, delta)
+	state.accumulated.WriteString(delta)
+
+	roundDelta := delta
+	var parsed *runtimeparse.StreamingDirectiveResult
+	if state.replyAccumulator != nil {
+		parsed = state.replyAccumulator.Consume(delta, false)
+	}
+	if parsed == nil {
+		return roundDelta, nil
+	}
+
+	oc.applyStreamingReplyTarget(state, parsed)
+	roundDelta = parsed.Text
+	if roundDelta == "" {
+		return roundDelta, nil
+	}
+
+	if err := oc.emitVisibleTextDelta(
+		ctx,
+		log,
+		portal,
+		state,
+		meta,
+		typingSignals,
+		isHeartbeat,
+		roundDelta,
+		errText,
+		logMessage,
+	); err != nil {
+		return "", err
+	}
+	return roundDelta, nil
 }
 
 func (oc *AIClient) handleResponseReasoningTextDelta(

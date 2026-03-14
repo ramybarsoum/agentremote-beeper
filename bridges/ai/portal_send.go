@@ -38,15 +38,7 @@ func (oc *AIClient) sendViaPortal(
 	msgID networkid.MessageID,
 ) (id.EventID, networkid.MessageID, error) {
 	ensureConvertedMessageParts(converted)
-	return agentremote.SendViaPortal(agentremote.SendViaPortalParams{
-		Login:     oc.UserLogin,
-		Portal:    portal,
-		Sender:    oc.senderForPortal(ctx, portal),
-		IDPrefix:  "ai",
-		LogKey:    "ai_msg_id",
-		MsgID:     msgID,
-		Converted: converted,
-	})
+	return oc.ClientBase.SendViaPortalWithOptions(portal, oc.senderForPortal(ctx, portal), msgID, time.Time{}, 0, converted)
 }
 
 // The targetMsgID is the network message ID of the message to edit.

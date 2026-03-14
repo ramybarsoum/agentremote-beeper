@@ -75,6 +75,8 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 	}
 	client.InitClientBase(login, client)
 	client.HumanUserIDPrefix = "opencode-user"
+	client.MessageIDPrefix = "opencode"
+	client.MessageLogKey = "opencode_msg_id"
 	client.bridge = NewBridge(client)
 	return client, nil
 }
@@ -180,17 +182,9 @@ var openCodeFileFeatures = &event.FileFeatures{
 }
 
 func openCodeMatrixRoomFeatures() *event.RoomFeatures {
-	return &event.RoomFeatures{
-		ID: "com.beeper.ai.capabilities.2026_02_17+opencode",
-		File: event.FileFeatureMap{
-			event.MsgImage:      openCodeFileFeatures,
-			event.MsgVideo:      openCodeFileFeatures,
-			event.MsgAudio:      openCodeFileFeatures,
-			event.MsgFile:       openCodeFileFeatures,
-			event.CapMsgVoice:   openCodeFileFeatures,
-			event.CapMsgGIF:     openCodeFileFeatures,
-			event.CapMsgSticker: openCodeFileFeatures,
-		},
+	return agentremote.BuildRoomFeatures(agentremote.RoomFeaturesParams{
+		ID:                  "com.beeper.ai.capabilities.2026_02_17+opencode",
+		File:                agentremote.BuildMediaFileFeatureMap(func() *event.FileFeatures { return openCodeFileFeatures }),
 		MaxTextLength:       100000,
 		Reply:               event.CapLevelFullySupported,
 		Thread:              event.CapLevelFullySupported,
@@ -200,7 +194,7 @@ func openCodeMatrixRoomFeatures() *event.RoomFeatures {
 		ReadReceipts:        true,
 		TypingNotifications: true,
 		DeleteChat:          true,
-	}
+	})
 }
 
 func (oc *OpenCodeClient) GetCapabilities(_ context.Context, _ *bridgev2.Portal) *event.RoomFeatures {

@@ -130,6 +130,8 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 	}
 	cc.InitClientBase(login, cc)
 	cc.HumanUserIDPrefix = "codex-user"
+	cc.MessageIDPrefix = "codex"
+	cc.MessageLogKey = "codex_msg_id"
 	cc.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingToolApprovalDataCodex]{
 		Login:             func() *bridgev2.UserLogin { return cc.UserLogin },
 		Sender:            func(_ *bridgev2.Portal) bridgev2.EventSender { return cc.senderForPortal() },
@@ -1481,10 +1483,10 @@ func (cc *CodexClient) composeCodexChatInfo(title string, canBackfill bool) *bri
 	if title == "" {
 		title = "Codex"
 	}
-	return agentremote.BuildDMChatInfo(agentremote.DMChatInfoParams{
+	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
 		Title:             title,
-		HumanUserID:       humanUserID(cc.UserLogin.ID),
-		LoginID:           cc.UserLogin.ID,
+		Login:             cc.UserLogin,
+		HumanUserIDPrefix: cc.HumanUserIDPrefix,
 		BotUserID:         codexGhostID,
 		BotDisplayName:    "Codex",
 		CanBackfill:       canBackfill,

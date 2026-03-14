@@ -15,14 +15,7 @@ func (oc *OpenCodeClient) sendViaPortal(
 	instanceID string,
 	converted *bridgev2.ConvertedMessage,
 ) error {
-	_, _, err := agentremote.SendViaPortal(agentremote.SendViaPortalParams{
-		Login:     oc.UserLogin,
-		Portal:    portal,
-		Sender:    oc.SenderForOpenCode(instanceID, false),
-		IDPrefix:  "opencode",
-		LogKey:    "opencode_msg_id",
-		Converted: converted,
-	})
+	_, _, err := oc.ClientBase.SendViaPortal(portal, oc.SenderForOpenCode(instanceID, false), converted)
 	return err
 }
 

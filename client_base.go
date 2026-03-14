@@ -4,9 +4,11 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
 )
 
 type ClientBase struct {
@@ -18,6 +20,8 @@ type ClientBase struct {
 
 	loggedIn          atomic.Bool
 	HumanUserIDPrefix string
+	MessageIDPrefix   string
+	MessageLogKey     string
 }
 
 func (c *ClientBase) InitClientBase(login *bridgev2.UserLogin, target ReactionTarget) {
@@ -68,4 +72,41 @@ func (c *ClientBase) BackgroundContext(ctx context.Context) context.Context {
 		return login.Bridge.BackgroundCtx
 	}
 	return context.Background()
+}
+
+func (c *ClientBase) HumanUserID() networkid.UserID {
+	login := c.GetUserLogin()
+	if login == nil || c.HumanUserIDPrefix == "" {
+		return ""
+	}
+	return HumanUserID(c.HumanUserIDPrefix, login.ID)
+}
+
+func (c *ClientBase) SendViaPortal(
+	portal *bridgev2.Portal,
+	sender bridgev2.EventSender,
+	converted *bridgev2.ConvertedMessage,
+) (id.EventID, networkid.MessageID, error) {
+	return c.SendViaPortalWithOptions(portal, sender, "", time.Time{}, 0, converted)
+}
+
+func (c *ClientBase) SendViaPortalWithOptions(
+	portal *bridgev2.Portal,
+	sender bridgev2.EventSender,
+	msgID networkid.MessageID,
+	timestamp time.Time,
+	streamOrder int64,
+	converted *bridgev2.ConvertedMessage,
+) (id.EventID, networkid.MessageID, error) {
+	return SendViaPortal(SendViaPortalParams{
+		Login:       c.GetUserLogin(),
+		Portal:      portal,
+		Sender:      sender,
+		IDPrefix:    c.MessageIDPrefix,
+		LogKey:      c.MessageLogKey,
+		MsgID:       msgID,
+		Timestamp:   timestamp,
+		StreamOrder: streamOrder,
+		Converted:   converted,
+	})
 }

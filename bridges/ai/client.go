@@ -405,6 +405,8 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		queueTyping:         make(map[id.RoomID]*TypingController),
 	}
 	oc.HumanUserIDPrefix = "openai-user"
+	oc.MessageIDPrefix = "ai"
+	oc.MessageLogKey = "ai_msg_id"
 	oc.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingToolApprovalData]{
 		Login: func() *bridgev2.UserLogin { return oc.UserLogin },
 		Sender: func(portal *bridgev2.Portal) bridgev2.EventSender {

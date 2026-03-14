@@ -36,17 +36,9 @@ var (
 
 const openClawCapabilityBaseID = "com.beeper.ai.capabilities.2026_03_09+openclaw"
 
-var openClawBaseCaps = &event.RoomFeatures{
-	ID: openClawCapabilityBaseID,
-	File: event.FileFeatureMap{
-		event.MsgImage:      openClawRejectedFileFeatures(),
-		event.MsgVideo:      openClawRejectedFileFeatures(),
-		event.MsgAudio:      openClawRejectedFileFeatures(),
-		event.MsgFile:       openClawRejectedFileFeatures(),
-		event.CapMsgVoice:   openClawRejectedFileFeatures(),
-		event.CapMsgGIF:     openClawRejectedFileFeatures(),
-		event.CapMsgSticker: openClawRejectedFileFeatures(),
-	},
+var openClawBaseCaps = agentremote.BuildRoomFeatures(agentremote.RoomFeaturesParams{
+	ID:                  openClawCapabilityBaseID,
+	File:                agentremote.BuildMediaFileFeatureMap(openClawRejectedFileFeatures),
 	MaxTextLength:       100000,
 	Reply:               event.CapLevelFullySupported,
 	Thread:              event.CapLevelRejected,
@@ -56,7 +48,7 @@ var openClawBaseCaps = &event.RoomFeatures{
 	ReadReceipts:        true,
 	TypingNotifications: true,
 	DeleteChat:          true,
-}
+})
 
 type openClawCapabilityProfile struct {
 	SupportsVision    bool
@@ -125,6 +117,8 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 	}
 	client.InitClientBase(login, client)
 	client.HumanUserIDPrefix = "openclaw-user"
+	client.MessageIDPrefix = "openclaw"
+	client.MessageLogKey = "openclaw_msg_id"
 	client.manager = newOpenClawManager(client)
 	return client, nil
 }
@@ -308,15 +302,7 @@ func (oc *OpenClawClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 	profile := oc.openClawCapabilityProfile(ctx, portalMeta(portal))
 	caps.ID = openClawCapabilityID(profile)
 	if !profile.MediaKnown {
-		for _, msgType := range []event.MessageType{
-			event.MsgImage,
-			event.MsgVideo,
-			event.MsgAudio,
-			event.MsgFile,
-			event.CapMsgVoice,
-			event.CapMsgGIF,
-			event.CapMsgSticker,
-		} {
+		for _, msgType := range agentremote.MediaMessageTypes {
 			caps.File[msgType] = openClawFileFeatures.Clone()
 		}
 		return caps
