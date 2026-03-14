@@ -44,38 +44,27 @@ func (m *OpenCodeManager) emitTextStreamDeltaForKind(ctx context.Context, inst *
 	if m == nil || m.bridge == nil || portal == nil || inst == nil || delta == "" {
 		return
 	}
-	turnID := partTurnID(part)
 	partID := opencodePartStreamID(part, kind)
 	if partID == "" {
 		return
 	}
-	agentID := m.bridge.portalAgentID(portal)
 	m.closeStepIfOpen(ctx, inst, portal, part.SessionID, part.MessageID)
 	m.ensureTurnStarted(ctx, inst, portal, part.SessionID, part.MessageID, nil)
 
 	started, _ := inst.partTextStreamFlags(part.SessionID, part.ID).forKind(kind)
-	if client, ok := m.bridge.host.(*OpenCodeClient); ok {
-		if streamState, writer := client.ensureStreamWriter(ctx, portal, turnID, agentID); writer != nil {
-			if kind == "reasoning" {
-				writer.ReasoningDelta(ctx, delta)
-				streamState.accumulated.WriteString(delta)
-			} else {
-				writer.TextDelta(ctx, delta)
-				streamState.visible.WriteString(delta)
-				streamState.accumulated.WriteString(delta)
-			}
-			if !started {
-				inst.setPartTextStreamStarted(part.SessionID, part.ID, kind)
-			}
-			inst.appendPartTextContent(part.SessionID, part.ID, kind, delta)
-			return
-		}
+	streamState, writer := m.mustStreamWriter(ctx, portal, part.SessionID, part.MessageID)
+	if kind == "reasoning" {
+		writer.ReasoningDelta(ctx, delta)
+		streamState.accumulated.WriteString(delta)
+	} else {
+		writer.TextDelta(ctx, delta)
+		streamState.visible.WriteString(delta)
+		streamState.accumulated.WriteString(delta)
 	}
-	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-		"type":  kind + "-delta",
-		"id":    partID,
-		"delta": delta,
-	})
+	_ = partID
+	if !started {
+		inst.setPartTextStreamStarted(part.SessionID, part.ID, kind)
+	}
 	inst.appendPartTextContent(part.SessionID, part.ID, kind, delta)
 }
 
@@ -90,30 +79,20 @@ func (m *OpenCodeManager) emitTextStreamEnd(ctx context.Context, inst *openCodeI
 		return
 	}
 	kind := part.Type
-	turnID := partTurnID(part)
 	partID := opencodePartStreamID(part, kind)
 	if partID == "" {
 		return
 	}
-	agentID := m.bridge.portalAgentID(portal)
 	started, ended := inst.partTextStreamFlags(part.SessionID, part.ID).forKind(kind)
 	if !started || ended {
 		return
 	}
-	if client, ok := m.bridge.host.(*OpenCodeClient); ok {
-		if _, writer := client.ensureStreamWriter(ctx, portal, turnID, agentID); writer != nil {
-			if kind == "reasoning" {
-				writer.FinishReasoning(ctx)
-			} else {
-				writer.FinishText(ctx)
-			}
-			inst.setPartTextStreamEnded(part.SessionID, part.ID, kind)
-			return
-		}
+	_, writer := m.mustStreamWriter(ctx, portal, part.SessionID, part.MessageID)
+	if kind == "reasoning" {
+		writer.FinishReasoning(ctx)
+	} else {
+		writer.FinishText(ctx)
 	}
-	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-		"type": kind + "-end",
-		"id":   partID,
-	})
+	_ = partID
 	inst.setPartTextStreamEnded(part.SessionID, part.ID, kind)
 }

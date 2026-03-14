@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func (m *OpenCodeManager) ensureTurnStarted(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, sessionID, messageID string, metadata map[string]any) {
@@ -17,38 +19,21 @@ func (m *OpenCodeManager) ensureTurnStarted(ctx context.Context, inst *openCodeI
 	if state == nil {
 		return
 	}
-	turnID := opencodeMessageStreamTurnID(sessionID, messageID)
-	if turnID == "" {
-		return
-	}
-	agentID := m.bridge.portalAgentID(portal)
-	if client, ok := m.bridge.host.(*OpenCodeClient); ok {
-		if streamState, writer := client.ensureStreamWriter(ctx, portal, turnID, agentID); writer != nil {
-			if len(metadata) > 0 {
-				client.applyStreamMessageMetadata(streamState, metadata)
-				writer.MessageMetadata(ctx, metadata)
-			} else {
-				// Start the turn without fabricating raw stream parts.
-				writer.MessageMetadata(ctx, nil)
-			}
-			state.started = true
-			return
-		}
-	}
 	if state.started {
 		if len(metadata) > 0 {
-			m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-				"type":            "message-metadata",
-				"messageMetadata": metadata,
-			})
+			m.applyTurnMetadata(ctx, portal, sessionID, messageID, metadata)
 		}
 		return
 	}
-	part := map[string]any{"type": "start", "messageId": turnID}
+	_, writer := m.mustStreamWriter(ctx, portal, sessionID, messageID)
 	if len(metadata) > 0 {
-		part["messageMetadata"] = metadata
+		client := m.bridge.host.(*OpenCodeClient)
+		streamState, _ := m.mustStreamWriter(ctx, portal, sessionID, messageID)
+		client.applyStreamMessageMetadata(streamState, metadata)
+		writer.MessageMetadata(ctx, metadata)
+	} else {
+		writer.MessageMetadata(ctx, nil)
 	}
-	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, part)
 	state.started = true
 }
 
@@ -64,21 +49,8 @@ func (m *OpenCodeManager) ensureStepStarted(ctx context.Context, inst *openCodeI
 	if state == nil || state.stepOpen {
 		return
 	}
-	turnID := opencodeMessageStreamTurnID(sessionID, messageID)
-	if turnID == "" {
-		return
-	}
-	agentID := m.bridge.portalAgentID(portal)
-	if client, ok := m.bridge.host.(*OpenCodeClient); ok {
-		if _, writer := client.ensureStreamWriter(ctx, portal, turnID, agentID); writer != nil {
-			writer.StepStart(ctx)
-			state.stepOpen = true
-			return
-		}
-	}
-	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-		"type": "start-step",
-	})
+	_, writer := m.mustStreamWriter(ctx, portal, sessionID, messageID)
+	writer.StepStart(ctx)
 	state.stepOpen = true
 }
 
@@ -93,21 +65,8 @@ func (m *OpenCodeManager) closeStepIfOpen(ctx context.Context, inst *openCodeIns
 	if state == nil || !state.stepOpen {
 		return
 	}
-	turnID := opencodeMessageStreamTurnID(sessionID, messageID)
-	if turnID == "" {
-		return
-	}
-	agentID := m.bridge.portalAgentID(portal)
-	if client, ok := m.bridge.host.(*OpenCodeClient); ok {
-		if _, writer := client.ensureStreamWriter(ctx, portal, turnID, agentID); writer != nil {
-			writer.StepFinish(ctx)
-			state.stepOpen = false
-			return
-		}
-	}
-	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-		"type": "finish-step",
-	})
+	_, writer := m.mustStreamWriter(ctx, portal, sessionID, messageID)
+	writer.StepFinish(ctx)
 	state.stepOpen = false
 }
 
@@ -130,29 +89,28 @@ func (m *OpenCodeManager) emitTurnFinish(ctx context.Context, inst *openCodeInst
 	if finishReason == "" {
 		finishReason = "stop"
 	}
-	agentID := m.bridge.portalAgentID(portal)
-	if client, ok := m.bridge.host.(*OpenCodeClient); ok {
-		if streamState, writer := client.ensureStreamWriter(ctx, portal, turnID, agentID); writer != nil {
-			if len(metadata) > 0 {
-				client.applyStreamMessageMetadata(streamState, metadata)
-				writer.MessageMetadata(ctx, metadata)
-			}
-			streamState.finishReason = finishReason
-			m.bridge.finishOpenCodeStream(turnID)
-			state.finished = true
-			inst.removeTurnState(sessionID, messageID)
-			return
-		}
-	}
-	part := map[string]any{
-		"type":         "finish",
-		"finishReason": finishReason,
-	}
 	if len(metadata) > 0 {
-		part["messageMetadata"] = metadata
+		m.applyTurnMetadata(ctx, portal, sessionID, messageID, metadata)
 	}
-	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, part)
+	streamState, _ := m.mustStreamWriter(ctx, portal, sessionID, messageID)
+	streamState.finishReason = finishReason
 	m.bridge.finishOpenCodeStream(turnID)
 	state.finished = true
 	inst.removeTurnState(sessionID, messageID)
+}
+
+func (m *OpenCodeManager) applyTurnMetadata(ctx context.Context, portal *bridgev2.Portal, sessionID, messageID string, metadata map[string]any) {
+	state, writer := m.mustStreamWriter(ctx, portal, sessionID, messageID)
+	if len(metadata) > 0 {
+		stateClient := m.bridge.host.(*OpenCodeClient)
+		stateClient.applyStreamMessageMetadata(state, metadata)
+	}
+	writer.MessageMetadata(ctx, metadata)
+}
+
+func (m *OpenCodeManager) mustStreamWriter(ctx context.Context, portal *bridgev2.Portal, sessionID, messageID string) (*openCodeStreamState, *bridgesdk.Writer) {
+	client := m.bridge.host.(*OpenCodeClient)
+	turnID := opencodeMessageStreamTurnID(sessionID, messageID)
+	state, writer := client.ensureStreamWriter(ctx, portal, turnID, m.bridge.portalAgentID(portal))
+	return state, writer
 }

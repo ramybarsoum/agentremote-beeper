@@ -1,17 +1,13 @@
 package streamui
 
 import (
-	"context"
 	"strings"
-
-	"maunium.net/go/mautrix/bridgev2"
 )
 
 // ReplayBuilder applies canonical UI parts onto a UIState without a live portal.
 // It is intended for backfill and history reconstruction paths.
 type ReplayBuilder struct {
 	State   *UIState
-	emitter *Emitter
 	visible strings.Builder
 }
 
@@ -21,14 +17,7 @@ func NewReplayBuilder(state *UIState) *ReplayBuilder {
 		return nil
 	}
 	state.InitMaps()
-	builder := &ReplayBuilder{State: state}
-	builder.emitter = &Emitter{
-		State: state,
-		Emit: func(_ context.Context, _ *bridgev2.Portal, part map[string]any) {
-			ApplyChunk(state, part)
-		},
-	}
-	return builder
+	return &ReplayBuilder{State: state}
 }
 
 func (b *ReplayBuilder) emit(part map[string]any) {
@@ -59,17 +48,6 @@ func (b *ReplayBuilder) Start(metadata map[string]any) {
 		part["messageMetadata"] = metadata
 	}
 	b.emit(part)
-}
-
-// MessageMetadata emits a metadata-only update.
-func (b *ReplayBuilder) MessageMetadata(metadata map[string]any) {
-	if len(metadata) == 0 {
-		return
-	}
-	b.emit(map[string]any{
-		"type":            "message-metadata",
-		"messageMetadata": metadata,
-	})
 }
 
 // Finish emits the canonical turn finish.
@@ -139,50 +117,90 @@ func (b *ReplayBuilder) Data(part map[string]any) {
 
 // ToolInput emits a full tool input payload.
 func (b *ReplayBuilder) ToolInput(toolCallID, toolName string, input any, providerExecuted bool) {
-	if b == nil || b.emitter == nil {
+	if b == nil {
 		return
 	}
-	b.emitter.EmitUIToolInputAvailable(context.Background(), nil, toolCallID, toolName, input, providerExecuted)
+	b.emit(map[string]any{
+		"type":             "tool-input-available",
+		"toolCallId":       strings.TrimSpace(toolCallID),
+		"toolName":         strings.TrimSpace(toolName),
+		"input":            input,
+		"providerExecuted": providerExecuted,
+	})
 }
 
 // ToolInputText emits streamed tool input reconstructed from raw text.
 func (b *ReplayBuilder) ToolInputText(toolCallID, toolName, inputText string, providerExecuted bool) {
-	if b == nil || b.emitter == nil {
+	if b == nil {
 		return
 	}
-	b.emitter.EmitUIToolInputDelta(context.Background(), nil, toolCallID, toolName, inputText, providerExecuted)
+	toolCallID = strings.TrimSpace(toolCallID)
+	toolName = strings.TrimSpace(toolName)
+	inputText = strings.TrimSpace(inputText)
+	if toolCallID == "" || inputText == "" {
+		return
+	}
+	b.emit(map[string]any{
+		"type":             "tool-input-start",
+		"toolCallId":       toolCallID,
+		"toolName":         toolName,
+		"providerExecuted": providerExecuted,
+	})
+	b.emit(map[string]any{
+		"type":             "tool-input-delta",
+		"toolCallId":       toolCallID,
+		"inputTextDelta":   inputText,
+		"providerExecuted": providerExecuted,
+	})
 }
 
 // ToolOutput emits a final tool output payload.
 func (b *ReplayBuilder) ToolOutput(toolCallID string, output any, providerExecuted bool) {
-	if b == nil || b.emitter == nil {
+	if b == nil {
 		return
 	}
-	b.emitter.EmitUIToolOutputAvailable(context.Background(), nil, toolCallID, output, providerExecuted, false)
+	b.emit(map[string]any{
+		"type":             "tool-output-available",
+		"toolCallId":       strings.TrimSpace(toolCallID),
+		"output":           output,
+		"providerExecuted": providerExecuted,
+	})
 }
 
 // ToolOutputError emits a final tool error payload.
 func (b *ReplayBuilder) ToolOutputError(toolCallID, errorText string, providerExecuted bool) {
-	if b == nil || b.emitter == nil {
+	if b == nil {
 		return
 	}
-	b.emitter.EmitUIToolOutputError(context.Background(), nil, toolCallID, errorText, providerExecuted)
+	b.emit(map[string]any{
+		"type":             "tool-output-error",
+		"toolCallId":       strings.TrimSpace(toolCallID),
+		"errorText":        strings.TrimSpace(errorText),
+		"providerExecuted": providerExecuted,
+	})
 }
 
 // ToolDenied emits a denied tool result.
 func (b *ReplayBuilder) ToolDenied(toolCallID string) {
-	if b == nil || b.emitter == nil {
+	if b == nil {
 		return
 	}
-	b.emitter.EmitUIToolOutputDenied(context.Background(), nil, toolCallID)
+	b.emit(map[string]any{
+		"type":       "tool-output-denied",
+		"toolCallId": strings.TrimSpace(toolCallID),
+	})
 }
 
 // ApprovalRequest emits a tool approval request.
 func (b *ReplayBuilder) ApprovalRequest(approvalID, toolCallID string) {
-	if b == nil || b.emitter == nil {
+	if b == nil {
 		return
 	}
-	b.emitter.EmitUIToolApprovalRequest(context.Background(), nil, approvalID, toolCallID)
+	b.emit(map[string]any{
+		"type":       "tool-approval-request",
+		"approvalId": strings.TrimSpace(approvalID),
+		"toolCallId": strings.TrimSpace(toolCallID),
+	})
 }
 
 // File emits a generated file part.

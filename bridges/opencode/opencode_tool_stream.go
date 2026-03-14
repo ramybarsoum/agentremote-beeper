@@ -34,121 +34,58 @@ func (m *OpenCodeManager) emitToolStreamDelta(ctx context.Context, inst *openCod
 	if delta == "" {
 		return
 	}
-	turnID := partTurnID(part)
 	toolCallID := opencodeToolCallID(part)
 	if toolCallID == "" {
 		return
 	}
 	toolName := opencodeToolName(part)
-	agentID := m.bridge.portalAgentID(portal)
 	m.ensureStepStarted(ctx, inst, portal, part.SessionID, part.MessageID)
 	sf := inst.partStreamFlags(part.SessionID, part.ID)
-	if client, ok := m.bridge.host.(*OpenCodeClient); ok {
-		if _, writer := client.ensureStreamWriter(ctx, portal, turnID, agentID); writer != nil {
-			tools := writer.Tools()
-			if !sf.inputStarted {
-				tools.EnsureInputStart(ctx, toolCallID, nil, bridgesdk.ToolInputOptions{
-					ToolName:         toolName,
-					ProviderExecuted: false,
-				})
-				inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamInputStarted = true })
-			}
-			tools.InputDelta(ctx, toolCallID, toolName, delta, false)
-			return
-		}
-	}
+	_, writer := m.mustStreamWriter(ctx, portal, part.SessionID, part.MessageID)
+	tools := writer.Tools()
 	if !sf.inputStarted {
-		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-			"type":             "tool-input-start",
-			"toolCallId":       toolCallID,
-			"toolName":         toolName,
-			"providerExecuted": false,
+		tools.EnsureInputStart(ctx, toolCallID, nil, bridgesdk.ToolInputOptions{
+			ToolName:         toolName,
+			ProviderExecuted: false,
 		})
 		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamInputStarted = true })
 	}
-	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-		"type":           "tool-input-delta",
-		"toolCallId":     toolCallID,
-		"inputTextDelta": delta,
-	})
+	tools.InputDelta(ctx, toolCallID, toolName, delta, false)
 }
 
 func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part api.Part) {
 	if m == nil || m.bridge == nil || portal == nil || part.State == nil {
 		return
 	}
-	turnID := partTurnID(part)
 	toolCallID := opencodeToolCallID(part)
 	if toolCallID == "" {
 		return
 	}
 	toolName := opencodeToolName(part)
-	agentID := m.bridge.portalAgentID(portal)
 	m.ensureStepStarted(ctx, inst, portal, part.SessionID, part.MessageID)
 	sf := inst.partStreamFlags(part.SessionID, part.ID)
-	if client, ok := m.bridge.host.(*OpenCodeClient); ok {
-		if _, writer := client.ensureStreamWriter(ctx, portal, turnID, agentID); writer != nil {
-			tools := writer.Tools()
-			if len(part.State.Input) > 0 && !sf.inputAvailable {
-				if !sf.inputStarted {
-					tools.EnsureInputStart(ctx, toolCallID, nil, bridgesdk.ToolInputOptions{
-						ToolName:         toolName,
-						ProviderExecuted: false,
-					})
-					inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamInputStarted = true })
-				}
-				tools.Input(ctx, toolCallID, toolName, part.State.Input, false)
-				inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamInputAvailable = true })
-			}
-			if part.State.Output != "" && !sf.outputAvailable {
-				tools.Output(ctx, toolCallID, part.State.Output, bridgesdk.ToolOutputOptions{ProviderExecuted: false})
-				inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamOutputAvailable = true })
-			}
-			if part.State.Error != "" && !sf.outputError {
-				tools.OutputError(ctx, toolCallID, part.State.Error, false)
-				inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamOutputError = true })
-			}
-			return
-		}
-	}
+	_, writer := m.mustStreamWriter(ctx, portal, part.SessionID, part.MessageID)
+	tools := writer.Tools()
 
 	if len(part.State.Input) > 0 && !sf.inputAvailable {
 		if !sf.inputStarted {
-			m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-				"type":             "tool-input-start",
-				"toolCallId":       toolCallID,
-				"toolName":         toolName,
-				"providerExecuted": false,
+			tools.EnsureInputStart(ctx, toolCallID, nil, bridgesdk.ToolInputOptions{
+				ToolName:         toolName,
+				ProviderExecuted: false,
 			})
 			inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamInputStarted = true })
 		}
-		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-			"type":             "tool-input-available",
-			"toolCallId":       toolCallID,
-			"toolName":         toolName,
-			"input":            part.State.Input,
-			"providerExecuted": false,
-		})
+		tools.Input(ctx, toolCallID, toolName, part.State.Input, false)
 		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamInputAvailable = true })
 	}
 
 	if part.State.Output != "" && !sf.outputAvailable {
-		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-			"type":             "tool-output-available",
-			"toolCallId":       toolCallID,
-			"output":           part.State.Output,
-			"providerExecuted": false,
-		})
+		tools.Output(ctx, toolCallID, part.State.Output, bridgesdk.ToolOutputOptions{ProviderExecuted: false})
 		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamOutputAvailable = true })
 	}
 
 	if part.State.Error != "" && !sf.outputError {
-		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-			"type":             "tool-output-error",
-			"toolCallId":       toolCallID,
-			"errorText":        part.State.Error,
-			"providerExecuted": false,
-		})
+		tools.OutputError(ctx, toolCallID, part.State.Error, false)
 		inst.withPartState(part.SessionID, part.ID, func(ps *openCodePartState) { ps.streamOutputError = true })
 	}
 }
@@ -157,8 +94,6 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 	if m == nil || m.bridge == nil || portal == nil || inst == nil {
 		return
 	}
-	turnID := partTurnID(part)
-	agentID := m.bridge.portalAgentID(portal)
 	if state := inst.partState(part.SessionID, part.ID); state != nil && state.artifactStreamSent {
 		return
 	}
@@ -175,54 +110,25 @@ func (m *OpenCodeManager) emitArtifactStream(ctx context.Context, inst *openCode
 	if mediaType == "" {
 		mediaType = "application/octet-stream"
 	}
-	if client, ok := m.bridge.host.(*OpenCodeClient); ok {
-		if _, writer := client.ensureStreamWriter(ctx, portal, turnID, agentID); writer != nil {
-			if sourceURL != "" {
-				writer.File(ctx, sourceURL, mediaType)
-			}
-			if title != "" {
-				writer.SourceDocument(ctx, citations.SourceDocument{
-					ID:        "opencode-doc-" + part.ID,
-					Title:     title,
-					Filename:  title,
-					MediaType: mediaType,
-				})
-			}
-			if sourceURL != "" {
-				writer.SourceURL(ctx, citations.SourceCitation{
-					URL:   sourceURL,
-					Title: title,
-				})
-			}
-			inst.markPartArtifactStreamSent(part.SessionID, part.ID)
-			return
-		}
-	}
+	_, writer := m.mustStreamWriter(ctx, portal, part.SessionID, part.MessageID)
 
 	if sourceURL != "" {
-		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-			"type":      "file",
-			"url":       sourceURL,
-			"mediaType": mediaType,
-		})
+		writer.File(ctx, sourceURL, mediaType)
 	}
 
 	if title != "" {
-		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-			"type":      "source-document",
-			"sourceId":  "opencode-doc-" + part.ID,
-			"title":     title,
-			"filename":  title,
-			"mediaType": mediaType,
+		writer.SourceDocument(ctx, citations.SourceDocument{
+			ID:        "opencode-doc-" + part.ID,
+			Title:     title,
+			Filename:  title,
+			MediaType: mediaType,
 		})
 	}
 
 	if sourceURL != "" {
-		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
-			"type":     "source-url",
-			"sourceId": "opencode-source-" + part.ID,
-			"url":      sourceURL,
-			"title":    title,
+		writer.SourceURL(ctx, citations.SourceCitation{
+			URL:   sourceURL,
+			Title: title,
 		})
 	}
 
