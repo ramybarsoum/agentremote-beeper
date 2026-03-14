@@ -6,7 +6,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
@@ -179,113 +178,6 @@ func (c *ToolsController) Denied(toolCallID string) {
 		return
 	}
 	c.turn.ToolDenied(toolCallID)
-}
-
-// Backward-compatible TurnStream tool helpers delegate to the turn-owned tools controller.
-func (s *TurnStream) EnsureToolInputStart(toolCallID string, input any, opts ToolInputOptions) {
-	if !s.valid() {
-		return
-	}
-	s.turn.Tools().EnsureInputStart(toolCallID, input, opts)
-}
-
-func (s *TurnStream) ToolInputDelta(toolCallID, delta string, providerExecuted bool) {
-	if !s.valid() {
-		return
-	}
-	s.turn.Tools().InputDelta(toolCallID, delta, providerExecuted)
-}
-
-func (s *TurnStream) ToolInput(toolCallID, toolName string, input any, providerExecuted bool) {
-	if !s.valid() {
-		return
-	}
-	s.turn.Tools().Input(toolCallID, toolName, input, providerExecuted)
-}
-
-func (s *TurnStream) ToolOutput(toolCallID string, output any, opts ToolOutputOptions) {
-	if !s.valid() {
-		return
-	}
-	s.turn.Tools().Output(toolCallID, output, opts)
-}
-
-func (s *TurnStream) ToolOutputError(toolCallID, errText string, providerExecuted bool) {
-	if !s.valid() {
-		return
-	}
-	s.turn.Tools().OutputError(toolCallID, errText, providerExecuted)
-}
-
-func (s *TurnStream) ToolDenied(toolCallID string) {
-	if !s.valid() {
-		return
-	}
-	s.turn.Tools().Denied(toolCallID)
-}
-
-// SourceURL emits a source URL citation.
-func (s *TurnStream) SourceURL(url, title string) {
-	if !s.valid() {
-		return
-	}
-	s.turn.AddSourceURL(url, title)
-}
-
-// SourceCitation emits a source URL citation from a structured citation object.
-func (s *TurnStream) SourceCitation(citation citations.SourceCitation) {
-	if !s.valid() {
-		return
-	}
-	s.turn.AddSourceURL(citation.URL, citation.Title)
-}
-
-// SourceDocument emits a source document citation.
-func (s *TurnStream) SourceDocument(document citations.SourceDocument) {
-	if !s.valid() {
-		return
-	}
-	s.turn.AddSourceDocument(document.ID, document.Title, document.MediaType, document.Filename)
-}
-
-// File emits a generated file part.
-func (s *TurnStream) File(url, mediaType string) {
-	if !s.valid() {
-		return
-	}
-	s.turn.AddFile(url, mediaType)
-}
-
-// GeneratedFile emits a generated file part from a structured file object.
-func (s *TurnStream) GeneratedFile(file citations.GeneratedFilePart) {
-	if !s.valid() {
-		return
-	}
-	s.turn.AddFile(file.URL, file.MediaType)
-}
-
-// StepStart begins a visual step group.
-func (s *TurnStream) StepStart() {
-	if !s.valid() {
-		return
-	}
-	s.turn.StepStart()
-}
-
-// StepFinish ends a visual step group.
-func (s *TurnStream) StepFinish() {
-	if !s.valid() {
-		return
-	}
-	s.turn.StepFinish()
-}
-
-// Metadata merges message metadata for the turn.
-func (s *TurnStream) Metadata(metadata map[string]any) {
-	if !s.valid() {
-		return
-	}
-	s.turn.SetMetadata(metadata)
 }
 
 // ApprovalController is the turn-owned approval surface.

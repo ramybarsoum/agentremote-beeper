@@ -576,9 +576,8 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	conv := bridgesdk.NewConversation(ctx, cc.UserLogin, portal, cc.senderForPortal(), cc.connector.sdkConfig, cc)
 	source := bridgesdk.UserMessageSource(sourceEvent.ID.String())
 	turn := conv.StartTurn(ctx, codexSDKAgent(), source)
-	stream := turn.Stream()
 	approvals := turn.Approvals()
-	stream.SetTransport(func(turnID string, seq int, content map[string]any, txnID string) bool {
+	turn.SetStreamHook(func(turnID string, seq int, content map[string]any, txnID string) bool {
 		if cc.streamEventHook == nil {
 			return false
 		}
@@ -595,8 +594,8 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	state.turnID = turn.ID()
 	state.agentID = string(codexGhostID)
 	state.initialEventID = sourceEvent.ID
-	stream.Metadata(cc.buildUIMessageMetadata(state, model, false, ""))
-	stream.StepStart()
+	turn.SetMetadata(cc.buildUIMessageMetadata(state, model, false, ""))
+	turn.StepStart()
 
 	approvalPolicy := "untrusted"
 	if lvl, _ := stringutil.NormalizeElevatedLevel(meta.ElevatedLevel); lvl == "full" {
@@ -692,15 +691,15 @@ done:
 			StartedAtMs:   state.startedAtMs,
 			CompletedAtMs: state.completedAtMs,
 		})
+		}
+		if completedErr != "" {
+			state.turn.SetMetadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
+			state.turn.EndWithError(completedErr)
+			return
+		}
+		state.turn.SetMetadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
+		state.turn.End(finishStatus)
 	}
-	if completedErr != "" {
-		stream.Metadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
-		state.turn.EndWithError(completedErr)
-		return
-	}
-	stream.Metadata(cc.buildUIMessageMetadata(state, model, true, finishStatus))
-	state.turn.End(finishStatus)
-}
 
 func (cc *CodexClient) appendCodexToolOutput(state *streamingState, toolCallID, delta string) string {
 	if state == nil || toolCallID == "" {
@@ -1801,28 +1800,21 @@ func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model strin
 	})
 }
 
-func (cc *CodexClient) turnStream(state *streamingState) *bridgesdk.TurnStream {
-	if state == nil || state.turn == nil {
-		return nil
-	}
-	return state.turn.Stream()
-}
-
 func (cc *CodexClient) emitUITextDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, text string) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.TextDelta(text)
+	if state != nil && state.turn != nil {
+		state.turn.WriteText(text)
 	}
 }
 
 func (cc *CodexClient) emitUIReasoningDelta(ctx context.Context, portal *bridgev2.Portal, state *streamingState, text string) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.ReasoningDelta(text)
+	if state != nil && state.turn != nil {
+		state.turn.WriteReasoning(text)
 	}
 }
 
 func (cc *CodexClient) emitUIError(ctx context.Context, portal *bridgev2.Portal, state *streamingState, text string) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.Error(text)
+	if state != nil && state.turn != nil {
+		state.turn.Error(text)
 	}
 }
 
@@ -1863,26 +1855,26 @@ func (cc *CodexClient) emitUIToolOutputError(
 }
 
 func (cc *CodexClient) emitUIMessageMetadata(ctx context.Context, portal *bridgev2.Portal, state *streamingState, metadata map[string]any) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.Metadata(metadata)
+	if state != nil && state.turn != nil {
+		state.turn.SetMetadata(metadata)
 	}
 }
 
 func (cc *CodexClient) emitUISourceURL(ctx context.Context, portal *bridgev2.Portal, state *streamingState, citation citations.SourceCitation) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.SourceCitation(citation)
+	if state != nil && state.turn != nil {
+		state.turn.AddSourceURL(citation.URL, citation.Title)
 	}
 }
 
 func (cc *CodexClient) emitUISourceDocument(ctx context.Context, portal *bridgev2.Portal, state *streamingState, document citations.SourceDocument) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.SourceDocument(document)
+	if state != nil && state.turn != nil {
+		state.turn.AddSourceDocument(document.ID, document.Title, document.MediaType, document.Filename)
 	}
 }
 
 func (cc *CodexClient) emitUIFile(ctx context.Context, portal *bridgev2.Portal, state *streamingState, file citations.GeneratedFilePart) {
-	if stream := cc.turnStream(state); stream != nil {
-		stream.GeneratedFile(file)
+	if state != nil && state.turn != nil {
+		state.turn.AddFile(file.URL, file.MediaType)
 	}
 }
 

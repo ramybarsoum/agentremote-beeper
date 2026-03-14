@@ -9,7 +9,6 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
-	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
@@ -139,24 +138,23 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 	if turn == nil {
 		return
 	}
-	stream := turn.Stream()
 	tools := turn.Tools()
 	switch partType {
 	case "start", "message-metadata":
 		if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
-			stream.Metadata(metadata)
+			turn.SetMetadata(metadata)
 		}
 	case "start-step":
-		stream.StepStart()
+		turn.StepStart()
 	case "finish-step":
-		stream.StepFinish()
+		turn.StepFinish()
 	case "text-delta":
 		if delta := stringValue(part["delta"]); delta != "" {
-			stream.TextDelta(delta)
+			turn.WriteText(delta)
 		}
 	case "reasoning-delta":
 		if delta := stringValue(part["delta"]); delta != "" {
-			stream.ReasoningDelta(delta)
+			turn.WriteReasoning(delta)
 		}
 	case "tool-input-start":
 		toolName := strings.TrimSpace(stringValue(part["toolName"]))
@@ -199,21 +197,16 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		reason := stringValue(part["reason"])
 		turn.Approvals().Respond(approvalID, toolCallID, approved, reason)
 	case "file":
-		stream.File(stringValue(part["url"]), stringValue(part["mediaType"]))
+		turn.AddFile(stringValue(part["url"]), stringValue(part["mediaType"]))
 	case "source-document":
-		stream.SourceDocument(citations.SourceDocument{
-			ID:        stringValue(part["sourceId"]),
-			Title:     stringValue(part["title"]),
-			MediaType: stringValue(part["mediaType"]),
-			Filename:  stringValue(part["filename"]),
-		})
+		turn.AddSourceDocument(stringValue(part["sourceId"]), stringValue(part["title"]), stringValue(part["mediaType"]), stringValue(part["filename"]))
 	case "source-url":
-		stream.SourceURL(stringValue(part["url"]), stringValue(part["title"]))
+		turn.AddSourceURL(stringValue(part["url"]), stringValue(part["title"]))
 	case "error":
-		stream.Error(stringValue(part["errorText"]))
+		turn.Error(stringValue(part["errorText"]))
 	default:
 		if strings.HasPrefix(partType, "data-") {
-			stream.Emitter().Emit(turn.Context(), portal, part)
+			turn.Emitter().Emit(turn.Context(), portal, part)
 		}
 	}
 }

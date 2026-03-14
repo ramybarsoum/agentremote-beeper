@@ -368,6 +368,12 @@ func (t *Turn) WriteReasoning(text string) {
 	t.emitter.EmitUIReasoningDelta(t.turnCtx, t.conv.portal, text)
 }
 
+// Error emits a UI error event for the turn.
+func (t *Turn) Error(text string) {
+	t.ensureStarted()
+	t.emitter.EmitUIError(t.turnCtx, t.conv.portal, text)
+}
+
 // FinishText closes the current text stream part, if one is open.
 func (t *Turn) FinishText() {
 	t.ensureStarted()

@@ -205,7 +205,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		turn.AddSourceURL(url, title)
 	case "error":
 		errText, _ := part["errorText"].(string)
-		turn.Stream().Error(errText)
+		turn.Error(errText)
 	case "finish":
 		finishReason, _ := part["finishReason"].(string)
 		if strings.TrimSpace(finishReason) == "" {
@@ -219,7 +219,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	default:
 		if strings.HasPrefix(strings.TrimSpace(partType), "data-") {
 			turn.SetMetadata(nil)
-			turn.Stream().Emitter().Emit(turn.Context(), portal, part)
+			turn.Emitter().Emit(turn.Context(), portal, part)
 		}
 	}
 }
