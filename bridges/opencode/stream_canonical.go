@@ -11,6 +11,7 @@ import (
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/backfillutil"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
@@ -129,18 +130,11 @@ func openCodeStreamEventTimestamp(state *openCodeStreamState, preferCompleted bo
 }
 
 func openCodeNextStreamOrder(state *openCodeStreamState, ts time.Time) int64 {
-	base := ts.UnixMilli() * 1000
-	if base <= 0 {
-		base = time.Now().UnixMilli() * 1000
-	}
 	if state == nil {
-		return base
+		return backfillutil.NextStreamOrder(0, ts)
 	}
-	if base <= state.lastRemoteEventOrder {
-		base = state.lastRemoteEventOrder + 1
-	}
-	state.lastRemoteEventOrder = base
-	return base
+	state.lastRemoteEventOrder = backfillutil.NextStreamOrder(state.lastRemoteEventOrder, ts)
+	return state.lastRemoteEventOrder
 }
 
 func (oc *OpenCodeClient) buildStreamDBMetadata(state *openCodeStreamState) *MessageMetadata {

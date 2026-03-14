@@ -18,10 +18,9 @@ func newExaProvider(cfg *Config) Provider {
 	if cfg == nil {
 		return nil
 	}
-	if !exa.Enabled(cfg.Exa.Enabled, cfg.Exa.APIKey) {
-		return nil
-	}
-	return &exaProvider{cfg: cfg.Exa}
+	return exa.NewProvider(cfg.Exa.Enabled, cfg.Exa.APIKey, func() Provider {
+		return &exaProvider{cfg: cfg.Exa}
+	})
 }
 
 func (p *exaProvider) Name() string {

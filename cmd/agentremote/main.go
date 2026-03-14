@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/beeper/bridge-manager/api/beeperapi"
-	"github.com/beeper/bridge-manager/api/hungryapi"
-	"maunium.net/go/mautrix"
 
+	"github.com/beeper/agentremote/cmd/internal/beeperauth"
+	"github.com/beeper/agentremote/cmd/internal/selfhost"
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
@@ -26,13 +26,6 @@ var (
 	Commit    = "unknown"
 	BuildTime = "unknown"
 )
-
-var envDomains = map[string]string{
-	"prod":    "beeper.com",
-	"staging": "beeper-staging.com",
-	"dev":     "beeper-dev.com",
-	"local":   "beeper.localtest.me",
-}
 
 type metadata struct {
 	Instance         string    `json:"instance"`
@@ -198,72 +191,20 @@ func cmdLogin(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	domain, ok := envDomains[*env]
-	if !ok {
-		return fmt.Errorf("invalid env %q", *env)
-	}
-	if *email == "" {
-		v, err := bridgeutil.PromptLine("Email: ")
-		if err != nil {
-			return err
-		}
-		*email = v
-	}
-	if strings.TrimSpace(*email) == "" {
-		return fmt.Errorf("email is required")
-	}
-	start, err := beeperapi.StartLogin(domain)
-	if err != nil {
-		return err
-	}
-	if err = beeperapi.SendLoginEmail(domain, start.RequestID, *email); err != nil {
-		return err
-	}
-	if *code == "" {
-		v, err := bridgeutil.PromptLine("Code: ")
-		if err != nil {
-			return err
-		}
-		*code = v
-	}
-	if strings.TrimSpace(*code) == "" {
-		return fmt.Errorf("code is required")
-	}
-	resp, err := beeperapi.SendLoginCode(domain, start.RequestID, strings.TrimSpace(*code))
-	if err != nil {
-		return err
-	}
-	matrixClient, err := mautrix.NewClient(fmt.Sprintf("https://matrix.%s", domain), "", "")
-	if err != nil {
-		return fmt.Errorf("failed to create matrix client: %w", err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	loginResp, err := matrixClient.Login(ctx, &mautrix.ReqLogin{
-		Type:                     "org.matrix.login.jwt",
-		Token:                    resp.LoginToken,
-		InitialDeviceDisplayName: "agentremote",
+	cfg, err := beeperauth.Login(context.Background(), beeperauth.LoginParams{
+		Env:               *env,
+		Email:             *email,
+		Code:              *code,
+		DeviceDisplayName: "agentremote",
+		Prompt:            bridgeutil.PromptLine,
 	})
 	if err != nil {
-		return fmt.Errorf("matrix login failed: %w", err)
-	}
-	username := ""
-	if resp.Whoami != nil {
-		username = resp.Whoami.UserInfo.Username
-	}
-	if username == "" {
-		username = loginResp.UserID.Localpart()
-	}
-	cfg := authConfig{
-		Env:      *env,
-		Domain:   domain,
-		Username: username,
-		Token:    loginResp.AccessToken,
+		return err
 	}
 	if err = saveAuthConfig(*profile, cfg); err != nil {
 		return err
 	}
-	fmt.Printf("logged in as @%s:%s (profile: %s)\n", username, domain, *profile)
+	fmt.Printf("logged in as @%s:%s (profile: %s)\n", cfg.Username, cfg.Domain, *profile)
 	return nil
 }
 
@@ -919,49 +860,14 @@ func ensureRegistration(profile string, meta *metadata, bridgeType string) error
 	if err != nil {
 		return err
 	}
-	who, err := beeperapi.Whoami(auth.Domain, auth.Token)
-	if err != nil {
-		return fmt.Errorf("whoami failed: %w", err)
-	}
-	if auth.Username == "" || auth.Username != who.UserInfo.Username {
-		auth.Username = who.UserInfo.Username
-		if err := saveAuthConfig(profile, auth); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to save auth config: %v\n", err)
-		}
-	}
-	hc := hungryapi.NewClient(auth.Domain, auth.Username, auth.Token)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	reg, err := hc.GetAppService(ctx, meta.BeeperBridgeName)
-	if err != nil {
-		reg, err = hc.RegisterAppService(ctx, meta.BeeperBridgeName, hungryapi.ReqRegisterAppService{Push: false, SelfHosted: true})
-		if err != nil {
-			return fmt.Errorf("register appservice failed: %w", err)
-		}
-	}
-	yml, err := reg.YAML()
-	if err != nil {
-		return err
-	}
-	if err = os.WriteFile(meta.RegistrationPath, []byte(yml), 0o600); err != nil {
-		return err
-	}
-	userID := fmt.Sprintf("@%s:%s", auth.Username, auth.Domain)
-	if err = bridgeutil.PatchConfigWithRegistration(meta.ConfigPath, &reg, hc.HomeserverURL.String(), meta.BeeperBridgeName, bridgeType, auth.Domain, reg.AppToken, userID, auth.Token, who.User.AsmuxData.LoginToken); err != nil {
-		return err
-	}
-
-	state := beeperapi.ReqPostBridgeState{
-		StateEvent:   "STARTING",
-		Reason:       "SELF_HOST_REGISTERED",
-		IsSelfHosted: true,
-		BridgeType:   bridgeType,
-	}
-	if err := beeperapi.PostBridgeState(auth.Domain, auth.Username, meta.BeeperBridgeName, reg.AppToken, state); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to post bridge state: %v\n", err)
-	}
-	return nil
+	return selfhost.EnsureRegistration(context.Background(), selfhost.RegistrationParams{
+		Auth:             auth,
+		SaveAuth:         func(cfg beeperauth.Config) error { return saveAuthConfig(profile, cfg) },
+		ConfigPath:       meta.ConfigPath,
+		RegistrationPath: meta.RegistrationPath,
+		BeeperBridgeName: meta.BeeperBridgeName,
+		BridgeType:       bridgeType,
+	})
 }
 
 func deleteRemoteBridge(profile, beeperName string) error {
@@ -969,27 +875,12 @@ func deleteRemoteBridge(profile, beeperName string) error {
 	if err != nil {
 		return err
 	}
-	if auth.Username == "" {
-		who, werr := beeperapi.Whoami(auth.Domain, auth.Token)
-		if werr == nil {
-			auth.Username = who.UserInfo.Username
-			if err := saveAuthConfig(profile, auth); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: failed to save auth config: %v\n", err)
-			}
-		}
-	}
-	if auth.Username != "" {
-		hc := hungryapi.NewClient(auth.Domain, auth.Username, auth.Token)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := hc.DeleteAppService(ctx, beeperName); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to delete appservice: %v\n", err)
-		}
-	}
-	if err = beeperapi.DeleteBridge(auth.Domain, beeperName, auth.Token); err != nil {
-		return fmt.Errorf("failed to delete bridge in beeper api: %w", err)
-	}
-	return nil
+	return selfhost.DeleteRemoteBridge(
+		context.Background(),
+		auth,
+		func(cfg beeperauth.Config) error { return saveAuthConfig(profile, cfg) },
+		beeperName,
+	)
 }
 
 // ── Process lifecycle ──

@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
@@ -37,6 +38,44 @@ func ApplyBoolDefault(target **bool, value bool) {
 	}
 	v := value
 	*target = &v
+}
+
+func AcceptProviderLogin(
+	login *bridgev2.UserLogin,
+	provider string,
+	unsupportedReason string,
+	enabled func() bool,
+	disabledReason string,
+	metadataProvider func(*bridgev2.UserLogin) string,
+) (bool, string) {
+	if metadataProvider != nil && !strings.EqualFold(strings.TrimSpace(metadataProvider(login)), provider) {
+		return false, unsupportedReason
+	}
+	if enabled != nil && !enabled() {
+		return false, disabledReason
+	}
+	return true, ""
+}
+
+type loginAwareClient interface {
+	SetUserLogin(*bridgev2.UserLogin)
+}
+
+func TypedClientCreator[T bridgev2.NetworkAPI](create func(*bridgev2.UserLogin) (T, error)) func(*bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
+	return func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
+		return create(login)
+	}
+}
+
+func TypedClientUpdater[T interface {
+	bridgev2.NetworkAPI
+	loginAwareClient
+}]() func(bridgev2.NetworkAPI, *bridgev2.UserLogin) {
+	return func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
+		if typed, ok := client.(T); ok {
+			typed.SetUserLogin(login)
+		}
+	}
 }
 
 type StandardConnectorConfigParams struct {

@@ -1,7 +1,10 @@
 package tools
 
 import (
+	"context"
 	"sync"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 )
@@ -91,4 +94,18 @@ func DefaultRegistry() *Registry {
 // GetTool returns any tool by name (builtin or provider).
 func GetTool(name string) *Tool {
 	return toolLookup()[name]
+}
+
+func newBuiltinTool(name, description, title string, schema map[string]any, group string, execute func(context.Context, map[string]any) (*Result, error)) *Tool {
+	return &Tool{
+		Tool: mcp.Tool{
+			Name:        name,
+			Description: description,
+			Annotations: &mcp.ToolAnnotations{Title: title},
+			InputSchema: schema,
+		},
+		Type:    ToolTypeBuiltin,
+		Group:   group,
+		Execute: execute,
+	}
 }

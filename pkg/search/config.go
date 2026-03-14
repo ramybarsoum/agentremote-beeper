@@ -47,18 +47,14 @@ func (c *Config) WithDefaults() *Config {
 }
 
 func (c ExaConfig) withDefaults() ExaConfig {
-	if c.BaseURL == "" {
-		c.BaseURL = exa.DefaultBaseURL
-	}
+	exa.ApplyConfigDefaults(&c.BaseURL, nil, 0)
 	if c.Type == "" {
 		c.Type = "auto"
 	}
 	if c.NumResults <= 0 {
 		c.NumResults = DefaultSearchCount
 	}
-	if c.TextMaxCharacters <= 0 {
-		c.TextMaxCharacters = 500
-	}
+	exa.ApplyConfigDefaults(nil, &c.TextMaxCharacters, 500)
 	// Highlights are always enabled as they significantly improve search result quality.
 	c.Highlights = true
 	return c

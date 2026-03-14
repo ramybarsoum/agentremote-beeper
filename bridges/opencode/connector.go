@@ -3,7 +3,6 @@ package opencode
 import (
 	"context"
 	"slices"
-	"strings"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
@@ -78,24 +77,13 @@ func NewConnector() *OpenCodeConnector {
 		NewLogin:       func() any { return &UserLoginMetadata{} },
 		NewGhost:       func() any { return &GhostMetadata{} },
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
-			meta := loginMetadata(login)
-			if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderOpenCode) {
-				return false, "This bridge only supports OpenCode logins."
-			}
-			if !oc.openCodeEnabled() {
-				return false, "OpenCode integration is disabled in the configuration."
-			}
-			return true, ""
+			return bridgesdk.AcceptProviderLogin(login, ProviderOpenCode, "This bridge only supports OpenCode logins.", oc.openCodeEnabled, "OpenCode integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
+				return loginMetadata(login).Provider
+			})
 		},
-		CreateClient: func(l *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
-			return newOpenCodeClient(l, oc)
-		},
-		UpdateClient: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
-			if c, ok := client.(*OpenCodeClient); ok {
-				c.SetUserLogin(login)
-			}
-		},
-		LoginFlows: loginFlows,
+		CreateClient: bridgesdk.TypedClientCreator(func(login *bridgev2.UserLogin) (*OpenCodeClient, error) { return newOpenCodeClient(login, oc) }),
+		UpdateClient: bridgesdk.TypedClientUpdater[*OpenCodeClient](),
+		LoginFlows:   loginFlows,
 		CreateLogin: func(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 			if !oc.openCodeEnabled() {
 				return nil, bridgev2.ErrNotLoggedIn

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/beeper/agentremote/cmd/internal/beeperauth"
 )
 
 type flagDef struct {
@@ -245,7 +247,9 @@ func initCommands() {
 }
 
 func envNames() []string {
-	return sortedMapKeys(envDomains)
+	names := beeperauth.EnvNames()
+	sort.Strings(names)
+	return names
 }
 
 func bridgeNames() []string {

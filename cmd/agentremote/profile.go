@@ -1,20 +1,16 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/beeper/agentremote/cmd/internal/beeperauth"
 )
 
 const defaultProfile = "default"
 
-type authConfig struct {
-	Env      string `json:"env"`
-	Domain   string `json:"domain"`
-	Username string `json:"username"`
-	Token    string `json:"token"`
-}
+type authConfig = beeperauth.Config
 
 // configRoot returns ~/.config/agentremote
 func configRoot() (string, error) {
@@ -89,22 +85,11 @@ func ensureInstanceLayout(profile, instanceName string) (*instancePaths, error) 
 }
 
 func loadAuthConfig(profile string) (authConfig, error) {
-	path, err := authConfigPath(profile)
+	store, err := authStore(profile)
 	if err != nil {
 		return authConfig{}, err
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return authConfig{}, fmt.Errorf("not logged in (profile %q). Run: agentremote login --profile %s", profile, profile)
-	}
-	var cfg authConfig
-	if err = json.Unmarshal(data, &cfg); err != nil {
-		return authConfig{}, err
-	}
-	if cfg.Token == "" || cfg.Domain == "" {
-		return authConfig{}, fmt.Errorf("invalid auth config for profile %q", profile)
-	}
-	return cfg, nil
+	return beeperauth.Load(store)
 }
 
 func saveAuthConfig(profile string, cfg authConfig) error {
@@ -112,32 +97,15 @@ func saveAuthConfig(profile string, cfg authConfig) error {
 	if err != nil {
 		return err
 	}
-	if cfg.Domain == "" {
-		cfg.Domain = envDomains[cfg.Env]
-	}
-	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
+	return beeperauth.Save(path, cfg)
 }
 
 func getAuthOrEnv(profile string) (authConfig, error) {
-	if tok := os.Getenv("BEEPER_ACCESS_TOKEN"); tok != "" {
-		env := os.Getenv("BEEPER_ENV")
-		if env == "" {
-			env = "prod"
-		}
-		domain, ok := envDomains[env]
-		if !ok {
-			return authConfig{}, fmt.Errorf("invalid BEEPER_ENV %q", env)
-		}
-		return authConfig{Env: env, Domain: domain, Username: os.Getenv("BEEPER_USERNAME"), Token: tok}, nil
+	store, err := authStore(profile)
+	if err != nil {
+		return authConfig{}, err
 	}
-	return loadAuthConfig(profile)
+	return beeperauth.ResolveFromEnvOrStore(store)
 }
 
 func listProfiles() ([]string, error) {
@@ -181,4 +149,17 @@ func listInstancesForProfile(profile string) ([]string, error) {
 		}
 	}
 	return instances, nil
+}
+
+func authStore(profile string) (beeperauth.Store, error) {
+	path, err := authConfigPath(profile)
+	if err != nil {
+		return beeperauth.Store{}, err
+	}
+	return beeperauth.Store{
+		Path: path,
+		MissingError: func() error {
+			return fmt.Errorf("not logged in (profile %q). Run: agentremote login --profile %s", profile, profile)
+		},
+	}, nil
 }

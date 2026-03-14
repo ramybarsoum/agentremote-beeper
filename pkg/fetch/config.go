@@ -55,12 +55,7 @@ func (c *Config) WithDefaults() *Config {
 }
 
 func (c ExaConfig) withDefaults() ExaConfig {
-	if c.BaseURL == "" {
-		c.BaseURL = exa.DefaultBaseURL
-	}
-	if c.TextMaxCharacters <= 0 {
-		c.TextMaxCharacters = 5_000
-	}
+	exa.ApplyConfigDefaults(&c.BaseURL, &c.TextMaxCharacters, 5_000)
 	return c
 }
 

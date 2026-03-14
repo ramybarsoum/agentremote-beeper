@@ -2,7 +2,6 @@ package openclaw
 
 import (
 	"context"
-	"strings"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
@@ -66,17 +65,14 @@ func NewConnector() *OpenClawConnector {
 			return caps
 		},
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
-			meta := loginMetadata(login)
-			return strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderOpenClaw), "This bridge only supports OpenClaw logins."
+			return bridgesdk.AcceptProviderLogin(login, ProviderOpenClaw, "This bridge only supports OpenClaw logins.", oc.openClawEnabled, "OpenClaw integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
+				return loginMetadata(login).Provider
+			})
 		},
-		CreateClient: func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
+		CreateClient: bridgesdk.TypedClientCreator(func(login *bridgev2.UserLogin) (*OpenClawClient, error) {
 			return newOpenClawClient(login, oc)
-		},
-		UpdateClient: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
-			if c, ok := client.(*OpenClawClient); ok {
-				c.SetUserLogin(login)
-			}
-		},
+		}),
+		UpdateClient: bridgesdk.TypedClientUpdater[*OpenClawClient](),
 		LoginFlows: agentremote.SingleLoginFlow(oc.openClawEnabled(), bridgev2.LoginFlow{
 			ID:          ProviderOpenClaw,
 			Name:        "OpenClaw",

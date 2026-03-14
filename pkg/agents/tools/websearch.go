@@ -4,25 +4,20 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/beeper/agentremote/pkg/search"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
 
 // WebSearch is the web search tool definition.
-var WebSearch = &Tool{
-	Tool: mcp.Tool{
-		Name:        toolspec.WebSearchName,
-		Description: toolspec.WebSearchDescription,
-		Annotations: &mcp.ToolAnnotations{Title: "Web Search"},
-		InputSchema: toolspec.WebSearchSchema(),
-	},
-	Type:    ToolTypeBuiltin,
-	Group:   GroupSearch,
-	Execute: executeWebSearch,
-}
+var WebSearch = newBuiltinTool(
+	toolspec.WebSearchName,
+	toolspec.WebSearchDescription,
+	"Web Search",
+	toolspec.WebSearchSchema(),
+	GroupSearch,
+	executeWebSearch,
+)
 
 // executeWebSearch performs a web search using the configured providers.
 func executeWebSearch(ctx context.Context, args map[string]any) (*Result, error) {

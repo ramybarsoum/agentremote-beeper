@@ -3,7 +3,6 @@ package codex
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"go.mau.fi/util/configupgrade"
 	"go.mau.fi/util/dbutil"
@@ -82,26 +81,15 @@ func NewConnector() *CodexConnector {
 		NewLogin:       func() any { return &UserLoginMetadata{} },
 		NewGhost:       func() any { return &GhostMetadata{} },
 		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
-			meta := loginMetadata(login)
-			if !strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderCodex) {
-				return false, "This bridge only supports Codex logins."
-			}
-			if !cc.codexEnabled() {
-				return false, "Codex integration is disabled in the configuration."
-			}
-			return true, ""
+			return bridgesdk.AcceptProviderLogin(login, ProviderCodex, "This bridge only supports Codex logins.", cc.codexEnabled, "Codex integration is disabled in the configuration.", func(login *bridgev2.UserLogin) string {
+				return loginMetadata(login).Provider
+			})
 		},
 		MakeBrokenLogin: func(l *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient {
 			return newBrokenLoginClient(l, cc, reason)
 		},
-		CreateClient: func(l *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
-			return newCodexClient(l, cc)
-		},
-		UpdateClient: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
-			if c, ok := client.(*CodexClient); ok {
-				c.SetUserLogin(login)
-			}
-		},
+		CreateClient: bridgesdk.TypedClientCreator(func(login *bridgev2.UserLogin) (*CodexClient, error) { return newCodexClient(login, cc) }),
+		UpdateClient: bridgesdk.TypedClientUpdater[*CodexClient](),
 		AfterLoadClient: func(client bridgev2.NetworkAPI) {
 			if c, ok := client.(*CodexClient); ok {
 				c.scheduleBootstrap()
