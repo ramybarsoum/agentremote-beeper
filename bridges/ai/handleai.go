@@ -36,7 +36,7 @@ func (oc *AIClient) dispatchCompletionInternal(
 func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, err error) {
 	// Check for auth errors (401/403) - trigger reauth with StateBadCredentials
 	if IsAuthError(err) {
-		oc.loggedIn.Store(false)
+		oc.SetLoggedIn(false)
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      AIAuthFailed,
@@ -127,7 +127,7 @@ func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
 	_ = oc.UserLogin.Save(ctx)
 
 	// Restore connected state if we were in a degraded state
-	if wasUnhealthy && oc.loggedIn.Load() {
+	if wasUnhealthy && oc.IsLoggedIn() {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateConnected,
 			Message:    "Connected",

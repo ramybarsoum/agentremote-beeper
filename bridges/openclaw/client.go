@@ -78,8 +78,6 @@ type OpenClawClient struct {
 	connectCancel context.CancelFunc
 	connectSeq    uint64
 
-	loggedIn atomic.Bool
-
 	agentCache *cachedvalue.CachedValue[agentCatalogEntry]
 	modelCache *cachedvalue.CachedValue[[]gatewayModelChoice]
 
@@ -131,6 +129,7 @@ func newOpenClawClient(login *bridgev2.UserLogin, connector *OpenClawConnector) 
 		toolCaches:   make(map[string]*cachedvalue.CachedValue[gatewayToolsCatalogResponse]),
 	}
 	client.InitClientBase(login, client)
+	client.HumanUserIDPrefix = "openclaw-user"
 	client.manager = newOpenClawManager(client)
 	return client, nil
 }
@@ -179,7 +178,7 @@ func (oc *OpenClawClient) Disconnect() {
 	if oc.manager != nil {
 		oc.manager.Stop()
 	}
-	oc.loggedIn.Store(false)
+	oc.SetLoggedIn(false)
 	oc.CloseAllSessions()
 	oc.StreamMu.Lock()
 	oc.streamStates = make(map[string]*openClawStreamState)
@@ -201,7 +200,7 @@ func (oc *OpenClawClient) connectLoop(ctx context.Context) {
 		}
 		if err == nil {
 			if connected {
-				oc.loggedIn.Store(false)
+				oc.SetLoggedIn(false)
 			}
 			return
 		}
@@ -211,7 +210,7 @@ func (oc *OpenClawClient) connectLoop(ctx context.Context) {
 		retryDelay := openClawReconnectDelay(attempt)
 		attempt++
 		state, retry := classifyOpenClawConnectionError(err, retryDelay)
-		oc.loggedIn.Store(false)
+		oc.SetLoggedIn(false)
 		if oc.UserLogin != nil {
 			oc.UserLogin.BridgeState.Send(state)
 		}
@@ -228,8 +227,6 @@ func (oc *OpenClawClient) connectLoop(ctx context.Context) {
 	}
 }
 
-func (oc *OpenClawClient) IsLoggedIn() bool { return oc.loggedIn.Load() }
-
 func (oc *OpenClawClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
 
 func (oc *OpenClawClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
@@ -240,10 +237,6 @@ func (oc *OpenClawClient) GetApprovalHandler() agentremote.ApprovalReactionHandl
 }
 
 func (oc *OpenClawClient) LogoutRemote(_ context.Context) {}
-
-func (oc *OpenClawClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
-	return userID == humanUserID(oc.UserLogin.ID)
-}
 
 func (oc *OpenClawClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
 	if msg == nil || msg.Portal == nil {

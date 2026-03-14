@@ -3,7 +3,6 @@ package sdk
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -43,7 +42,6 @@ type sdkClient struct {
 	agentremote.ClientBase
 	cfg               *Config
 	userLogin         *bridgev2.UserLogin
-	loggedIn          atomic.Bool
 	approvalFlow      *agentremote.ApprovalFlow[*pendingSDKApprovalData]
 	turnManager       *TurnManager
 	conversationState *conversationStateStore
@@ -140,12 +138,12 @@ func (c *sdkClient) Connect(ctx context.Context) {
 		}
 		c.setSession(session)
 	}
-	c.loggedIn.Store(true)
+	c.SetLoggedIn(true)
 	c.userLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 }
 
 func (c *sdkClient) Disconnect() {
-	c.loggedIn.Store(false)
+	c.SetLoggedIn(false)
 	if c.approvalFlow != nil {
 		c.approvalFlow.Close()
 	}
@@ -154,10 +152,6 @@ func (c *sdkClient) Disconnect() {
 		c.config().OnDisconnect(c.getSession())
 	}
 	c.setSession(nil)
-}
-
-func (c *sdkClient) IsLoggedIn() bool {
-	return c.loggedIn.Load()
 }
 
 func (c *sdkClient) LogoutRemote(ctx context.Context) {

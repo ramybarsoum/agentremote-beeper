@@ -3,8 +3,10 @@ package agentremote
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 type ClientBase struct {
@@ -13,6 +15,9 @@ type ClientBase struct {
 
 	loginMu sync.RWMutex
 	login   *bridgev2.UserLogin
+
+	loggedIn         atomic.Bool
+	HumanUserIDPrefix string
 }
 
 func (c *ClientBase) InitClientBase(login *bridgev2.UserLogin, target ReactionTarget) {
@@ -38,6 +43,25 @@ func (c *ClientBase) GetUserLogin() *bridgev2.UserLogin {
 
 func (c *ClientBase) Login() *bridgev2.UserLogin {
 	return c.GetUserLogin()
+}
+
+// IsLoggedIn returns the current logged-in state.
+func (c *ClientBase) IsLoggedIn() bool {
+	return c.loggedIn.Load()
+}
+
+// SetLoggedIn sets the logged-in state.
+func (c *ClientBase) SetLoggedIn(v bool) {
+	c.loggedIn.Store(v)
+}
+
+// IsThisUser returns true if the given user ID matches the human user for this login.
+func (c *ClientBase) IsThisUser(_ context.Context, userID networkid.UserID) bool {
+	login := c.GetUserLogin()
+	if login == nil || c.HumanUserIDPrefix == "" {
+		return false
+	}
+	return userID == HumanUserID(c.HumanUserIDPrefix, login.ID)
 }
 
 func (c *ClientBase) BackgroundContext(ctx context.Context) context.Context {

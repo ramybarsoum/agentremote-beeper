@@ -153,7 +153,7 @@ func (m *openClawManager) Start(ctx context.Context) (bool, error) {
 	if _, err := m.client.loadModelCatalog(m.client.BackgroundContext(ctx), true); err != nil {
 		m.client.Log().Debug().Err(err).Msg("Failed to refresh OpenClaw model catalog on connect")
 	}
-	m.client.loggedIn.Store(true)
+	m.client.SetLoggedIn(true)
 	m.client.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
 	started = true
 	m.eventLoop(runCtx, gw.Events())

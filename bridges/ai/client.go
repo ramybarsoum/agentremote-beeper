@@ -976,7 +976,7 @@ func (oc *AIClient) Connect(ctx context.Context) {
 
 	// Trust the token - auth errors will be caught during actual API usage
 	// OpenRouter and Beeper provider don't support the GET /v1/models/{model} endpoint
-	oc.loggedIn.Store(true)
+	oc.SetLoggedIn(true)
 	oc.UserLogin.BridgeState.Send(status.BridgeState{
 		StateEvent: status.StateConnected,
 		Message:    "Connected",
@@ -1001,7 +1001,7 @@ func (oc *AIClient) Disconnect() {
 		oc.loggerForContext(context.Background()).Info().Msg("Flushing pending debounced messages on disconnect")
 		oc.inboundDebouncer.FlushAll()
 	}
-	oc.loggedIn.Store(false)
+	oc.SetLoggedIn(false)
 
 	oc.stopLifecycleIntegrations()
 	// Stop all login-scoped integration workers for this login.
@@ -1051,7 +1051,7 @@ func (oc *AIClient) Disconnect() {
 }
 
 func (oc *AIClient) IsLoggedIn() bool {
-	return oc.loggedIn.Load()
+	return oc.IsLoggedIn()
 }
 
 func (oc *AIClient) LogoutRemote(ctx context.Context) {

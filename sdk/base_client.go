@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"context"
-	"sync/atomic"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -35,7 +34,6 @@ type BaseClient struct {
 	ServiceName string
 	IDPrefix    string
 	LogKey      string
-	loggedIn    atomic.Bool
 }
 
 // InitBaseClient initialises the BaseClient fields.
@@ -46,7 +44,7 @@ func (c *BaseClient) InitBaseClient(login *bridgev2.UserLogin) {
 
 // Connect implements bridgev2.NetworkAPI.
 func (c *BaseClient) Connect(ctx context.Context) {
-	c.loggedIn.Store(true)
+	c.SetLoggedIn(true)
 	if c.UserLogin != nil {
 		c.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
 	}
@@ -54,13 +52,8 @@ func (c *BaseClient) Connect(ctx context.Context) {
 
 // Disconnect implements bridgev2.NetworkAPI.
 func (c *BaseClient) Disconnect() {
-	c.loggedIn.Store(false)
+	c.SetLoggedIn(false)
 	c.CloseAllSessions()
-}
-
-// IsLoggedIn implements bridgev2.NetworkAPI.
-func (c *BaseClient) IsLoggedIn() bool {
-	return c.loggedIn.Load()
 }
 
 // LogoutRemote implements bridgev2.NetworkAPI.
@@ -151,11 +144,6 @@ func (c *BaseClient) ResolveIdentifier(_ context.Context, _ string, _ bool) (*br
 // GetApprovalHandler implements agentremote.ReactionTarget.
 func (c *BaseClient) GetApprovalHandler() agentremote.ApprovalReactionHandler {
 	return nil
-}
-
-// SetLoggedIn sets the logged-in state.
-func (c *BaseClient) SetLoggedIn(v bool) {
-	c.loggedIn.Store(v)
 }
 
 // HumanUserID returns the network user ID for the human user.

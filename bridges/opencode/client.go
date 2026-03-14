@@ -33,8 +33,6 @@ type OpenCodeClient struct {
 	connector *OpenCodeConnector
 	bridge    *Bridge
 
-	loggedIn atomic.Bool
-
 	streamStates map[string]*openCodeStreamState
 }
 
@@ -93,7 +91,7 @@ func (oc *OpenCodeClient) SetUserLogin(login *bridgev2.UserLogin) {
 
 func (oc *OpenCodeClient) Connect(ctx context.Context) {
 	oc.ResetStreamShutdown()
-	oc.loggedIn.Store(true)
+	oc.SetLoggedIn(true)
 	oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected, Message: "Connected"})
 	if oc.bridge != nil {
 		go func() {
@@ -106,7 +104,7 @@ func (oc *OpenCodeClient) Connect(ctx context.Context) {
 
 func (oc *OpenCodeClient) Disconnect() {
 	oc.BeginStreamShutdown()
-	oc.loggedIn.Store(false)
+	oc.SetLoggedIn(false)
 	oc.CloseAllSessions()
 	oc.StreamMu.Lock()
 	oc.streamStates = make(map[string]*openCodeStreamState)
@@ -120,7 +118,7 @@ func (oc *OpenCodeClient) Disconnect() {
 }
 
 func (oc *OpenCodeClient) IsLoggedIn() bool {
-	return oc.loggedIn.Load()
+	return oc.IsLoggedIn()
 }
 
 func (oc *OpenCodeClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }

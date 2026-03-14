@@ -84,8 +84,6 @@ type CodexClient struct {
 	notifCh   chan codexNotif
 	notifDone chan struct{} // closed on Disconnect to stop dispatchNotifications
 
-	loggedIn atomic.Bool
-
 	// streamEventHook, when set, receives the stream event envelope (including "part")
 	// instead of sending ephemeral Matrix events. Used by tests.
 	streamEventHook func(turnID string, seq int, content map[string]any, txnID string)
@@ -136,6 +134,7 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 		pendingMessages: make(map[id.RoomID]codexPendingQueue),
 	}
 	cc.InitClientBase(login, cc)
+	cc.HumanUserIDPrefix = "codex-user"
 	cc.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingToolApprovalDataCodex]{
 		Login:             func() *bridgev2.UserLogin { return cc.UserLogin },
 		Sender:            func(_ *bridgev2.Portal) bridgev2.EventSender { return cc.senderForPortal() },
@@ -171,7 +170,7 @@ func (cc *CodexClient) loggerForContext(ctx context.Context) *zerolog.Logger {
 }
 
 func (cc *CodexClient) Connect(ctx context.Context) {
-	cc.loggedIn.Store(false)
+	cc.SetLoggedIn(false)
 	if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
 		cc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
@@ -193,7 +192,7 @@ func (cc *CodexClient) Connect(ctx context.Context) {
 	}
 	_ = cc.rpc.Call(readCtx, "account/read", map[string]any{"refreshToken": false}, &resp)
 	if resp.Account != nil {
-		cc.loggedIn.Store(true)
+		cc.SetLoggedIn(true)
 		meta := loginMetadata(cc.UserLogin)
 		if strings.TrimSpace(resp.Account.Email) != "" {
 			meta.CodexAccountEmail = strings.TrimSpace(resp.Account.Email)
@@ -208,7 +207,7 @@ func (cc *CodexClient) Connect(ctx context.Context) {
 }
 
 func (cc *CodexClient) Disconnect() {
-	cc.loggedIn.Store(false)
+	cc.SetLoggedIn(false)
 
 	// Signal dispatchNotifications goroutine to stop.
 	if cc.notifDone != nil {
@@ -243,10 +242,6 @@ func (cc *CodexClient) Disconnect() {
 	cc.activeRooms = make(map[id.RoomID]bool)
 	cc.pendingMessages = make(map[id.RoomID]codexPendingQueue)
 	cc.roomMu.Unlock()
-}
-
-func (cc *CodexClient) IsLoggedIn() bool {
-	return cc.loggedIn.Load()
 }
 
 func (cc *CodexClient) GetUserLogin() *bridgev2.UserLogin { return cc.UserLogin }
@@ -361,10 +356,6 @@ func (cc *CodexClient) purgeCodexCwdsBestEffort(ctx context.Context) {
 		seen[clean] = struct{}{}
 		_ = os.RemoveAll(clean)
 	}
-}
-
-func (cc *CodexClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
-	return userID == humanUserID(cc.UserLogin.ID)
 }
 
 func (cc *CodexClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
@@ -1258,7 +1249,7 @@ func (cc *CodexClient) ensureRPC(ctx context.Context) error {
 	cc.startDispatching()
 
 	rpc.OnNotification(func(method string, params json.RawMessage) {
-		if !cc.loggedIn.Load() {
+		if !cc.IsLoggedIn() {
 			return
 		}
 		select {
@@ -1327,7 +1318,7 @@ func (cc *CodexClient) dispatchNotifications() {
 				AuthMode *string `json:"authMode"`
 			}
 			_ = json.Unmarshal(evt.Params, &p)
-			cc.loggedIn.Store(p.AuthMode != nil && strings.TrimSpace(*p.AuthMode) != "")
+			cc.SetLoggedIn(p.AuthMode != nil && strings.TrimSpace(*p.AuthMode) != "")
 			continue
 		}
 
