@@ -59,7 +59,7 @@ func (m *OpenCodeManager) emitToolStreamDelta(ctx context.Context, inst *openCod
 	})
 }
 
-func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part api.Part, _ string) {
+func (m *OpenCodeManager) emitToolStreamState(ctx context.Context, inst *openCodeInstance, portal *bridgev2.Portal, part api.Part) {
 	if m == nil || m.bridge == nil || portal == nil || part.State == nil {
 		return
 	}

@@ -7,6 +7,8 @@ func NormalizeQueueMode(raw string) (QueueMode, bool) {
 	switch cleaned {
 	case "interrupt":
 		return QueueModeInterrupt, true
+	case "backlog":
+		return QueueModeBacklog, true
 	case "steer":
 		return QueueModeSteer, true
 	case "followup":

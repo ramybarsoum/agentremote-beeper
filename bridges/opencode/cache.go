@@ -222,19 +222,14 @@ func (inst *openCodeInstance) enqueueMessage(sessionID string, item *queuedUserM
 		queue = &openCodeSessionQueue{}
 		inst.sendQueue[sessionID] = queue
 	}
-	if !queue.active && len(queue.items) == 0 {
-		queue.active = true
-		return item
-	}
-	if !queue.active {
-		queue.items = append(queue.items, item)
-		next := queue.items[0]
-		queue.items = queue.items[1:]
-		queue.active = true
-		return next
-	}
 	queue.items = append(queue.items, item)
-	return nil
+	if queue.active {
+		return nil
+	}
+	queue.active = true
+	next := queue.items[0]
+	queue.items = queue.items[1:]
+	return next
 }
 
 func (inst *openCodeInstance) requeueMessageFront(sessionID string, item *queuedUserMessage) {

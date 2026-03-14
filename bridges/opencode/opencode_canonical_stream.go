@@ -49,12 +49,7 @@ func (m *OpenCodeManager) syncAssistantTextPart(ctx context.Context, inst *openC
 	}
 	flags := inst.partTextStreamFlags(part.SessionID, part.ID)
 	delivered := inst.partTextContent(part.SessionID, part.ID, kind)
-	started := flags.textStarted
-	ended := flags.textEnded
-	if kind == "reasoning" {
-		started = flags.reasoningStarted
-		ended = flags.reasoningEnded
-	}
+	started, ended := flags.forKind(kind)
 	turnID := partTurnID(part)
 	agentID := m.bridge.portalAgentID(portal)
 	m.closeStepIfOpen(ctx, inst, portal, part.SessionID, part.MessageID)

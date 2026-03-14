@@ -1,6 +1,5 @@
 // Package agents provides the agent system for AI-powered assistants.
 // An agent is a persistent entity defined by system prompt, tools, and a swappable model.
-// This follows patterns from pi-agent and clawdbot for agent definition and execution.
 package agents
 
 import (

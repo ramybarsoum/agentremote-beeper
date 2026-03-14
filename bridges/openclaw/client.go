@@ -606,10 +606,7 @@ func openClawSourceLabel(space, groupChannel, subject string) string {
 	if space != "" {
 		return space
 	}
-	if subject != "" {
-		return subject
-	}
-	return ""
+	return subject
 }
 
 func compactOpenClawOrigin(origin string) string {

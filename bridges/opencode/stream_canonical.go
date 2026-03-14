@@ -164,8 +164,8 @@ func (oc *OpenCodeClient) buildSDKFinalMetadata(state *openCodeStreamState, fini
 	if state == nil {
 		return nil
 	}
-	if strings.TrimSpace(finishReason) != "" {
-		state.finishReason = strings.TrimSpace(finishReason)
+	if trimmed := strings.TrimSpace(finishReason); trimmed != "" {
+		state.finishReason = trimmed
 	}
 	if state.completedAtMs == 0 {
 		state.completedAtMs = time.Now().UnixMilli()

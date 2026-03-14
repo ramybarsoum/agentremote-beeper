@@ -128,11 +128,11 @@ func (oc *OpenCodeClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	if oc.bridge == nil {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	meta := portalMeta(msg.Portal)
-	if !meta.IsOpenCodeRoom {
+	pmeta := oc.PortalMeta(msg.Portal)
+	if pmeta == nil || !pmeta.IsOpenCodeRoom {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	return oc.bridge.HandleMatrixMessage(ctx, msg, msg.Portal, oc.PortalMeta(msg.Portal))
+	return oc.bridge.HandleMatrixMessage(ctx, msg, msg.Portal, pmeta)
 }
 
 func (oc *OpenCodeClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.MatrixDeleteChat) error {
@@ -146,11 +146,7 @@ func (oc *OpenCodeClient) FetchMessages(ctx context.Context, params bridgev2.Fet
 	if oc.bridge == nil {
 		return nil, nil
 	}
-	if params.Portal == nil {
-		return nil, nil
-	}
-	meta := portalMeta(params.Portal)
-	if !meta.IsOpenCodeRoom {
+	if params.Portal == nil || !portalMeta(params.Portal).IsOpenCodeRoom {
 		return nil, nil
 	}
 	return oc.bridge.FetchMessages(ctx, params)
@@ -227,9 +223,9 @@ func (oc *OpenCodeClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal
 	if portal == nil {
 		return nil, nil
 	}
-	meta := portalMeta(portal)
-	if !meta.IsOpenCodeRoom {
+	pmeta := portalMeta(portal)
+	if !pmeta.IsOpenCodeRoom {
 		return nil, nil
 	}
-	return agentremote.BuildChatInfoWithFallback(meta.Title, portal.Name, "OpenCode", portal.Topic), nil
+	return agentremote.BuildChatInfoWithFallback(pmeta.Title, portal.Name, "OpenCode", portal.Topic), nil
 }

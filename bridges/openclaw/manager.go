@@ -225,7 +225,7 @@ func (m *openClawManager) discoveredAgentIDs() []string {
 	seen := make(map[string]struct{}, len(m.sessions))
 	agentIDs := make([]string, 0, len(m.sessions))
 	for _, session := range m.sessions {
-		agentID := strings.TrimSpace(openClawAgentIDFromSessionKey(session.Key))
+		agentID := strings.TrimSpace(openclawconv.AgentIDFromSessionKey(session.Key))
 		if agentID == "" {
 			continue
 		}
@@ -446,13 +446,13 @@ func parseOpenClawControlCommand(body string, msgType event.MessageType, evtType
 }
 
 func (m *openClawManager) applySessionPatch(ctx context.Context, portal *bridgev2.Portal, gateway *gatewayWSClient, sessionKey, apiKey, displayName string, command *openClawControlCommand) error {
-	value := any(nil)
+	var patchValue any
 	notice := "OpenClaw " + displayName + " cleared."
 	if !command.Clear {
-		value = command.Value
+		patchValue = command.Value
 		notice = "OpenClaw " + displayName + " set to " + command.Value + "."
 	}
-	if err := gateway.PatchSession(ctx, sessionKey, map[string]any{apiKey: value}); err != nil {
+	if err := gateway.PatchSession(ctx, sessionKey, map[string]any{apiKey: patchValue}); err != nil {
 		return err
 	}
 	m.client.sendSystemNoticeViaPortal(ctx, portal, notice)
@@ -602,7 +602,7 @@ func prepareOpenClawBackfillEntries(meta *PortalMetadata, history []map[string]a
 		}
 		timestamp := extractMessageTimestamp(normalized)
 		role := openClawMessageRole(normalized)
-		text := extractMessageText(normalized)
+		text := openclawconv.ExtractMessageText(normalized)
 		if role == "toolresult" && strings.TrimSpace(text) == "" {
 			if details, ok := normalized["details"]; ok && details != nil {
 				if data, err := json.Marshal(details); err == nil {
@@ -644,10 +644,10 @@ func findOpenClawAnchorIndex(entries []openClawBackfillEntry, anchor *database.M
 }
 
 func normalizeHistoryLimit(count int) int {
-	if count <= 0 || count > openClawDefaultSessionLimit {
+	if count <= 0 {
 		return openClawDefaultSessionLimit
 	}
-	return count
+	return min(count, openClawDefaultSessionLimit)
 }
 
 func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, message map[string]any) (*bridgev2.ConvertedMessage, bridgev2.EventSender, networkid.MessageID) {
@@ -656,8 +656,8 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 		return nil, bridgev2.EventSender{}, ""
 	}
 	role := openClawMessageRole(message)
-	text := extractMessageText(message)
-	attachmentBlocks := extractAttachmentMetadata(message)
+	text := openclawconv.ExtractMessageText(message)
+	attachmentBlocks := openclawconv.ExtractAttachmentBlocks(message)
 	if role == "toolresult" && strings.TrimSpace(text) == "" {
 		if details, ok := message["details"]; ok && details != nil {
 			if data, err := json.Marshal(details); err == nil {
@@ -783,7 +783,7 @@ func historyFingerprintMessageID(sessionKey, role string, ts time.Time, text str
 		"role":         role,
 		"timestamp":    ts.UnixMilli(),
 		"text":         text,
-		"attachments":  extractAttachmentMetadata(raw),
+		"attachments":  openclawconv.ExtractAttachmentBlocks(raw),
 		"turnId":       historyMessageTurnID(raw),
 		"messageId":    openClawMessageStringField(raw, "id"),
 		"messageRunId": openClawMessageStringField(raw, "runId", "run_id"),
@@ -1032,10 +1032,6 @@ func openClawApprovalResolvedText(decision string) string {
 	}
 }
 
-func extractAttachmentMetadata(message map[string]any) []map[string]any {
-	return openclawconv.ExtractAttachmentBlocks(message)
-}
-
 func (m *openClawManager) eventLoop(ctx context.Context, events <-chan gatewayEvent) {
 	for {
 		select {
@@ -1192,7 +1188,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 	if payload.State == "delta" {
 		m.ensureStreamStart(ctx, portal, meta, turnID, payload.RunID, agentID, eventTS, messageMetadata, &payload)
 		m.startRunRecovery(ctx, portal, meta, turnID, payload.RunID, agentID)
-		text := extractMessageText(payload.Message)
+		text := openclawconv.ExtractMessageText(payload.Message)
 		delta := m.client.computeVisibleDelta(turnID, text)
 		if delta != "" {
 			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
@@ -1224,7 +1220,7 @@ func (m *openClawManager) handleChatEvent(ctx context.Context, payload gatewayCh
 			}
 			meta.TotalTokensFresh = true
 		}
-		text := extractMessageText(payload.Message)
+		text := openclawconv.ExtractMessageText(payload.Message)
 		maybeUpdatePreviewSnippet(meta, text, eventTS)
 		if delta := m.client.computeVisibleDelta(turnID, text); delta != "" {
 			m.client.EmitStreamPart(ctx, portal, turnID, agentID, payload.SessionKey, map[string]any{
@@ -1273,7 +1269,7 @@ func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bri
 		streamOrder: payload.Seq,
 		preBuilt:    converted,
 	})
-	if maybeUpdatePreviewSnippet(meta, extractMessageText(payload.Message), eventTS) {
+	if maybeUpdatePreviewSnippet(meta, openclawconv.ExtractMessageText(payload.Message), eventTS) {
 		_ = portal.Save(ctx)
 	}
 }
@@ -1311,7 +1307,7 @@ func (m *openClawManager) emitLatestUserMessageFromHistory(ctx context.Context, 
 			timestamp: eventTS,
 			preBuilt:  converted,
 		})
-		if maybeUpdatePreviewSnippet(meta, extractMessageText(message), eventTS) {
+		if maybeUpdatePreviewSnippet(meta, openclawconv.ExtractMessageText(message), eventTS) {
 			_ = portal.Save(ctx)
 		}
 		return
@@ -1692,7 +1688,7 @@ func (m *openClawManager) recoverRunText(ctx context.Context, sessionKey, turnID
 		if role != "assistant" && role != "toolresult" {
 			continue
 		}
-		text := extractMessageText(message)
+		text := openclawconv.ExtractMessageText(message)
 		if strings.TrimSpace(text) != "" {
 			return text
 		}
@@ -1872,10 +1868,6 @@ func (m *openClawManager) clearPendingPortalResync(sessionKey string) {
 	m.mu.Unlock()
 }
 
-func extractMessageText(message map[string]any) string {
-	return openclawconv.ExtractMessageText(message)
-}
-
 func stringValue(v any) string {
 	switch typed := v.(type) {
 	case string:
@@ -1997,7 +1989,7 @@ func openClawApplyHistoryChunks(state *streamui.UIState, message map[string]any,
 		}
 	}
 	if len(blocks) == 0 {
-		if text := strings.TrimSpace(extractMessageText(message)); text != "" {
+		if text := strings.TrimSpace(openclawconv.ExtractMessageText(message)); text != "" {
 			streamui.ApplyChunk(state, map[string]any{"type": "text-start", "id": "text-history"})
 			streamui.ApplyChunk(state, map[string]any{"type": "text-delta", "id": "text-history", "delta": text})
 			streamui.ApplyChunk(state, map[string]any{"type": "text-end", "id": "text-history"})
@@ -2030,13 +2022,13 @@ func openClawApplyHistoryToolResult(state *streamui.UIState, message map[string]
 		streamui.ApplyChunk(state, map[string]any{
 			"type":       "tool-output-error",
 			"toolCallId": toolCallID,
-			"errorText":  openclawconv.StringsTrimDefault(extractMessageText(message), stringValue(message["error"])),
+			"errorText":  openclawconv.StringsTrimDefault(openclawconv.ExtractMessageText(message), stringValue(message["error"])),
 		})
 		return
 	}
 	output := jsonutil.DeepCloneAny(message["details"])
 	if output == nil {
-		output = jsonutil.DeepCloneAny(openclawconv.StringsTrimDefault(extractMessageText(message), stringValue(message["result"])))
+		output = jsonutil.DeepCloneAny(openclawconv.StringsTrimDefault(openclawconv.ExtractMessageText(message), stringValue(message["result"])))
 	}
 	streamui.ApplyChunk(state, map[string]any{
 		"type":       "tool-output-available",
@@ -2070,10 +2062,6 @@ func openClawHistoryFallbackText(uiParts []map[string]any) string {
 	return ""
 }
 
-func isOpenClawAttachmentBlock(block map[string]any) bool {
-	return openclawconv.IsAttachmentBlock(block)
-}
-
 func resolveOpenClawAgentID(meta *PortalMetadata, sessionKey string, payload map[string]any) string {
 	for _, key := range []string{"agentId", "agent_id", "agent"} {
 		if payload != nil {
@@ -2085,7 +2073,7 @@ func resolveOpenClawAgentID(meta *PortalMetadata, sessionKey string, payload map
 	if meta != nil && strings.TrimSpace(meta.OpenClawAgentID) != "" {
 		return strings.TrimSpace(meta.OpenClawAgentID)
 	}
-	if value := openClawAgentIDFromSessionKey(sessionKey); value != "" {
+	if value := openclawconv.AgentIDFromSessionKey(sessionKey); value != "" {
 		return value
 	}
 	return "gateway"

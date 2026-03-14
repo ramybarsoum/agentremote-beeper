@@ -8,7 +8,6 @@ import (
 )
 
 // JSONResult creates a structured JSON result from any payload.
-// Following clawdbot's jsonResult pattern.
 func JSONResult(payload any) *Result {
 	return &Result{
 		Status:  ResultSuccess,
@@ -17,8 +16,7 @@ func JSONResult(payload any) *Result {
 	}
 }
 
-// ErrorResult creates an error result.
-// Follows clawdbot pattern: don't throw, return structured errors.
+// ErrorResult creates an error result with structured metadata.
 func ErrorResult(toolName, message string) *Result {
 	return &Result{
 		Status:  ResultError,

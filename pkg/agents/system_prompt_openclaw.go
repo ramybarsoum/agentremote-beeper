@@ -611,34 +611,28 @@ func buildRuntimeLine(
 	defaultThinkLevel string,
 ) string {
 	var parts []string
+	addPart := func(key, value string) {
+		if strings.TrimSpace(value) != "" {
+			parts = append(parts, fmt.Sprintf("%s=%s", key, value))
+		}
+	}
 	if runtimeInfo != nil {
-		if strings.TrimSpace(runtimeInfo.AgentID) != "" {
-			parts = append(parts, fmt.Sprintf("agent=%s", runtimeInfo.AgentID))
+		addPart("agent", runtimeInfo.AgentID)
+		addPart("host", runtimeInfo.Host)
+		addPart("repo", runtimeInfo.RepoRoot)
+		os := strings.TrimSpace(runtimeInfo.OS)
+		arch := strings.TrimSpace(runtimeInfo.Arch)
+		switch {
+		case os != "" && arch != "":
+			parts = append(parts, fmt.Sprintf("os=%s (%s)", os, arch))
+		case os != "":
+			parts = append(parts, fmt.Sprintf("os=%s", os))
+		case arch != "":
+			parts = append(parts, fmt.Sprintf("arch=%s", arch))
 		}
-		if strings.TrimSpace(runtimeInfo.Host) != "" {
-			parts = append(parts, fmt.Sprintf("host=%s", runtimeInfo.Host))
-		}
-		if strings.TrimSpace(runtimeInfo.RepoRoot) != "" {
-			parts = append(parts, fmt.Sprintf("repo=%s", runtimeInfo.RepoRoot))
-		}
-		if strings.TrimSpace(runtimeInfo.OS) != "" {
-			if strings.TrimSpace(runtimeInfo.Arch) != "" {
-				parts = append(parts, fmt.Sprintf("os=%s (%s)", runtimeInfo.OS, runtimeInfo.Arch))
-			} else {
-				parts = append(parts, fmt.Sprintf("os=%s", runtimeInfo.OS))
-			}
-		} else if strings.TrimSpace(runtimeInfo.Arch) != "" {
-			parts = append(parts, fmt.Sprintf("arch=%s", runtimeInfo.Arch))
-		}
-		if strings.TrimSpace(runtimeInfo.Node) != "" {
-			parts = append(parts, fmt.Sprintf("node=%s", runtimeInfo.Node))
-		}
-		if strings.TrimSpace(runtimeInfo.Model) != "" {
-			parts = append(parts, fmt.Sprintf("model=%s", runtimeInfo.Model))
-		}
-		if strings.TrimSpace(runtimeInfo.DefaultModel) != "" {
-			parts = append(parts, fmt.Sprintf("default_model=%s", runtimeInfo.DefaultModel))
-		}
+		addPart("node", runtimeInfo.Node)
+		addPart("model", runtimeInfo.Model)
+		addPart("default_model", runtimeInfo.DefaultModel)
 	}
 	if runtimeChannel != "" {
 		parts = append(parts, fmt.Sprintf("channel=%s", runtimeChannel))

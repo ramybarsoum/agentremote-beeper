@@ -292,7 +292,7 @@ func ResolveEffectiveToolPolicy(params struct {
 	agentTools := params.Agent
 	globalPolicy := globalAsToolPolicy(globalTools)
 
-	profile := ToolProfileID("")
+	var profile ToolProfileID
 	if agentTools != nil && agentTools.Profile != "" {
 		profile = agentTools.Profile
 	} else if globalTools != nil {
@@ -355,32 +355,26 @@ func resolveProviderToolPolicy(byProvider map[string]ToolPolicyConfig, provider 
 	}
 	lookup := make(map[string]ToolPolicyConfig, len(byProvider))
 	for key, value := range byProvider {
-		normalized := NormalizeToolName(key)
-		if normalized == "" {
-			continue
+		if normalized := NormalizeToolName(key); normalized != "" {
+			lookup[normalized] = value
 		}
-		lookup[normalized] = value
 	}
 
 	normalizedProvider := NormalizeToolName(provider)
 	rawModel := strings.ToLower(strings.TrimSpace(modelID))
-	fullModel := rawModel
-	if rawModel != "" && !strings.Contains(rawModel, "/") {
-		fullModel = normalizedProvider + "/" + rawModel
-	}
 
-	var candidates []string
-	if fullModel != "" {
-		candidates = append(candidates, fullModel)
-	}
-	if normalizedProvider != "" {
-		candidates = append(candidates, normalizedProvider)
-	}
-
-	for _, key := range candidates {
-		if match, ok := lookup[key]; ok {
+	// Try full model path first (e.g. "anthropic/claude-sonnet-4.5"), then provider alone.
+	if rawModel != "" {
+		fullModel := rawModel
+		if !strings.Contains(rawModel, "/") {
+			fullModel = normalizedProvider + "/" + rawModel
+		}
+		if match, ok := lookup[fullModel]; ok {
 			return &match
 		}
+	}
+	if match, ok := lookup[normalizedProvider]; ok {
+		return &match
 	}
 	return nil
 }

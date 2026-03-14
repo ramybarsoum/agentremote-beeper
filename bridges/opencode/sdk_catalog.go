@@ -88,10 +88,7 @@ func (oc *OpenCodeClient) resolveOpenCodeIdentifier(ctx context.Context, identif
 	}
 	instanceID, _ := ParseOpenCodeIdentifier(identifier)
 	if instanceID == "" {
-		instanceID = strings.TrimSpace(agent.ModelKey)
-		if value, ok := strings.CutPrefix(instanceID, "opencode:"); ok {
-			instanceID = value
-		}
+		instanceID, _ = strings.CutPrefix(strings.TrimSpace(agent.ModelKey), "opencode:")
 	}
 
 	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, OpenCodeUserID(instanceID))

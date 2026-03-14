@@ -10,11 +10,10 @@ import (
 )
 
 var toolLookup = sync.OnceValue(func() map[string]*Tool {
-	m := make(map[string]*Tool)
-	for _, tool := range AllTools() {
-		if _, exists := m[tool.Name]; !exists {
-			m[tool.Name] = tool
-		}
+	all := AllTools()
+	m := make(map[string]*Tool, len(all))
+	for _, tool := range all {
+		m[tool.Name] = tool
 	}
 	return m
 })
@@ -36,7 +35,7 @@ const (
 
 // BuiltinTools returns all locally-executable builtin tools.
 func BuiltinTools() []*Tool {
-	tools := []*Tool{
+	return []*Tool{
 		Calculator,
 		WebSearch,
 		MessageTool,
@@ -57,7 +56,6 @@ func BuiltinTools() []*Tool {
 		WriteTool,
 		EditTool,
 	}
-	return tools
 }
 
 // AllTools returns all tools (builtin + provider markers).

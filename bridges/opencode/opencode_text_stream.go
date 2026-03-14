@@ -53,11 +53,7 @@ func (m *OpenCodeManager) emitTextStreamDeltaForKind(ctx context.Context, inst *
 	m.closeStepIfOpen(ctx, inst, portal, part.SessionID, part.MessageID)
 	m.ensureTurnStarted(ctx, inst, portal, part.SessionID, part.MessageID, nil)
 
-	tsf := inst.partTextStreamFlags(part.SessionID, part.ID)
-	started := tsf.textStarted
-	if kind == "reasoning" {
-		started = tsf.reasoningStarted
-	}
+	started, _ := inst.partTextStreamFlags(part.SessionID, part.ID).forKind(kind)
 	if !started {
 		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, agentID, map[string]any{
 			"type": kind + "-start",
@@ -90,13 +86,7 @@ func (m *OpenCodeManager) emitTextStreamEnd(ctx context.Context, inst *openCodeI
 		return
 	}
 	agentID := m.bridge.portalAgentID(portal)
-	tsf := inst.partTextStreamFlags(part.SessionID, part.ID)
-	started := tsf.textStarted
-	ended := tsf.textEnded
-	if kind == "reasoning" {
-		started = tsf.reasoningStarted
-		ended = tsf.reasoningEnded
-	}
+	started, ended := inst.partTextStreamFlags(part.SessionID, part.ID).forKind(kind)
 	if !started || ended {
 		return
 	}

@@ -67,23 +67,19 @@ func stripTokenAtEdges(raw string, token string) (string, bool) {
 		return text, false
 	}
 	didStrip := false
-	changed := true
-	for changed {
-		changed = false
-		next := strings.TrimSpace(text)
-		if after, ok := strings.CutPrefix(next, token); ok {
-			after = strings.TrimLeft(after, " \t\r\n")
-			text = after
+	for {
+		trimmed := strings.TrimSpace(text)
+		if after, ok := strings.CutPrefix(trimmed, token); ok {
+			text = strings.TrimLeft(after, " \t\r\n")
 			didStrip = true
-			changed = true
 			continue
 		}
-		if strings.HasSuffix(next, token) {
-			before := strings.TrimRight(next[:len(next)-len(token)], " \t\r\n")
-			text = before
+		if strings.HasSuffix(trimmed, token) {
+			text = strings.TrimRight(trimmed[:len(trimmed)-len(token)], " \t\r\n")
 			didStrip = true
-			changed = true
+			continue
 		}
+		break
 	}
 	collapsed := strings.Join(strings.Fields(text), " ")
 	return collapsed, didStrip

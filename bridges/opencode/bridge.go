@@ -212,7 +212,7 @@ func (b *Bridge) listAllChatPortals(ctx context.Context) ([]*bridgev2.Portal, er
 	if err != nil {
 		return nil, err
 	}
-	portals := make([]*bridgev2.Portal, 0)
+	var portals []*bridgev2.Portal
 	for _, dbPortal := range allDBPortals {
 		if dbPortal.Receiver != login.ID {
 			continue

@@ -299,18 +299,9 @@ func (m *OpenCodeManager) persistInstance(ctx context.Context, inst *openCodeIns
 	if meta == nil {
 		meta = make(map[string]*OpenCodeInstance)
 	}
-	meta[inst.cfg.ID] = &OpenCodeInstance{
-		ID:               inst.cfg.ID,
-		Mode:             inst.cfg.Mode,
-		URL:              inst.cfg.URL,
-		Username:         inst.cfg.Username,
-		Password:         strings.TrimSpace(inst.password),
-		HasPassword:      inst.cfg.HasPassword,
-		BinaryPath:       inst.cfg.BinaryPath,
-		DefaultDirectory: inst.cfg.DefaultDirectory,
-		WorkingDirectory: inst.cfg.WorkingDirectory,
-		LauncherID:       inst.cfg.LauncherID,
-	}
+	cfgCopy := inst.cfg
+	cfgCopy.Password = strings.TrimSpace(inst.password)
+	meta[inst.cfg.ID] = &cfgCopy
 	if err := m.bridge.host.SaveOpenCodeInstances(ctx, meta); err != nil {
 		m.log().Warn().Err(err).Msg("Failed to persist OpenCode instance")
 	}
@@ -1043,14 +1034,15 @@ func (m *OpenCodeManager) handlePartUpdated(ctx context.Context, inst *openCodeI
 	if role == "user" {
 		return
 	}
-	if part.Type == "tool" && delta != "" {
-		m.emitToolStreamDelta(ctx, inst, portal, part, delta)
-	}
-	if part.Type == "text" && delta != "" {
-		m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "text")
-	}
-	if part.Type == "reasoning" && delta != "" {
-		m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "reasoning")
+	if delta != "" {
+		switch part.Type {
+		case "tool":
+			m.emitToolStreamDelta(ctx, inst, portal, part, delta)
+		case "text":
+			m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "text")
+		case "reasoning":
+			m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "reasoning")
+		}
 	}
 	m.emitTextStreamEnd(ctx, inst, portal, part)
 	m.handlePart(ctx, inst, portal, role, part, true)
@@ -1059,7 +1051,7 @@ func (m *OpenCodeManager) handlePartUpdated(ctx context.Context, inst *openCodeI
 // resolvePartRole determines the role for a part, fetching the full message if needed.
 func (m *OpenCodeManager) resolvePartRole(ctx context.Context, inst *openCodeInstance, part api.Part) string {
 	role := inst.seenRole(part.SessionID, part.MessageID)
-	if role == "user" && inst.isSeen(part.SessionID, part.MessageID) {
+	if role == "user" {
 		return "user"
 	}
 	if role == "" && part.MessageID != "" {
@@ -1071,10 +1063,7 @@ func (m *OpenCodeManager) resolvePartRole(ctx context.Context, inst *openCodeIns
 		}
 	}
 	if role == "" {
-		role = "assistant"
-	}
-	if role == "user" && part.MessageID != "" {
-		inst.markSeen(part.SessionID, part.MessageID, role)
+		return "assistant"
 	}
 	return role
 }
@@ -1104,10 +1093,8 @@ func (m *OpenCodeManager) handlePartDelta(ctx context.Context, inst *openCodeIns
 	inst.ensurePartState(sessionID, messageID, partID, role, field)
 
 	switch field {
-	case "text":
-		m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "text")
-	case "reasoning":
-		m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, "reasoning")
+	case "text", "reasoning":
+		m.emitTextStreamDeltaForKind(ctx, inst, portal, part, delta, field)
 	case "tool":
 		m.emitToolStreamDelta(ctx, inst, portal, part, delta)
 	}
@@ -1179,11 +1166,11 @@ func (m *OpenCodeManager) handleToolPart(ctx context.Context, inst *openCodeInst
 	if state == nil {
 		return
 	}
-	status := ""
+	var status string
 	if part.State != nil {
 		status = part.State.Status
 	}
-	m.emitToolStreamState(ctx, inst, portal, part, status)
+	m.emitToolStreamState(ctx, inst, portal, part)
 	callSent, resultSent := inst.partFlags(part.SessionID, part.ID)
 	callStatus := inst.partCallStatus(part.SessionID, part.ID)
 	if !callSent && status != "" {

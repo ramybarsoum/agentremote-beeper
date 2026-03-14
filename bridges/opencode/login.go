@@ -277,11 +277,10 @@ func resolveManagedOpenCodeDirectory(input string) (string, error) {
 	if value == "" {
 		return "", errors.New("default_path is required")
 	}
-	expanded, err := expandTilde(value)
+	value, err := expandTilde(value)
 	if err != nil {
 		return "", fmt.Errorf("invalid default path: %w", err)
 	}
-	value = expanded
 	abs, err := filepath.Abs(value)
 	if err != nil {
 		return "", fmt.Errorf("invalid default path: %w", err)

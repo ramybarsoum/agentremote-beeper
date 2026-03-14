@@ -12,6 +12,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -34,10 +35,8 @@ func (oc *OpenCodeClient) BackgroundContext(ctx context.Context) context.Context
 	if ctx != nil {
 		return ctx
 	}
-	if oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil {
-		if bg := oc.UserLogin.Bridge.BackgroundCtx; bg != nil {
-			return bg
-		}
+	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.BackgroundCtx != nil {
+		return oc.UserLogin.Bridge.BackgroundCtx
 	}
 	return context.Background()
 }
@@ -140,11 +139,7 @@ func (oc *OpenCodeClient) FinishOpenCodeStream(turnID string) {
 	delete(oc.streamStates, turnID)
 	oc.StreamMu.Unlock()
 	if state != nil && state.turn != nil {
-		finishReason := strings.TrimSpace(state.finishReason)
-		if finishReason == "" {
-			finishReason = "stop"
-		}
-		state.turn.End(finishReason)
+		state.turn.End(stringutil.FirstNonEmpty(strings.TrimSpace(state.finishReason), "stop"))
 	}
 }
 
@@ -153,13 +148,13 @@ func (oc *OpenCodeClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2
 		return nil
 	}
 	pmeta := oc.PortalMeta(portal)
-	instanceID := ""
+	var instanceID string
 	if pmeta != nil {
 		instanceID = pmeta.InstanceID
 	}
 	agent := openCodeSDKAgent(instanceID, oc.instanceDisplayName(instanceID))
-	if strings.TrimSpace(state.agentID) != "" {
-		agent.ID = strings.TrimSpace(state.agentID)
+	if state.agentID != "" {
+		agent.ID = state.agentID
 	}
 	sender := oc.SenderForOpenCode(instanceID, false)
 	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)

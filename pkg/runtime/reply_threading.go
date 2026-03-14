@@ -22,18 +22,19 @@ type ReplyThreadPolicy struct {
 
 func ApplyReplyToMode(payloads []ReplyPayload, policy ReplyThreadPolicy) []ReplyPayload {
 	out := make([]ReplyPayload, 0, len(payloads))
-	hasThreaded := false
+	seenFirst := false
 	for _, payload := range payloads {
 		if strings.TrimSpace(payload.ReplyToID) != "" {
-			shouldClear := false
+			clear := false
 			switch policy.Mode {
 			case ReplyToModeFirst:
-				shouldClear = hasThreaded
-				hasThreaded = true
+				clear = seenFirst
+				seenFirst = true
 			case ReplyToModeOff:
-				shouldClear = !policy.AllowExplicitWhenModeOff || !(payload.ReplyToTag || payload.ReplyToCurrent)
+				isExplicit := payload.ReplyToTag || payload.ReplyToCurrent
+				clear = !policy.AllowExplicitWhenModeOff || !isExplicit
 			}
-			if shouldClear {
+			if clear {
 				payload.ReplyToID = ""
 				payload.ReplyToCurrent = false
 				payload.ReplyToTag = false

@@ -13,13 +13,14 @@ import (
 
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
+	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 )
 
 func TestOpenClawAgentIDFromSessionKey(t *testing.T) {
-	if got := openClawAgentIDFromSessionKey("agent:main:discord:channel:123"); got != "main" {
+	if got := openclawconv.AgentIDFromSessionKey("agent:main:discord:channel:123"); got != "main" {
 		t.Fatalf("expected main, got %q", got)
 	}
-	if got := openClawAgentIDFromSessionKey("main"); got != "" {
+	if got := openclawconv.AgentIDFromSessionKey("main"); got != "" {
 		t.Fatalf("expected empty agent id, got %q", got)
 	}
 }
@@ -31,7 +32,7 @@ func TestExtractMessageTextOpenResponsesParts(t *testing.T) {
 			map[string]any{"type": "output_text", "text": "world"},
 		},
 	}
-	if got := extractMessageText(msg); got != "hello\n\nworld" {
+	if got := openclawconv.ExtractMessageText(msg); got != "hello\n\nworld" {
 		t.Fatalf("unexpected extracted text: %q", got)
 	}
 }
@@ -56,13 +57,13 @@ func TestOpenClawAttachmentSourceFromBlock(t *testing.T) {
 }
 
 func TestIsOpenClawAttachmentBlock(t *testing.T) {
-	if isOpenClawAttachmentBlock(map[string]any{"type": "output_text", "text": "hello"}) {
+	if openclawconv.IsAttachmentBlock(map[string]any{"type": "output_text", "text": "hello"}) {
 		t.Fatal("output_text should not be treated as attachment")
 	}
-	if isOpenClawAttachmentBlock(map[string]any{"type": "toolCall", "id": "call-1"}) {
+	if openclawconv.IsAttachmentBlock(map[string]any{"type": "toolCall", "id": "call-1"}) {
 		t.Fatal("toolCall should not be treated as attachment")
 	}
-	if !isOpenClawAttachmentBlock(map[string]any{
+	if !openclawconv.IsAttachmentBlock(map[string]any{
 		"type":   "input_file",
 		"source": map[string]any{"type": "url", "url": "https://example.com/file.txt"},
 	}) {

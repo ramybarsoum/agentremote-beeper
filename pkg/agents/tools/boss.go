@@ -361,19 +361,18 @@ func SessionTools() []*Tool {
 	}
 }
 
-// toolNameSet builds a name lookup set from a tool list.
-func toolNameSet(tools []*Tool) map[string]struct{} {
+var (
+	sessionToolNames = buildNameSet(SessionTools())
+	bossToolNames    = buildNameSet(BossTools())
+)
+
+func buildNameSet(tools []*Tool) map[string]struct{} {
 	m := make(map[string]struct{}, len(tools))
 	for _, t := range tools {
 		m[t.Name] = struct{}{}
 	}
 	return m
 }
-
-var (
-	sessionToolNames = toolNameSet(SessionTools())
-	bossToolNames    = toolNameSet(BossTools())
-)
 
 // IsSessionTool checks if a tool name is a session tool.
 func IsSessionTool(toolName string) bool {
@@ -466,9 +465,7 @@ func (e *BossToolExecutor) ExecuteCreateAgent(ctx context.Context, input map[str
 	}
 
 	agentID := uuid.NewString()
-
 	now := time.Now().Unix()
-
 	agent := AgentData{
 		ID:           agentID,
 		Name:         name,
@@ -506,11 +503,8 @@ func (e *BossToolExecutor) ExecuteForkAgent(ctx context.Context, input map[strin
 	}
 
 	newName := ReadStringDefault(input, "new_name", fmt.Sprintf("%s (Fork)", source.Name))
-
 	agentID := uuid.NewString()
-
 	now := time.Now().Unix()
-
 	forked := AgentData{
 		ID:           agentID,
 		Name:         newName,
@@ -566,15 +560,19 @@ func (e *BossToolExecutor) ExecuteEditAgent(ctx context.Context, input map[strin
 	if prompt, _ := ReadString(input, "system_prompt", false); prompt != "" {
 		agent.SystemPrompt = prompt
 	}
-	if toolsConfig, err := readToolPolicyConfig(input); err == nil && toolsConfig != nil {
-		agent.Tools = toolsConfig
-	} else if err != nil {
+	toolsConfig, err := readToolPolicyConfig(input)
+	if err != nil {
 		return ErrorResult("edit_agent", fmt.Sprintf("invalid tools config: %v", err)), nil
 	}
-	if subagentsConfig, err := readSubagentConfig(input); err == nil && subagentsConfig != nil {
-		agent.Subagents = subagentsConfig
-	} else if err != nil {
+	if toolsConfig != nil {
+		agent.Tools = toolsConfig
+	}
+	subagentsConfig, err := readSubagentConfig(input)
+	if err != nil {
 		return ErrorResult("edit_agent", fmt.Sprintf("invalid subagents config: %v", err)), nil
+	}
+	if subagentsConfig != nil {
+		agent.Subagents = subagentsConfig
 	}
 
 	agent.UpdatedAt = time.Now().Unix()

@@ -128,11 +128,10 @@ func resolveManagedWorkingDirectory(raw, defaultDir string) (string, error) {
 	if path == "" {
 		return "", errors.New("send an absolute path or `~/...`, or configure a default path in the managed OpenCode login")
 	}
-	expanded, err := expandTilde(path)
+	path, err := expandTilde(path)
 	if err != nil {
 		return "", err
 	}
-	path = expanded
 	if !filepath.IsAbs(path) {
 		return "", errors.New("send an absolute path or `~/...` for managed OpenCode")
 	}

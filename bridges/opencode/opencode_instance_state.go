@@ -177,6 +177,14 @@ func (inst *openCodeInstance) partStreamFlags(sessionID, partID string) streamFl
 
 type textStreamFlags struct{ textStarted, textEnded, reasoningStarted, reasoningEnded bool }
 
+// forKind returns the started/ended flags for the given kind ("text" or "reasoning").
+func (f textStreamFlags) forKind(kind string) (started, ended bool) {
+	if kind == "reasoning" {
+		return f.reasoningStarted, f.reasoningEnded
+	}
+	return f.textStarted, f.textEnded
+}
+
 func (inst *openCodeInstance) partTextStreamFlags(sessionID, partID string) textStreamFlags {
 	return readPartState(inst, sessionID, partID, func(ps *openCodePartState) textStreamFlags {
 		return textStreamFlags{ps.textStreamStarted, ps.textStreamEnded, ps.reasoningStreamStarted, ps.reasoningStreamEnded}

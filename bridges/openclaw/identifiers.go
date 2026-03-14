@@ -60,10 +60,6 @@ func parseOpenClawGhostID(ghostID string) (string, bool) {
 	return value, true
 }
 
-func openClawAgentIDFromSessionKey(sessionKey string) string {
-	return openclawconv.AgentIDFromSessionKey(sessionKey)
-}
-
 func openClawDMAgentSessionKey(agentID string) string {
 	agentID = canonicalOpenClawAgentID(agentID)
 	if agentID == "" {
@@ -77,7 +73,7 @@ func isOpenClawSyntheticDMSessionKey(sessionKey string) bool {
 	if !strings.HasSuffix(sessionKey, ":matrix-dm") {
 		return false
 	}
-	return openClawAgentIDFromSessionKey(sessionKey) != ""
+	return openclawconv.AgentIDFromSessionKey(sessionKey) != ""
 }
 
 func canonicalOpenClawAgentID(agentID string) string {
