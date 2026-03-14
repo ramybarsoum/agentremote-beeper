@@ -245,8 +245,7 @@ func IsAuthError(err error) bool {
 			return true
 		}
 		if apiErr.StatusCode == 403 {
-			return containsAnyInFields(authPatterns,
-				apiErr.Code, apiErr.Type, apiErr.Message, apiErr.RawJSON())
+			return true
 		}
 	}
 	return containsAnyPattern(err, authPatterns)
@@ -278,21 +277,30 @@ func IsModelNotFound(err error) bool {
 // IsToolSchemaError checks if the error indicates a tool schema validation failure.
 func IsToolSchemaError(err error) bool {
 	var apiErr *openai.Error
-	if !errors.As(err, &apiErr) {
-		return false
-	}
-	if strings.EqualFold(apiErr.Code, "invalid_function_parameters") {
-		return true
-	}
-	if containsAnyInFields([]string{"invalid_function_parameters", "invalid schema for function"},
-		apiErr.Message, apiErr.RawJSON()) {
-		return true
-	}
-	// Check for schema composition keyword errors (oneOf/allOf/anyOf in input_schema)
-	if containsAnyInFields([]string{"input_schema"}, apiErr.Message, apiErr.RawJSON()) {
-		if containsAnyInFields([]string{"oneof", "allof", "anyof"}, apiErr.Message, apiErr.RawJSON()) {
+	if errors.As(err, &apiErr) {
+		if strings.EqualFold(apiErr.Code, "invalid_function_parameters") {
 			return true
 		}
+		if containsAnyInFields([]string{"invalid_function_parameters", "invalid schema for function"},
+			apiErr.Message, apiErr.RawJSON()) {
+			return true
+		}
+		// Check for schema composition keyword errors (oneOf/allOf/anyOf in input_schema)
+		if containsAnyInFields([]string{"input_schema"}, apiErr.Message, apiErr.RawJSON()) {
+			if containsAnyInFields([]string{"oneof", "allof", "anyof"}, apiErr.Message, apiErr.RawJSON()) {
+				return true
+			}
+		}
+		return false
+	}
+
+	message := safeErrorString(err)
+	if containsAnyInFields([]string{"invalid_function_parameters", "invalid schema for function"}, message) {
+		return true
+	}
+	if containsAnyInFields([]string{"input_schema"}, message) &&
+		containsAnyInFields([]string{"oneof", "allof", "anyof"}, message) {
+		return true
 	}
 	return false
 }

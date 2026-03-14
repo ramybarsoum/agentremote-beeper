@@ -540,8 +540,8 @@ func ToOpenAITools(tools []ToolDefinition, strictMode ToolStrictMode, log *zerol
 }
 
 // ToOpenAIChatTools converts tool definitions to OpenAI Chat Completions tool format.
-func ToOpenAIChatTools(tools []ToolDefinition, log *zerolog.Logger) []openai.ChatCompletionToolUnionParam {
-	return descriptorsToChatTools(toolDescriptorsFromDefinitions(tools, log))
+func ToOpenAIChatTools(tools []ToolDefinition, strictMode ToolStrictMode, log *zerolog.Logger) []openai.ChatCompletionToolUnionParam {
+	return descriptorsToChatTools(toolDescriptorsFromDefinitions(tools, log), strictMode)
 }
 
 // dedupeToolParams removes tools with duplicate identifiers to satisfy providers

@@ -25,7 +25,7 @@ func (o *OpenAIProvider) generateChatCompletions(ctx context.Context, params Gen
 		req.Temperature = openai.Float(params.Temperature)
 	}
 	if len(params.Context.Tools) > 0 {
-		req.Tools = ToOpenAIChatTools(params.Context.Tools, &o.log)
+		req.Tools = ToOpenAIChatTools(params.Context.Tools, resolveToolStrictMode(isOpenRouterBaseURL(o.baseURL)), &o.log)
 		req.Tools = dedupeChatToolParams(req.Tools)
 	}
 

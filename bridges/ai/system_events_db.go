@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"go.mau.fi/util/dbutil"
+
+	"github.com/beeper/agentremote/pkg/agents"
 )
 
 type persistedSystemEventQueue struct {
@@ -26,11 +28,15 @@ func systemEventsScope(client *AIClient) *systemEventsDBScope {
 	if db == nil {
 		return nil
 	}
+	agentID := normalizeAgentID(agents.DefaultAgentID)
+	if agentID == "" {
+		agentID = "beeper"
+	}
 	return &systemEventsDBScope{
 		db:       db,
 		bridgeID: bridgeID,
 		loginID:  loginID,
-		agentID:  "beep",
+		agentID:  agentID,
 	}
 }
 

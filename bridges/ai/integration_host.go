@@ -594,7 +594,7 @@ func (h *runtimeIntegrationHost) ToolsToOpenAIParams(tools []integrationruntime.
 	}
 	bridgeTools := make([]ToolDefinition, 0, len(tools))
 	bridgeTools = append(bridgeTools, tools...)
-	params := ToOpenAIChatTools(bridgeTools, &h.client.log)
+	params := ToOpenAIChatTools(bridgeTools, resolveToolStrictMode(h.client.isOpenRouterProvider()), &h.client.log)
 	return dedupeChatToolParams(params)
 }
 

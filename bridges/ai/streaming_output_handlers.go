@@ -28,11 +28,12 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	state *streamingState,
 	activeTools map[string]*activeToolCall,
 	desc responseToolDescriptor,
-) *activeToolCall {
+) (*activeToolCall, bool) {
 	if activeTools == nil || strings.TrimSpace(desc.itemID) == "" || strings.TrimSpace(desc.callID) == "" {
-		return nil
+		return nil, false
 	}
 	tool, ok := activeTools[desc.itemID]
+	created := !ok || tool == nil
 	if !ok || tool == nil {
 		tool = &activeToolCall{
 			callID:      SanitizeToolCallID(desc.callID, "strict"),
@@ -55,8 +56,10 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	state.ui.UIToolNameByToolCallID[tool.callID] = tool.toolName
 	state.ui.UIToolTypeByToolCallID[tool.callID] = tool.toolType
 
-	oc.semanticStream(state, portal).ToolInputStart(ctx, tool.callID, tool.toolName, desc.providerExecuted, toolDisplayTitle(tool.toolName))
-	return tool
+	if created {
+		oc.semanticStream(state, portal).ToolInputStart(ctx, tool.callID, tool.toolName, desc.providerExecuted, toolDisplayTitle(tool.toolName))
+	}
+	return tool, created
 }
 
 func (oc *AIClient) ensureActiveToolForStreamItem(
@@ -77,7 +80,8 @@ func (oc *AIClient) ensureActiveToolForStreamItem(
 	if !itemDesc.ok {
 		return nil
 	}
-	return oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+	tool, _ := oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
+	return tool
 }
 
 func (oc *AIClient) handleCustomToolInputDeltaFromOutputItem(
@@ -148,11 +152,11 @@ func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 	} else {
 		output["error"] = errorText
 	}
-	resultPayload := errorText
-	if denied && resultPayload == "" {
-		resultPayload = "Denied"
+	resultStatus := ResultStatusError
+	if denied {
+		resultStatus = ResultStatusDenied
 	}
-	recordToolCallResult(state, tool, ToolStatusFailed, ResultStatusError, errorText, output, nil)
+	recordToolCallResult(state, tool, ToolStatusFailed, resultStatus, errorText, output, nil)
 }
 
 // gateMcpToolApproval handles an MCP approval request item: registers the
@@ -254,23 +258,23 @@ func (oc *AIClient) resolveOutputItemTool(
 	state *streamingState,
 	activeTools map[string]*activeToolCall,
 	item responses.ResponseOutputItemUnion,
-) (*activeToolCall, responseToolDescriptor, bool) {
+) (*activeToolCall, responseToolDescriptor, bool, bool) {
 	desc := deriveToolDescriptorForOutputItem(item, state)
 	if !desc.ok || state == nil {
-		return nil, desc, false
+		return nil, desc, false, false
 	}
-	tool := oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, desc)
+	tool, created := oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, desc)
 	if tool == nil {
-		return nil, desc, false
+		return nil, desc, false, false
 	}
 	if state.ui.UIToolOutputFinalized[tool.callID] {
-		return nil, desc, false
+		return nil, desc, false, false
 	}
 	if item.Type == "mcp_approval_request" {
 		oc.gateMcpToolApproval(ctx, portal, state, tool, desc, item)
-		return nil, desc, false
+		return nil, desc, false, false
 	}
-	return tool, desc, true
+	return tool, desc, created, true
 }
 
 // emitToolInputIfAvailable records the tool's input text and emits a UI input-available
@@ -292,11 +296,13 @@ func (oc *AIClient) handleResponseOutputItemAdded(
 	activeTools map[string]*activeToolCall,
 	item responses.ResponseOutputItemUnion,
 ) {
-	tool, desc, ok := oc.resolveOutputItemTool(ctx, portal, state, activeTools, item)
+	tool, desc, created, ok := oc.resolveOutputItemTool(ctx, portal, state, activeTools, item)
 	if !ok {
 		return
 	}
-	oc.emitToolInputIfAvailable(ctx, portal, state, tool, desc)
+	if created {
+		oc.emitToolInputIfAvailable(ctx, portal, state, tool, desc)
+	}
 }
 
 func (oc *AIClient) handleResponseOutputItemDone(
@@ -306,11 +312,13 @@ func (oc *AIClient) handleResponseOutputItemDone(
 	activeTools map[string]*activeToolCall,
 	item responses.ResponseOutputItemUnion,
 ) {
-	tool, desc, ok := oc.resolveOutputItemTool(ctx, portal, state, activeTools, item)
+	tool, desc, created, ok := oc.resolveOutputItemTool(ctx, portal, state, activeTools, item)
 	if !ok {
 		return
 	}
-	oc.emitToolInputIfAvailable(ctx, portal, state, tool, desc)
+	if created {
+		oc.emitToolInputIfAvailable(ctx, portal, state, tool, desc)
+	}
 
 	if files := codeInterpreterFileParts(item); len(files) > 0 {
 		for _, file := range files {
@@ -321,18 +329,21 @@ func (oc *AIClient) handleResponseOutputItemDone(
 
 	result := responseOutputItemResultPayload(item)
 	resultStatus := ResultStatusSuccess
+	toolStatus := ToolStatusCompleted
 	statusText := strings.ToLower(strings.TrimSpace(item.Status))
 	errorText := strings.TrimSpace(item.Error)
 	switch {
 	case outputItemLooksDenied(item):
 		oc.semanticStream(state, portal).ToolOutputDenied(ctx, tool.callID)
 		resultStatus = ResultStatusDenied
+		toolStatus = ToolStatusFailed
 	case statusText == "failed" || statusText == "incomplete" || errorText != "":
 		if errorText == "" {
 			errorText = fmt.Sprintf("%s failed", tool.toolName)
 		}
 		oc.semanticStream(state, portal).ToolOutputError(ctx, tool.callID, errorText, true)
 		resultStatus = ResultStatusError
+		toolStatus = ToolStatusFailed
 	default:
 		oc.semanticStream(state, portal).ToolOutputAvailable(ctx, tool.callID, result, true, false)
 	}
@@ -344,7 +355,7 @@ func (oc *AIClient) handleResponseOutputItemDone(
 		outputMap = map[string]any{"result": result}
 	}
 
-	recordToolCallResult(state, tool, ToolStatusCompleted, resultStatus, errorText, outputMap, parseToolInputPayload(tool.input.String()))
+	recordToolCallResult(state, tool, toolStatus, resultStatus, errorText, outputMap, parseToolInputPayload(tool.input.String()))
 }
 
 // Response stream output helpers.

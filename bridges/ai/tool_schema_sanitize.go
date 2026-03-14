@@ -430,12 +430,19 @@ func cleanSchemaForProviderWithReport(schema any, report *schemaSanitizeReport) 
 
 func extendSchemaDefs(defs schemaDefs, schema map[string]any) schemaDefs {
 	next := defs
+	cloned := false
 	for _, key := range []string{"$defs", "definitions"} {
 		rawDefs, ok := schema[key].(map[string]any)
 		if !ok {
 			continue
 		}
-		if next == nil {
+		if defs != nil && !cloned {
+			next = make(schemaDefs, len(defs))
+			for k, v := range defs {
+				next[k] = v
+			}
+			cloned = true
+		} else if next == nil {
 			next = make(schemaDefs)
 		}
 		for k, v := range rawDefs {
@@ -619,12 +626,12 @@ func cleanSchemaWithDefs(schema map[string]any, defs schemaDefs, refStack map[st
 	cleanedAnyOf, hasAnyOf := cleanUnionVariants("anyOf")
 	cleanedOneOf, hasOneOf := cleanUnionVariants("oneOf")
 
-	if hasAnyOf {
+	if hasAnyOf && !hasOneOf {
 		if collapsed, ok := tryCollapseUnionVariants(schema, cleanedAnyOf); ok {
 			return collapsed
 		}
 	}
-	if hasOneOf {
+	if hasOneOf && !hasAnyOf {
 		if collapsed, ok := tryCollapseUnionVariants(schema, cleanedOneOf); ok {
 			return collapsed
 		}

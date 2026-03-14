@@ -98,6 +98,6 @@ func bossToolsToOpenAI(bossTools []*tools.Tool, strictMode ToolStrictMode, log *
 }
 
 // bossToolsToChatTools converts boss tools to OpenAI Chat Completions tool format.
-func bossToolsToChatTools(bossTools []*tools.Tool, log *zerolog.Logger) []openai.ChatCompletionToolUnionParam {
-	return descriptorsToChatTools(toolDescriptorsFromBossTools(bossTools, log))
+func bossToolsToChatTools(bossTools []*tools.Tool, strictMode ToolStrictMode, log *zerolog.Logger) []openai.ChatCompletionToolUnionParam {
+	return descriptorsToChatTools(toolDescriptorsFromBossTools(bossTools, log), strictMode)
 }

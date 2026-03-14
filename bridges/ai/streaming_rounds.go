@@ -36,13 +36,12 @@ func runStreamingStep[T any](
 			return done, cle, err
 		}
 	}
-	oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
-
 	if err := stream.Err(); err != nil {
 		cle, handledErr := handleErr(err)
 		if cle != nil || handledErr != nil {
 			return false, cle, handledErr
 		}
 	}
+	oc.uiEmitter(state).EmitUIStepFinish(ctx, portal)
 	return false, nil, nil
 }

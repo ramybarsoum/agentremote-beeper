@@ -294,7 +294,7 @@ func TestApprovalFlow_ResolveExternalNotifiesWaiters(t *testing.T) {
 	}
 
 	go func() {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		flow.ResolveExternal(context.Background(), "approval-1", ApprovalDecisionPayload{
 			ApprovalID: "approval-1",
 			Approved:   true,

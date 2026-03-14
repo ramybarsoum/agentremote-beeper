@@ -176,8 +176,12 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 
 	// Store result for API continuation.
 	tool.result = execution.result
+	callID := strings.TrimSpace(tool.callID)
+	if callID == "" {
+		callID = itemID
+	}
 	state.pendingFunctionOutputs = append(state.pendingFunctionOutputs, functionCallOutput{
-		callID:    itemID,
+		callID:    callID,
 		name:      execution.toolName,
 		arguments: execution.argsJSON,
 		output:    execution.result,

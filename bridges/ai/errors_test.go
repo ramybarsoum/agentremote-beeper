@@ -348,6 +348,20 @@ func TestIsAuthError_ModelNotFound403(t *testing.T) {
 	}
 }
 
+func TestIsAuthError_Any403(t *testing.T) {
+	err := testOpenAIError(403, "forbidden", "permission_error", "permission denied")
+	if !IsAuthError(err) {
+		t.Fatal("expected generic 403 to be classified as auth")
+	}
+}
+
+func TestIsToolSchemaError_StringFallback(t *testing.T) {
+	err := errors.New(`provider rejected input_schema because oneOf is not supported`)
+	if !IsToolSchemaError(err) {
+		t.Fatal("expected string fallback to classify tool schema error")
+	}
+}
+
 func TestFormatUserFacingError_ModelNotFound403(t *testing.T) {
 	err := testOpenAIError(403, "model_not_found", "invalid_request_error", "This model is not available")
 	msg := FormatUserFacingError(err)

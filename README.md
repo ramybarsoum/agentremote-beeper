@@ -115,7 +115,7 @@ func main() {
 			return openai.NewClient(option.WithAPIKey(os.Getenv("OPENAI_API_KEY"))), nil
 		},
 		OnMessage: func(session any, conv *sdk.Conversation, msg *sdk.Message, turn *sdk.Turn) error {
-			client := session.(openai.Client)
+			client := session.(*openai.Client)
 
 			resp, err := client.Chat.Completions.New(turn.Context(), openai.ChatCompletionNewParams{
 				Model: "gpt-5-mini",

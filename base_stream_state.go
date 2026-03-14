@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/beeper/agentremote/turns"
 )
@@ -49,6 +50,8 @@ func (s *BaseStreamState) CloseAllSessions() {
 	s.StreamSessions = make(map[string]*turns.StreamSession)
 	s.StreamMu.Unlock()
 	for _, sess := range sessions {
-		sess.End(context.Background(), turns.EndReasonDisconnect)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		sess.End(ctx, turns.EndReasonDisconnect)
+		cancel()
 	}
 }

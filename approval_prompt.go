@@ -570,11 +570,18 @@ func normalizeApprovalPromptPresentation(presentation ApprovalPromptPresentation
 }
 
 func normalizeApprovalOptions(options []ApprovalOption, fallback []ApprovalOption) []ApprovalOption {
+	allowAlways := true
+	switch {
+	case len(options) > 0:
+		allowAlways = approvalOptionsAllowAlways(options)
+	case len(fallback) > 0:
+		allowAlways = approvalOptionsAllowAlways(fallback)
+	}
 	if len(options) == 0 {
 		options = fallback
 	}
 	if len(options) == 0 {
-		return DefaultApprovalOptions()
+		return ApprovalPromptOptions(allowAlways)
 	}
 	out := make([]ApprovalOption, 0, len(options))
 	for _, option := range options {
@@ -595,9 +602,18 @@ func normalizeApprovalOptions(options []ApprovalOption, fallback []ApprovalOptio
 		out = append(out, option)
 	}
 	if len(out) == 0 {
-		return DefaultApprovalOptions()
+		return ApprovalPromptOptions(allowAlways)
 	}
 	return out
+}
+
+func approvalOptionsAllowAlways(options []ApprovalOption) bool {
+	for _, option := range options {
+		if strings.TrimSpace(option.ID) == "allow_always" || option.Always {
+			return true
+		}
+	}
+	return false
 }
 
 // AddOptionalDetail appends an approval detail from an optional string pointer.

@@ -22,6 +22,9 @@ func (oc *AIClient) materializePortalRoom(
 	if portal == nil {
 		return fmt.Errorf("missing portal")
 	}
+	if oc == nil || oc.UserLogin == nil {
+		return fmt.Errorf("AIClient not initialized: missing UserLogin")
+	}
 	if opts.SaveBefore {
 		if err := portal.Save(ctx); err != nil {
 			return fmt.Errorf("failed to save portal: %w", err)

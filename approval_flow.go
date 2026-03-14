@@ -354,11 +354,12 @@ func (f *ApprovalFlow[D]) ResolveExternal(ctx context.Context, approvalID string
 	if !ok {
 		return
 	}
-	if prompt, ok := f.promptRegistration(approvalID); ok {
-		f.mirrorRemoteDecisionReaction(ctx, prompt, decision)
-	}
+	prompt, hasPrompt := f.promptRegistration(approvalID)
 	if err := f.Resolve(approvalID, decision); err != nil {
 		return
+	}
+	if hasPrompt {
+		f.mirrorRemoteDecisionReaction(ctx, prompt, decision)
 	}
 	f.FinishResolved(approvalID, decision)
 }
@@ -596,6 +597,9 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 		return
 	}
 	approvalID := strings.TrimSpace(params.ApprovalID)
+	if approvalID == "" {
+		return
+	}
 
 	prompt := BuildApprovalPromptMessage(params.ApprovalPromptMessageParams)
 	sender := f.senderOrEmpty(portal)

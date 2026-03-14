@@ -189,6 +189,9 @@ func setCanonicalPromptMessages(meta *MessageMetadata, messages []PromptMessage)
 	if turnData, ok := turnDataFromUserPromptMessages(messages); ok {
 		meta.CanonicalTurnSchema = sdk.CanonicalTurnDataSchemaV1
 		meta.CanonicalTurnData = turnData.ToMap()
+	} else {
+		meta.CanonicalTurnSchema = ""
+		meta.CanonicalTurnData = nil
 	}
 	meta.CanonicalPromptSchema = canonicalPromptSchemaV1
 	meta.CanonicalPromptMessages = encodePromptMessages(messages)

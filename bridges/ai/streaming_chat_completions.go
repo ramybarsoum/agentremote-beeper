@@ -56,19 +56,21 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 	}
 	enabledTools := oc.selectedBuiltinToolsForTurn(ctx, meta)
 	chatHasAgent := resolveAgentID(meta) != ""
+	strictMode := resolveToolStrictMode(oc.isOpenRouterProvider())
+	streamUI := oc.semanticStream(state, portal)
 	if len(enabledTools) > 0 {
-		params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, &oc.log)...)
+		params.Tools = append(params.Tools, ToOpenAIChatTools(enabledTools, strictMode, &oc.log)...)
 	}
 	if oc.getModelCapabilitiesForMeta(meta).SupportsToolCalling && chatHasAgent {
 		if !hasBossAgent(meta) {
 			enabledSessions := oc.filterEnabledTools(meta, tools.SessionTools())
 			if len(enabledSessions) > 0 {
-				params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, &oc.log)...)
+				params.Tools = append(params.Tools, bossToolsToChatTools(enabledSessions, strictMode, &oc.log)...)
 			}
 		}
 		if hasBossAgent(meta) {
 			enabledBoss := oc.filterEnabledTools(meta, tools.BossTools())
-			params.Tools = append(params.Tools, bossToolsToChatTools(enabledBoss, &oc.log)...)
+			params.Tools = append(params.Tools, bossToolsToChatTools(enabledBoss, strictMode, &oc.log)...)
 		}
 		params.Tools = dedupeChatToolParams(params.Tools)
 	}
@@ -92,7 +94,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 				state.completionTokens = chunk.Usage.CompletionTokens
 				state.reasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
 				state.totalTokens = chunk.Usage.TotalTokens
-				oc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, oc.buildUIMessageMetadata(state, meta, true))
+				streamUI.MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
 			}
 
 			for _, choice := range chunk.Choices {
@@ -124,13 +126,13 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 										errText := "failed to send initial streaming message"
 										log.Error().Msg("Failed to send initial streaming message")
 										state.finishReason = "error"
-										oc.uiEmitter(state).EmitUIError(ctx, portal, errText)
+										streamUI.Error(ctx, errText)
 										oc.emitUIFinish(ctx, portal, state, meta)
 										return false, nil, &PreDeltaError{Err: errors.New(errText)}
 									}
 								}
 							}
-							oc.uiEmitter(state).EmitUITextDelta(ctx, portal, cleaned)
+							streamUI.TextDelta(ctx, cleaned)
 						}
 					}
 				}
@@ -140,7 +142,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 					if typingSignals != nil {
 						typingSignals.SignalTextDelta(choice.Delta.Refusal)
 					}
-					oc.uiEmitter(state).EmitUITextDelta(ctx, portal, choice.Delta.Refusal)
+					streamUI.TextDelta(ctx, choice.Delta.Refusal)
 				}
 
 				for _, toolDelta := range choice.Delta.ToolCalls {
@@ -171,7 +173,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 					}
 					if toolDelta.Function.Arguments != "" {
 						tool.input.WriteString(toolDelta.Function.Arguments)
-						oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
+						streamUI.ToolInputDelta(ctx, tool.callID, tool.toolName, toolDelta.Function.Arguments, false)
 					}
 				}
 

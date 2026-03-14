@@ -70,7 +70,7 @@ func descriptorsToResponsesTools(descriptors []openAIToolDescriptor, strictMode 
 	return result
 }
 
-func descriptorsToChatTools(descriptors []openAIToolDescriptor) []openai.ChatCompletionToolUnionParam {
+func descriptorsToChatTools(descriptors []openAIToolDescriptor, strictMode ToolStrictMode) []openai.ChatCompletionToolUnionParam {
 	if len(descriptors) == 0 {
 		return nil
 	}
@@ -79,6 +79,7 @@ func descriptorsToChatTools(descriptors []openAIToolDescriptor) []openai.ChatCom
 		function := openai.FunctionDefinitionParam{
 			Name:       tool.Name,
 			Parameters: tool.Parameters,
+			Strict:     param.NewOpt(shouldUseStrictMode(strictMode, tool.Parameters)),
 		}
 		if tool.Description != "" {
 			function.Description = openai.String(tool.Description)
@@ -111,10 +112,17 @@ func resolveToolSchema(inputSchema any, toolName string, log *zerolog.Logger) ma
 		schema = v
 	default:
 		encoded, err := json.Marshal(v)
-		if err == nil {
-			if err := json.Unmarshal(encoded, &schema); err != nil {
-				return nil
+		if err != nil {
+			if log != nil {
+				log.Error().Err(err).Str("tool_name", toolName).Interface("input_schema", v).Msg("Failed to marshal tool input schema")
 			}
+			return sanitizeToolSchema(nil, toolName, log)
+		}
+		if err := json.Unmarshal(encoded, &schema); err != nil {
+			if log != nil {
+				log.Error().Err(err).Str("tool_name", toolName).Interface("input_schema", v).Msg("Failed to decode tool input schema")
+			}
+			return sanitizeToolSchema(nil, toolName, log)
 		}
 	}
 	return sanitizeToolSchema(schema, toolName, log)

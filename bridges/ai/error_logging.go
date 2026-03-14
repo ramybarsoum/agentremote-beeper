@@ -39,9 +39,20 @@ func logProviderFailure(
 	event.Msg(msg)
 }
 
-func addRequestSummary(event *zerolog.Event, _ *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion) {
+func addRequestSummary(event *zerolog.Event, metadata *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion) {
 	if event == nil {
 		return
+	}
+	if metadata != nil {
+		if metadata.Slug != "" {
+			event.Str("slug", metadata.Slug)
+		}
+		if metadata.Title != "" {
+			event.Str("title", metadata.Title)
+		}
+		if metadata.RuntimeModelOverride != "" {
+			event.Str("runtime_model_override", metadata.RuntimeModelOverride)
+		}
 	}
 	event.Int("message_count", len(messages))
 	event.Bool("has_audio", hasAudioContent(messages))

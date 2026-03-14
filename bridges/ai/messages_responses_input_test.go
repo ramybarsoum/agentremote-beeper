@@ -6,7 +6,7 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 )
 
-func TestToOpenAIResponsesInput_MultimodalUser(t *testing.T) {
+func TestPromptContextToResponsesInput_MultimodalUser(t *testing.T) {
 	input := PromptContextToResponsesInput(UserPromptContext(
 		PromptBlock{Type: PromptBlockText, Text: "hello"},
 		PromptBlock{Type: PromptBlockImage, ImageB64: "aGVsbG8=", MimeType: "image/png"},

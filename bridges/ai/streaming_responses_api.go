@@ -407,7 +407,6 @@ func (oc *AIClient) processResponseStreamEvent(
 
 	case "error":
 		apiErr := fmt.Errorf("API error: %s", streamEvent.Message)
-		terminalErr := oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", apiErr)
 		// Check for context length error (only on initial stream, not continuation)
 		if !isContinuation {
 			if strings.Contains(streamEvent.Message, "context_length") || strings.Contains(streamEvent.Message, "token") {
@@ -416,7 +415,7 @@ func (oc *AIClient) processResponseStreamEvent(
 				}, nil
 			}
 		}
-		return true, nil, terminalErr
+		return true, nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", apiErr)
 
 	default:
 		// Ignore unknown events
