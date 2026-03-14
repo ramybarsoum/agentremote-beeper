@@ -1,11 +1,9 @@
 package ai
 
-func traceEnabled(meta *PortalMetadata) bool {
-	_ = meta
+func traceEnabled(_ *PortalMetadata) bool {
 	return false
 }
 
-func traceFull(meta *PortalMetadata) bool {
-	_ = meta
+func traceFull(_ *PortalMetadata) bool {
 	return false
 }

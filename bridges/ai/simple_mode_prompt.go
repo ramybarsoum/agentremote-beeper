@@ -58,10 +58,9 @@ func formatCurrentTimeForPrompt(timezone string) string {
 }
 
 // cleanHistoryBody normalizes history body text for the current mode.
-func cleanHistoryBody(body string, simple bool, mxid id.EventID) string {
+func cleanHistoryBody(body string, simple bool, _ id.EventID) string {
 	if simple {
 		body = airuntime.SanitizeChatMessageForDisplay(body, true)
 	}
-	_ = mxid
 	return body
 }

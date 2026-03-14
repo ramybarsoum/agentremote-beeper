@@ -39,14 +39,13 @@ func logProviderFailure(
 	event.Msg(msg)
 }
 
-func addRequestSummary(event *zerolog.Event, meta *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion) {
+func addRequestSummary(event *zerolog.Event, _ *PortalMetadata, messages []openai.ChatCompletionMessageParamUnion) {
 	if event == nil {
 		return
 	}
 	event.Int("message_count", len(messages))
 	event.Bool("has_audio", hasAudioContent(messages))
 	event.Bool("has_multimodal", hasMultimodalContent(messages))
-	_ = meta
 }
 
 func addResponsesParamsSummary(event *zerolog.Event, params responses.ResponseNewParams) {

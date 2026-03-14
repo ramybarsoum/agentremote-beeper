@@ -33,12 +33,11 @@ func buildGroupIntro(roomName string, activation string) string {
 	return strings.Join(lines, " ") + " Address the specific sender noted in the message context."
 }
 
-func buildVerboseSystemHint(meta *PortalMetadata) string {
-	_ = meta
+func buildVerboseSystemHint(_ *PortalMetadata) string {
 	return ""
 }
 
-func buildSessionIdentityHint(portal *bridgev2.Portal, meta *PortalMetadata) string {
+func buildSessionIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string {
 	if portal == nil {
 		return ""
 	}
@@ -53,7 +52,6 @@ func buildSessionIdentityHint(portal *bridgev2.Portal, meta *PortalMetadata) str
 		return ""
 	}
 
-	_ = meta // reserved for future context; keep signature stable
 	return "sessionKey: " + session
 }
 

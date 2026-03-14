@@ -163,10 +163,6 @@ func firstNonEmptyString(values ...any) string {
 	return ""
 }
 
-func messageTypeForMIME(mimeType string) event.MessageType {
-	return media.MessageTypeForMIME(mimeType)
-}
-
 func resolveMessageMedia(ctx context.Context, btc *BridgeToolContext, bufferInput, mediaInput string) ([]byte, string, error) {
 	if bufferInput != "" {
 		return media.DecodeBase64(bufferInput)
@@ -489,7 +485,7 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 		caption = fileName
 	}
 
-	msgType := messageTypeForMIME(mimeType)
+	msgType := media.MessageTypeForMIME(mimeType)
 	asVoice, _ := args["asVoice"].(bool)
 	gifPlayback, _ := args["gifPlayback"].(bool)
 

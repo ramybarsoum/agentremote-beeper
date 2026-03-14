@@ -192,8 +192,7 @@ func (oc *AIClient) downloadTextFile(ctx context.Context, mediaURL string, encry
 	return trimmed, truncated, nil
 }
 
-func buildTextFileMessage(caption string, hasUserCaption bool, filename string, mimeType string, content string, truncated bool) string {
-	_ = truncated
+func buildTextFileMessage(caption string, hasUserCaption bool, filename string, mimeType string, content string, _ bool) string {
 	if !hasUserCaption {
 		caption = ""
 	}

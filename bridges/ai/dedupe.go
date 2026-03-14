@@ -47,12 +47,12 @@ func (c *DedupeCache) Check(key string) bool {
 
 	// Check if exists and not expired
 	if ts, ok := c.entries[key]; ok && ts > cutoff {
-		c.touch(key, now)
+		c.entries[key] = now
 		return true // Duplicate
 	}
 
 	// Record and prune
-	c.touch(key, now)
+	c.entries[key] = now
 	c.prune(cutoff)
 	return false // First time
 }
@@ -64,11 +64,6 @@ func (c *DedupeCache) nextTimestamp() int64 {
 	}
 	c.lastTS = now
 	return now
-}
-
-// touch updates the timestamp for a key, moving it to the end of the LRU order.
-func (c *DedupeCache) touch(key string, now int64) {
-	c.entries[key] = now
 }
 
 // prune removes expired entries and evicts oldest if over max size.

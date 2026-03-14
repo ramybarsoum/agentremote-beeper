@@ -302,7 +302,6 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	if len(src.DisabledTools) > 0 {
 		clone.DisabledTools = slices.Clone(src.DisabledTools)
 	}
-	clone.ResolvedTarget = src.ResolvedTarget
 
 	if src.ModuleMeta != nil {
 		clone.ModuleMeta = make(map[string]any, len(src.ModuleMeta))
