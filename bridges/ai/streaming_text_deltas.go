@@ -24,6 +24,7 @@ func (oc *AIClient) ensureInitialStreamMessage(
 	errText string,
 	logMessage string,
 ) error {
+	stream := oc.semanticStream(state, portal)
 	if !state.firstToken {
 		return nil
 	}
@@ -39,7 +40,7 @@ func (oc *AIClient) ensureInitialStreamMessage(
 		if !state.hasInitialMessageTarget() {
 			log.Error().Msg(logMessage)
 			state.finishReason = "error"
-			oc.uiEmitter(state).EmitUIError(ctx, portal, errText)
+			stream.Error(ctx, errText)
 			oc.emitUIFinish(ctx, portal, state, meta)
 			return errors.New(errText)
 		}
@@ -59,6 +60,7 @@ func (oc *AIClient) handleResponseOutputTextDelta(
 	errText string,
 	logMessage string,
 ) error {
+	stream := oc.semanticStream(state, portal)
 	delta = maybePrependTextSeparator(state, delta)
 	state.accumulated.WriteString(delta)
 
@@ -95,7 +97,7 @@ func (oc *AIClient) handleResponseOutputTextDelta(
 			return err
 		}
 	}
-	oc.uiEmitter(state).EmitUITextDelta(ctx, portal, cleaned)
+	stream.TextDelta(ctx, cleaned)
 	return nil
 }
 
@@ -110,6 +112,7 @@ func (oc *AIClient) handleResponseReasoningTextDelta(
 	errText string,
 	logMessage string,
 ) error {
+	stream := oc.semanticStream(state, portal)
 	state.reasoning.WriteString(delta)
 	if state.firstToken && state.reasoning.Len() > 0 {
 		if err := oc.ensureInitialStreamMessage(
@@ -126,7 +129,7 @@ func (oc *AIClient) handleResponseReasoningTextDelta(
 			return err
 		}
 	}
-	oc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, delta)
+	stream.ReasoningDelta(ctx, delta)
 	return nil
 }
 
@@ -138,11 +141,12 @@ func (oc *AIClient) appendReasoningText(
 	state *streamingState,
 	text string,
 ) {
+	stream := oc.semanticStream(state, portal)
 	if text == "" {
 		return
 	}
 	state.reasoning.WriteString(text)
-	oc.uiEmitter(state).EmitUIReasoningDelta(ctx, portal, text)
+	stream.ReasoningDelta(ctx, text)
 }
 
 func (oc *AIClient) handleResponseRefusalDelta(
@@ -152,10 +156,11 @@ func (oc *AIClient) handleResponseRefusalDelta(
 	typingSignals *TypingSignaler,
 	delta string,
 ) {
+	stream := oc.semanticStream(state, portal)
 	if typingSignals != nil {
 		typingSignals.SignalTextDelta(delta)
 	}
-	oc.uiEmitter(state).EmitUITextDelta(ctx, portal, delta)
+	stream.TextDelta(ctx, delta)
 }
 
 func (oc *AIClient) handleResponseRefusalDone(
@@ -164,10 +169,11 @@ func (oc *AIClient) handleResponseRefusalDone(
 	state *streamingState,
 	refusal string,
 ) {
+	stream := oc.semanticStream(state, portal)
 	if refusal == "" {
 		return
 	}
-	oc.uiEmitter(state).EmitUITextDelta(ctx, portal, refusal)
+	stream.TextDelta(ctx, refusal)
 }
 
 func (oc *AIClient) handleResponseOutputAnnotationAdded(
@@ -177,13 +183,14 @@ func (oc *AIClient) handleResponseOutputAnnotationAdded(
 	annotation any,
 	annotationIndex any,
 ) {
+	stream := oc.semanticStream(state, portal)
 	if citation, ok := extractURLCitation(annotation); ok {
 		state.sourceCitations = citations.AppendUniqueCitation(state.sourceCitations, citation)
-		oc.uiEmitter(state).EmitUISourceURL(ctx, portal, citation)
+		stream.SourceURL(ctx, citation)
 	}
 	if document, ok := extractDocumentCitation(annotation); ok {
 		state.sourceDocuments = append(state.sourceDocuments, document)
-		oc.uiEmitter(state).EmitUISourceDocument(ctx, portal, document)
+		stream.SourceDocument(ctx, document)
 	}
 	oc.emitStreamEvent(ctx, portal, state, map[string]any{
 		"type":      "data-annotation",

@@ -39,7 +39,7 @@ func (oc *AIClient) finishStreamingCancelled(
 ) error {
 	state.finishReason = "cancelled"
 	state.completedAtMs = time.Now().UnixMilli()
-	oc.uiEmitter(state).EmitUIAbort(ctx, portal, "cancelled")
+	oc.semanticStream(state, portal).Abort(ctx, "cancelled")
 	oc.emitUIFinish(ctx, portal, state, meta)
 	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
 	return streamFailureError(state, err)
@@ -55,7 +55,7 @@ func (oc *AIClient) finishStreamingError(
 ) error {
 	state.finishReason = "error"
 	state.completedAtMs = time.Now().UnixMilli()
-	oc.uiEmitter(state).EmitUIError(ctx, portal, err.Error())
+	oc.semanticStream(state, portal).Error(ctx, err.Error())
 	oc.emitUIFinish(ctx, portal, state, meta)
 	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
 	return streamFailureError(state, err)

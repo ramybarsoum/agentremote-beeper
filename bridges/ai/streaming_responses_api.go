@@ -18,7 +18,6 @@ import (
 
 	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 // responseStreamContext holds loop-invariant parameters for processing a Responses API
@@ -76,15 +75,14 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: agentremote.ApprovalReasonTimeout}
 		}
 		approved := approvalAllowed(decision)
-		a.oc.uiEmitter(state).EmitUIToolApprovalResponse(ctx, a.portal, approval.approvalID, approval.toolCallID, approved, decision.Reason)
-		streamui.RecordApprovalResponse(&state.ui, approval.approvalID, approval.toolCallID, approved, decision.Reason)
+		a.oc.semanticStream(state, a.portal).ToolApprovalResponse(ctx, approval.approvalID, approval.toolCallID, approved, decision.Reason)
 		item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, approved)
 		if decision.Reason != "" && item.OfMcpApprovalResponse != nil {
 			item.OfMcpApprovalResponse.Reason = param.NewOpt(decision.Reason)
 		}
 		approvalInputs = append(approvalInputs, item)
 		if !approved {
-			a.oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, a.portal, approval.toolCallID)
+			a.oc.semanticStream(state, a.portal).ToolOutputDenied(ctx, approval.toolCallID)
 		}
 	}
 
@@ -386,7 +384,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		if streamEvent.Response.ID != "" {
 			state.responseID = streamEvent.Response.ID
 		}
-		oc.uiEmitter(state).EmitUIMessageMetadata(ctx, portal, oc.buildUIMessageMetadata(state, meta, true))
+		oc.semanticStream(state, portal).MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
 
 		if !isContinuation {
 			// Extract any generated images from response output
@@ -439,7 +437,7 @@ func (oc *AIClient) handleProviderToolInProgress(
 	toolType ToolType,
 ) {
 	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, itemID, toolName, toolType, "")
-	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, "", true)
+	oc.semanticStream(state, portal).ToolInputDelta(ctx, tool.callID, tool.toolName, "", true)
 }
 
 // handleProviderToolCompleted finalizes a provider/MCP tool with a success or failure result.
@@ -464,13 +462,13 @@ func (oc *AIClient) handleProviderToolCompleted(
 	}
 
 	if failureText != "" {
-		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, failureText, true)
+		oc.semanticStream(state, portal).ToolOutputError(ctx, tool.callID, failureText, true)
 		recordToolCallResult(state, tool, ToolStatusFailed, ResultStatusError, failureText, map[string]any{"error": failureText}, nil)
 		return
 	}
 
 	output := map[string]any{"status": "completed"}
-	oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, tool.callID, output, true, false)
+	oc.semanticStream(state, portal).ToolOutputAvailable(ctx, tool.callID, output, true, false)
 	recordToolCallResult(state, tool, ToolStatusCompleted, ResultStatusSuccess, "", output, nil)
 }
 

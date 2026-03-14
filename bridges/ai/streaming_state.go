@@ -16,6 +16,7 @@ import (
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/sdk"
 	"github.com/beeper/agentremote/turns"
 )
 
@@ -169,6 +170,14 @@ func (oc *AIClient) uiEmitter(state *streamingState) *streamui.Emitter {
 			streamui.ApplyChunk(&state.ui, part)
 			oc.emitStreamEvent(ctx, portal, state, part)
 		},
+	}
+}
+
+func (oc *AIClient) semanticStream(state *streamingState, portal *bridgev2.Portal) *sdk.SemanticStream {
+	return &sdk.SemanticStream{
+		State:   &state.ui,
+		Emitter: oc.uiEmitter(state),
+		Portal:  portal,
 	}
 }
 

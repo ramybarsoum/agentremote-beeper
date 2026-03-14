@@ -38,7 +38,7 @@ func (oc *AIClient) processToolMediaResult(
 			return "Error: failed to send TTS audio", ResultStatusError
 		} else {
 			recordGeneratedFile(state, mediaURL, mimeType)
-			oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
+			oc.semanticStream(state, portal).File(ctx, mediaURL, mimeType)
 			return "Audio message sent successfully", resultStatus
 		}
 	}
@@ -70,7 +70,7 @@ func (oc *AIClient) processToolMediaResult(
 				continue
 			}
 			recordGeneratedFile(state, mediaURL, mimeType)
-			oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
+			oc.semanticStream(state, portal).File(ctx, mediaURL, mimeType)
 			sentURLs = append(sentURLs, mediaURL)
 			success++
 		}
@@ -94,7 +94,7 @@ func (oc *AIClient) processToolMediaResult(
 			return "Error: failed to send generated image", ResultStatusError
 		} else {
 			recordGeneratedFile(state, mediaURL, mimeType)
-			oc.uiEmitter(state).EmitUIFile(ctx, portal, mediaURL, mimeType)
+			oc.semanticStream(state, portal).File(ctx, mediaURL, mimeType)
 			return fmt.Sprintf("Image generated and sent to the user. Media URL: %s", mediaURL), resultStatus
 		}
 	}
@@ -167,7 +167,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDelta(
 	tool := oc.ensureFunctionCallTool(ctx, portal, state, meta, activeTools, itemID, name, "")
 	tool.itemID = itemID
 	tool.input.WriteString(delta)
-	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, name, delta, tool.toolType == ToolTypeProvider)
+	oc.semanticStream(state, portal).ToolInputDelta(ctx, tool.callID, name, delta, tool.toolType == ToolTypeProvider)
 }
 
 func (oc *AIClient) handleFunctionCallArgumentsDone(
@@ -230,9 +230,9 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	var inputMap any
 	if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 		inputMap = argsJSON
-		oc.uiEmitter(state).EmitUIToolInputError(ctx, portal, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
+		oc.semanticStream(state, portal).ToolInputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
 	}
-	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
+	oc.semanticStream(state, portal).ToolInputAvailable(ctx, tool.callID, toolName, inputMap, tool.toolType == ToolTypeProvider)
 
 	resultStatus := ResultStatusSuccess
 	result := ""
@@ -271,9 +271,9 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	recordCompletedToolCall(ctx, oc, portal, state, tool, toolName, argsJSON, result, resultStatus)
 	if resultStatus == ResultStatusSuccess {
 		collectToolOutputCitations(state, toolName, result)
-		oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider, false)
+		oc.semanticStream(state, portal).ToolOutputAvailable(ctx, tool.callID, result, tool.toolType == ToolTypeProvider, false)
 	} else if resultStatus != ResultStatusDenied {
-		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, result, tool.toolType == ToolTypeProvider)
+		oc.semanticStream(state, portal).ToolOutputError(ctx, tool.callID, result, tool.toolType == ToolTypeProvider)
 	}
 
 	return streamingBuiltinToolExecution{

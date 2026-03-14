@@ -55,7 +55,7 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	state.ui.UIToolNameByToolCallID[tool.callID] = tool.toolName
 	state.ui.UIToolTypeByToolCallID[tool.callID] = tool.toolType
 
-	oc.uiEmitter(state).EnsureUIToolInputStart(ctx, portal, tool.callID, tool.toolName, desc.providerExecuted, toolDisplayTitle(tool.toolName), nil)
+	oc.semanticStream(state, portal).ToolInputStart(ctx, tool.callID, tool.toolName, desc.providerExecuted, toolDisplayTitle(tool.toolName))
 	return tool
 }
 
@@ -94,7 +94,7 @@ func (oc *AIClient) handleCustomToolInputDeltaFromOutputItem(
 		return
 	}
 	tool.input.WriteString(delta)
-	oc.uiEmitter(state).EmitUIToolInputDelta(ctx, portal, tool.callID, tool.toolName, delta, tool.toolType == ToolTypeProvider)
+	oc.semanticStream(state, portal).ToolInputDelta(ctx, tool.callID, tool.toolName, delta, tool.toolType == ToolTypeProvider)
 }
 
 func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
@@ -113,7 +113,7 @@ func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
 	if tool.input.Len() == 0 && strings.TrimSpace(inputText) != "" {
 		tool.input.WriteString(inputText)
 	}
-	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
+	oc.semanticStream(state, portal).ToolInputAvailable(ctx, tool.callID, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
 }
 
 func (oc *AIClient) handleMCPCallFailedFromOutputItem(
@@ -137,9 +137,9 @@ func (oc *AIClient) handleMCPCallFailedFromOutputItem(
 	}
 	denied := outputItemLooksDenied(item)
 	if denied {
-		oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, tool.callID)
+		oc.semanticStream(state, portal).ToolOutputDenied(ctx, tool.callID)
 	} else {
-		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, errorText, true)
+		oc.semanticStream(state, portal).ToolOutputError(ctx, tool.callID, errorText, true)
 	}
 
 	output := map[string]any{}
@@ -179,7 +179,7 @@ func (oc *AIClient) gateMcpToolApproval(
 		tool.input.WriteString(stringifyJSONValue(desc.input))
 	}
 	state.ui.UIToolCallIDByApproval[approvalID] = tool.callID
-	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, desc.input, true)
+	oc.semanticStream(state, portal).ToolInputAvailable(ctx, tool.callID, tool.toolName, desc.input, true)
 	state.pendingMcpApprovalsSeen[approvalID] = true
 	parsed := item.AsMcpApprovalRequest()
 	serverLabel := strings.TrimSpace(parsed.ServerLabel)
@@ -226,7 +226,7 @@ func (oc *AIClient) gateMcpToolApproval(
 					Reason:     agentremote.ApprovalReasonDeliveryError,
 				}); err != nil {
 					delete(state.pendingMcpApprovalsSeen, approvalID)
-					oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, "failed to deliver MCP approval prompt", true)
+					oc.semanticStream(state, portal).ToolOutputError(ctx, tool.callID, "failed to deliver MCP approval prompt", true)
 					oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to resolve undeliverable MCP approval prompt")
 				}
 			}
@@ -238,7 +238,7 @@ func (oc *AIClient) gateMcpToolApproval(
 			Reason:     "auto_approved",
 		}); err != nil {
 			delete(state.pendingMcpApprovalsSeen, approvalID)
-			oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, "failed to auto-approve MCP tool call", true)
+			oc.semanticStream(state, portal).ToolOutputError(ctx, tool.callID, "failed to auto-approve MCP tool call", true)
 			oc.loggerForContext(ctx).Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to auto-approve MCP tool call")
 		}
 	}
@@ -282,7 +282,7 @@ func (oc *AIClient) emitToolInputIfAvailable(ctx context.Context, portal *bridge
 	if tool.input.Len() == 0 {
 		tool.input.WriteString(stringifyJSONValue(desc.input))
 	}
-	oc.uiEmitter(state).EmitUIToolInputAvailable(ctx, portal, tool.callID, tool.toolName, desc.input, desc.providerExecuted)
+	oc.semanticStream(state, portal).ToolInputAvailable(ctx, tool.callID, tool.toolName, desc.input, desc.providerExecuted)
 }
 
 func (oc *AIClient) handleResponseOutputItemAdded(
@@ -315,7 +315,7 @@ func (oc *AIClient) handleResponseOutputItemDone(
 	if files := codeInterpreterFileParts(item); len(files) > 0 {
 		for _, file := range files {
 			recordGeneratedFile(state, file.URL, file.MediaType)
-			oc.uiEmitter(state).EmitUIFile(ctx, portal, file.URL, file.MediaType)
+			oc.semanticStream(state, portal).File(ctx, file.URL, file.MediaType)
 		}
 	}
 
@@ -325,16 +325,16 @@ func (oc *AIClient) handleResponseOutputItemDone(
 	errorText := strings.TrimSpace(item.Error)
 	switch {
 	case outputItemLooksDenied(item):
-		oc.uiEmitter(state).EmitUIToolOutputDenied(ctx, portal, tool.callID)
+		oc.semanticStream(state, portal).ToolOutputDenied(ctx, tool.callID)
 		resultStatus = ResultStatusDenied
 	case statusText == "failed" || statusText == "incomplete" || errorText != "":
 		if errorText == "" {
 			errorText = fmt.Sprintf("%s failed", tool.toolName)
 		}
-		oc.uiEmitter(state).EmitUIToolOutputError(ctx, portal, tool.callID, errorText, true)
+		oc.semanticStream(state, portal).ToolOutputError(ctx, tool.callID, errorText, true)
 		resultStatus = ResultStatusError
 	default:
-		oc.uiEmitter(state).EmitUIToolOutputAvailable(ctx, portal, tool.callID, result, true, false)
+		oc.semanticStream(state, portal).ToolOutputAvailable(ctx, tool.callID, result, true, false)
 	}
 
 	outputMap := map[string]any{}
