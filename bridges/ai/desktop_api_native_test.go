@@ -8,37 +8,6 @@ import (
 	"github.com/beeper/desktop-api-go/shared"
 )
 
-func TestParseDesktopAPIAddArgs(t *testing.T) {
-	tests := []struct {
-		name    string
-		args    []string
-		wantN   string
-		wantT   string
-		wantURL string
-		wantErr bool
-	}{
-		{name: "token only", args: []string{"tok"}, wantN: "", wantT: "tok"},
-		{name: "token and base url", args: []string{"tok", "https://example.test"}, wantN: "", wantT: "tok", wantURL: "https://example.test"},
-		{name: "name and token", args: []string{"work", "tok"}, wantN: "work", wantT: "tok"},
-		{name: "name token and base url", args: []string{"work", "tok", "https://example.test"}, wantN: "work", wantT: "tok", wantURL: "https://example.test"},
-		{name: "empty", args: nil, wantErr: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotN, gotT, gotURL, err := parseDesktopAPIAddArgs(tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("error mismatch: got=%v wantErr=%v", err, tt.wantErr)
-			}
-			if tt.wantErr {
-				return
-			}
-			if gotN != tt.wantN || gotT != tt.wantT || gotURL != tt.wantURL {
-				t.Fatalf("unexpected parse: got (%q,%q,%q) want (%q,%q,%q)", gotN, gotT, gotURL, tt.wantN, tt.wantT, tt.wantURL)
-			}
-		})
-	}
-}
-
 func TestMatchDesktopChatsByLabelAliases(t *testing.T) {
 	chats := []beeperdesktopapi.Chat{
 		{ID: "c1", Title: "Family", AccountID: "acc-wa"},

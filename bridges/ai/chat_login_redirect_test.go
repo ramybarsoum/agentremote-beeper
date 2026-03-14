@@ -53,16 +53,3 @@ func TestModelRedirectTarget(t *testing.T) {
 		})
 	}
 }
-
-func TestDMModelSwitchBlockedError(t *testing.T) {
-	err := dmModelSwitchBlockedError("anthropic/claude-sonnet-4.6")
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !errors.Is(err, ErrDMGhostImmutable) {
-		t.Fatalf("expected ErrDMGhostImmutable, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "requires creating a new chat") {
-		t.Fatalf("expected guidance in error, got %v", err)
-	}
-}

@@ -397,36 +397,6 @@ const (
 	FailoverUnknown   FailoverReason = "unknown"
 )
 
-// ClassifyFailoverReason returns a structured reason for why a model failover
-// should occur. Wraps the existing Is*Error functions into a single classifier.
-func ClassifyFailoverReason(err error) FailoverReason {
-	if err == nil {
-		return FailoverUnknown
-	}
-	if IsAuthError(err) {
-		return FailoverAuth
-	}
-	if IsBillingError(err) {
-		return FailoverBilling
-	}
-	if IsRateLimitError(err) {
-		return FailoverRateLimit
-	}
-	if IsTimeoutError(err) {
-		return FailoverTimeout
-	}
-	if IsOverloadedError(err) {
-		return FailoverOverload
-	}
-	if IsToolSchemaError(err) || IsRoleOrderingError(err) {
-		return FailoverFormat
-	}
-	if IsServerError(err) {
-		return FailoverServer
-	}
-	return FailoverUnknown
-}
-
 // stripFinalTags removes <final>...</final> tags from text.
 func stripFinalTags(s string) string {
 	for {

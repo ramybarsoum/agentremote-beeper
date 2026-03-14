@@ -279,25 +279,6 @@ func TestParseJSONErrorMessage(t *testing.T) {
 	}
 }
 
-func TestStripThinkTags(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"no think tags", "no think tags"},
-		{"<think>reasoning here</think> actual response", "actual response"},
-		{"<think>line1\nline2\nline3</think>\nresponse", "response"},
-		{"<think>first</think> middle <think>second</think> end", "middle end"},
-		{"<think>everything is thinking</think>", ""},
-		{"response without think", "response without think"},
-	}
-	for _, tt := range tests {
-		if got := stripThinkTags(tt.input); got != tt.want {
-			t.Errorf("stripThinkTags(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestIsBillingError_ResourceHasBeenExhausted(t *testing.T) {
 	err := errors.New("resource has been exhausted for project XYZ")
 	if !IsBillingError(err) {
@@ -352,13 +333,6 @@ func TestIsAuthError_Any403(t *testing.T) {
 	err := testOpenAIError(403, "forbidden", "permission_error", "permission denied")
 	if !IsAuthError(err) {
 		t.Fatal("expected generic 403 to be classified as auth")
-	}
-}
-
-func TestIsToolSchemaError_StringFallback(t *testing.T) {
-	err := errors.New(`provider rejected input_schema because oneOf is not supported`)
-	if !IsToolSchemaError(err) {
-		t.Fatal("expected string fallback to classify tool schema error")
 	}
 }
 
@@ -437,29 +411,6 @@ func TestFormatUserFacingError_ImageSizeLimit(t *testing.T) {
 	msg := FormatUserFacingError(err)
 	if msg != "Image exceeds 10MB. Use a smaller image." {
 		t.Fatalf("unexpected message: %s", msg)
-	}
-}
-
-func TestClassifyFailoverReason(t *testing.T) {
-	tests := []struct {
-		name   string
-		err    error
-		expect FailoverReason
-	}{
-		{"nil", nil, FailoverUnknown},
-		{"auth", errors.New("unauthorized access"), FailoverAuth},
-		{"billing", errors.New("payment required"), FailoverBilling},
-		{"rate_limit", errors.New("resource_exhausted: rate limit hit"), FailoverRateLimit},
-		{"timeout", errors.New("context deadline exceeded"), FailoverTimeout},
-		{"overloaded", errors.New("service unavailable 503"), FailoverOverload},
-		{"unknown", errors.New("something random"), FailoverUnknown},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := ClassifyFailoverReason(tt.err); got != tt.expect {
-				t.Errorf("ClassifyFailoverReason() = %q, want %q", got, tt.expect)
-			}
-		})
 	}
 }
 

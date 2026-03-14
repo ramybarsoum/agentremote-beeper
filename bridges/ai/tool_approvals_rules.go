@@ -29,10 +29,6 @@ func (oc *AIClient) toolApprovalsTTLSeconds() int {
 	return oc.connector.Config.ToolApprovals.WithDefaults().TTLSeconds
 }
 
-func (oc *AIClient) toolApprovalsAskFallback() string {
-	return "deny"
-}
-
 func (oc *AIClient) toolApprovalsRequireForMCP() bool {
 	if oc == nil || oc.connector == nil {
 		return true

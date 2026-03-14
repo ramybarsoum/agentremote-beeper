@@ -1720,11 +1720,6 @@ func (oc *AIClient) updateAssistantGeneratedFiles(ctx context.Context, portal *b
 // These are thinking/reasoning traces that should be stripped from historical messages.
 var thinkTagPattern = regexp.MustCompile(`(?s)<think>.*?</think>\s*`)
 
-// stripThinkTags removes <think>...</think> blocks from text.
-func stripThinkTags(s string) string {
-	return strings.TrimSpace(thinkTagPattern.ReplaceAllString(s, ""))
-}
-
 func (oc *AIClient) promptContextToDispatchMessages(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -1861,24 +1856,6 @@ func (oc *AIClient) buildContextWithLinkContext(
 		}},
 	})
 	return promptContext, nil
-}
-
-// buildPromptWithLinkContext builds a prompt with the latest user message and optional link context.
-// If rawEventContent is provided, it will extract existing link previews from it.
-// URLs in the message will be auto-fetched if no preview exists.
-func (oc *AIClient) buildPromptWithLinkContext(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	latest string,
-	rawEventContent map[string]any,
-	eventID id.EventID,
-) ([]openai.ChatCompletionMessageParamUnion, error) {
-	promptContext, err := oc.buildContextWithLinkContext(ctx, portal, meta, latest, rawEventContent, eventID)
-	if err != nil {
-		return nil, err
-	}
-	return oc.promptContextToDispatchMessages(ctx, portal, meta, promptContext), nil
 }
 
 // buildLinkContext extracts URLs from the message, fetches previews, and returns formatted context.

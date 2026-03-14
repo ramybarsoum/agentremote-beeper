@@ -33,25 +33,12 @@ const (
 // defaultSimpleModeSystemPrompt is the default system prompt for simple mode rooms.
 const defaultSimpleModeSystemPrompt = "You are a helpful assistant."
 
-var ErrDMGhostImmutable = errors.New("can't change the counterpart ghost in a DM")
-
 func hasAssignedAgent(meta *PortalMetadata) bool {
 	return resolveAgentID(meta) != ""
 }
 
 func hasBossAgent(meta *PortalMetadata) bool {
 	return agents.IsBossAgent(resolveAgentID(meta))
-}
-
-func dmModelSwitchGuidance(targetModel string) string {
-	if strings.TrimSpace(targetModel) == "" {
-		return "This is a DM. Switching to a different model requires creating a new chat."
-	}
-	return fmt.Sprintf("This is a DM. Switching to %s requires creating a new chat (for example: `!ai simple new %s`).", targetModel, targetModel)
-}
-
-func dmModelSwitchBlockedError(targetModel string) error {
-	return fmt.Errorf("%w: %s", ErrDMGhostImmutable, dmModelSwitchGuidance(targetModel))
 }
 
 func modelRedirectTarget(requested, resolved string) networkid.UserID {
