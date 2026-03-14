@@ -17,6 +17,7 @@ import (
 	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func messageSendStatusError(err error, message string, reason event.MessageStatusReason) error {
@@ -1098,7 +1099,7 @@ func (oc *AIClient) buildContextForRegenerate(
 ) (PromptContext, error) {
 	var promptContext PromptContext
 	isSimple := isSimpleMode(meta)
-	appendChatMessagesToPromptContext(&promptContext, oc.buildSystemMessages(ctx, portal, meta))
+	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
 
 	historyLimit := oc.historyLimit(ctx, portal, meta)
 	resetAt := int64(0)

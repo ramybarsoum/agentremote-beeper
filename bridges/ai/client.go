@@ -29,6 +29,7 @@ import (
 	"github.com/beeper/agentremote/pkg/agents"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -1730,7 +1731,7 @@ func (oc *AIClient) promptContextToDispatchMessages(
 	meta *PortalMetadata,
 	promptContext PromptContext,
 ) []openai.ChatCompletionMessageParamUnion {
-	promptMessages := PromptContextToChatCompletionMessages(promptContext, oc.isOpenRouterProvider())
+	promptMessages := bridgesdk.PromptContextToChatCompletionMessages(promptContext.PromptContext, oc.isOpenRouterProvider())
 	promptMessages = oc.augmentPromptWithIntegrations(ctx, portal, meta, promptMessages)
 	if meta != nil && IsGoogleModel(oc.effectiveModel(meta)) {
 		promptMessages = SanitizeGoogleTurnOrdering(promptMessages)
@@ -1746,10 +1747,10 @@ func (oc *AIClient) buildBaseContext(
 	var promptContext PromptContext
 	isSimple := isSimpleMode(meta)
 	if !isSimple {
-		appendChatMessagesToPromptContext(&promptContext, maybePrependSessionGreeting(ctx, portal, meta, nil, oc.log))
+		bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, maybePrependSessionGreeting(ctx, portal, meta, nil, oc.log))
 	}
 
-	appendChatMessagesToPromptContext(&promptContext, oc.buildSystemMessages(ctx, portal, meta))
+	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
 
 	historyLimit := oc.historyLimit(ctx, portal, meta)
 	resetAt := int64(0)
@@ -1823,7 +1824,7 @@ func (oc *AIClient) buildContextWithLinkContext(
 
 	isSimple := isSimpleMode(meta)
 	if !isSimple {
-		appendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
+		bridgesdk.AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
 	}
 
 	finalMessage := strings.TrimSpace(latest)
@@ -1959,7 +1960,7 @@ func (oc *AIClient) buildContextWithMedia(
 	isSimple := isSimpleMode(meta)
 	inboundCtx := oc.resolvePromptInboundContext(ctx, portal, caption, eventID)
 	if !isSimple {
-		appendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
+		bridgesdk.AppendPromptText(&promptContext.SystemPrompt, airuntime.BuildInboundMetaSystemPrompt(inboundCtx))
 	}
 
 	captionWithID := strings.TrimSpace(caption)
@@ -1999,7 +2000,7 @@ func (oc *AIClient) buildContextWithMedia(
 		}
 		blocks = append(blocks, PromptBlock{
 			Type:     PromptBlockFile,
-			FileB64:  buildDataURL(actualMimeType, b64Data),
+			FileB64:  bridgesdk.BuildDataURL(actualMimeType, b64Data),
 			Filename: "document.pdf",
 			MimeType: actualMimeType,
 		})
@@ -2040,7 +2041,7 @@ func (oc *AIClient) buildContextUpToMessage(
 ) (PromptContext, error) {
 	var promptContext PromptContext
 	isSimple := isSimpleMode(meta)
-	appendChatMessagesToPromptContext(&promptContext, oc.buildSystemMessages(ctx, portal, meta))
+	bridgesdk.AppendChatMessagesToPromptContext(&promptContext.PromptContext, oc.buildSystemMessages(ctx, portal, meta))
 
 	// Get history
 	historyLimit := oc.historyLimit(ctx, portal, meta)
