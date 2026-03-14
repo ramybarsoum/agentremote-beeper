@@ -270,8 +270,5 @@ func (oc *AIClient) isBuiltinToolDenied(
 		return true
 	}
 	decision := oc.waitForToolApprovalDecision(ctx, portal, state, approvalID, tool.callID)
-	if !approvalAllowed(decision) {
-		return true
-	}
-	return false
+	return !approvalAllowed(decision)
 }

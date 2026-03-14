@@ -305,16 +305,6 @@ type ApprovalController struct {
 	turn   *Turn
 }
 
-func (a *ApprovalController) valid() bool {
-	if a == nil {
-		return false
-	}
-	if a.turn != nil {
-		return true
-	}
-	return a.writer != nil && a.writer.valid()
-}
-
 func (a *ApprovalController) currentWriter() *Writer {
 	if a == nil {
 		return nil

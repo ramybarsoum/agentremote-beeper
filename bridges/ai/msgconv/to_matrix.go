@@ -120,6 +120,12 @@ func BuildUIMessageMetadata(p UIMessageMetadataParams) map[string]any {
 	return metadata
 }
 
+// MergeUIMessageMetadata deep-merges UI message metadata maps so callers can
+// safely layer incremental usage/timing updates onto existing state.
+func MergeUIMessageMetadata(base, update map[string]any) map[string]any {
+	return jsonutil.MergeRecursive(base, update)
+}
+
 // UIMessageParams contains parameters for building a full com.beeper.ai UIMessage.
 type UIMessageParams struct {
 	TurnID     string
