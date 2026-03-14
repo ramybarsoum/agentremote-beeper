@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -40,20 +39,12 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 	oc.noteUserActivity(portal.MXID)
 
-	trace := traceEnabled(meta)
-	traceFull := traceFull(meta)
 	logCtx := oc.loggerForContext(ctx).With().
 		Stringer("event_id", msg.Event.ID).
 		Stringer("sender", msg.Event.Sender).
 		Stringer("portal", portal.PortalKey).
 		Logger()
 	ctx = logCtx.WithContext(ctx)
-	if trace {
-		logCtx.Debug().
-			Str("msg_type", string(msg.Content.MsgType)).
-			Str("event_type", msg.Event.Type.Type).
-			Msg("Inbound matrix message received")
-	}
 
 	// Track last active room per agent for heartbeat routing
 	oc.recordAgentActivity(ctx, portal, meta)
@@ -117,9 +108,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 	}
 	rawBodyOriginal := rawBody
-	if traceFull && rawBodyOriginal != "" {
-		logCtx.Debug().Str("body", rawBodyOriginal).Msg("Inbound message body")
-	}
 	commandAuthorized := oc.isCommandAuthorizedSender(msg.Event.Sender)
 
 	isGroup := oc.isGroupChat(ctx, portal)
@@ -212,14 +200,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if ackReactionEventID != "" && removeAckAfter {
 		oc.storeAckReaction(ctx, portal.MXID, msg.Event.ID, ackReaction)
 	}
-	if trace {
-		logCtx.Debug().
-			Str("ack_reaction", ackReaction).
-			Bool("sent", ackReactionEventID != "").
-			Bool("remove_after", removeAckAfter).
-			Msg("Ack reaction evaluated")
-	}
-
 	body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
 	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
 	runCtx = withInboundContext(runCtx, inboundCtx)
@@ -351,27 +331,11 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		return errors.New("portal is nil")
 	}
 	meta := portalMeta(portal)
-	trace := traceEnabled(meta)
-	traceFull := traceFull(meta)
-	logCtx := zerolog.Nop()
-	if trace {
-		logCtx = oc.loggerForContext(ctx).With().
-			Stringer("portal", portal.PortalKey).
-			Logger()
-		if edit.Event != nil {
-			logCtx = logCtx.With().Stringer("event_id", edit.Event.ID).Logger()
-		}
-		logCtx.Debug().Msg("Inbound edit received")
-	}
 
 	// Get the new message body
 	newBody := strings.TrimSpace(edit.Content.Body)
 	if newBody == "" {
-		logCtx.Debug().Msg("Edit body is empty")
 		return errors.New("empty edit body")
-	}
-	if traceFull {
-		logCtx.Debug().Str("body", newBody).Msg("Edited message body")
 	}
 
 	// Update the message metadata with the new content
@@ -391,7 +355,6 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	// Only regenerate if this was a user message
 	if msgMeta.Role != "user" {
 		// Just update the content, don't regenerate
-		logCtx.Debug().Str("role", msgMeta.Role).Msg("Edit did not target user message; skipping regeneration")
 		return nil
 	}
 
@@ -549,16 +512,6 @@ func (oc *AIClient) handleMediaMessage(
 	msgType event.MessageType,
 	pendingSent bool,
 ) (*bridgev2.MatrixMessageResponse, error) {
-	trace := traceEnabled(meta)
-	traceFull := traceFull(meta)
-	logCtx := zerolog.Nop()
-	if trace {
-		logCtx = oc.loggerForContext(ctx).With().
-			Stringer("event_id", msg.Event.ID).
-			Stringer("portal", portal.PortalKey).
-			Logger()
-		logCtx.Debug().Str("msg_type", string(msgType)).Msg("Handling media message")
-	}
 	isGroup := oc.isGroupChat(ctx, portal)
 	roomName := ""
 	if isGroup {
@@ -606,25 +559,11 @@ func (oc *AIClient) handleMediaMessage(
 	}
 
 	if !ok {
-		logCtx.Debug().Str("msg_type", string(msgType)).Msg("Unsupported media type")
 		return nil, agentremote.UnsupportedMessageStatus(fmt.Errorf("unsupported media type: %s", msgType))
 	}
 
 	if mimeType == "" {
 		mimeType = config.defaultMimeType
-	}
-	if trace {
-		logCtx.Debug().
-			Str("mime_type", mimeType).
-			Bool("is_pdf", isPDF).
-			Str("capability", config.capabilityName).
-			Msg("Resolved media metadata")
-	}
-	if traceFull {
-		caption := strings.TrimSpace(msg.Content.Body)
-		if caption != "" {
-			logCtx.Debug().Str("caption", caption).Msg("Media caption")
-		}
 	}
 
 	eventID := id.EventID("")
@@ -637,9 +576,6 @@ func (oc *AIClient) handleMediaMessage(
 	supportsMedia := config.capabilityCheck(&modelCaps)
 	if isPDF && !supportsMedia && oc.isOpenRouterProvider() {
 		supportsMedia = true // OpenRouter supports PDF via file-parser plugin
-	}
-	if trace {
-		logCtx.Debug().Bool("supports_media", supportsMedia).Msg("Media capability check")
 	}
 	queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(ctx, portal, meta, "", airuntime.QueueInlineOptions{})
 

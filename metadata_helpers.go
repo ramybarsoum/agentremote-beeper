@@ -32,9 +32,3 @@ func EnsurePortalMetadata[T any](portal *bridgev2.Portal) *T {
 	return EnsureMetadata[T](&portal.Metadata)
 }
 
-func EnsureGhostMetadata[T any](ghost *bridgev2.Ghost) *T {
-	if ghost == nil {
-		return new(T)
-	}
-	return EnsureMetadata[T](&ghost.Metadata)
-}

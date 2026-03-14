@@ -31,20 +31,9 @@ func (oc *AIClient) dispatchInternalMessage(
 			return "", false, errors.New("missing portal metadata")
 		}
 	}
-	trace := traceEnabled(meta)
-	traceFull := traceFull(meta)
-	if trace {
-		oc.loggerForContext(ctx).Debug().
-			Stringer("portal", portal.PortalKey).
-			Str("source", strings.TrimSpace(source)).
-			Msg("Dispatching internal message")
-	}
 	trimmed := strings.TrimSpace(body)
 	if trimmed == "" {
 		return "", false, errors.New("message body is required")
-	}
-	if traceFull {
-		oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Str("body", trimmed).Msg("Internal message body")
 	}
 
 	prefix := "internal"
@@ -125,18 +114,12 @@ func (oc *AIClient) dispatchInternalMessage(
 		queueItem.prompt = pending.MessageBody
 		if oc.enqueueSteerQueue(portal.MXID, queueItem) {
 			if !behavior.BacklogAfter {
-				if trace {
-					oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Steered internal message into active run")
-				}
 				return eventID, true, nil
 			}
 		}
 	}
 	if behavior.BacklogAfter {
 		queueItem.backlogAfter = true
-	}
-	if trace {
-		oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Queued internal message")
 	}
 	oc.queuePendingMessage(portal.MXID, queueItem, queueSettings)
 	oc.notifySessionMutation(ctx, portal, meta, false)

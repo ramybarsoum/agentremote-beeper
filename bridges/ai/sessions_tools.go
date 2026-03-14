@@ -60,16 +60,6 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 			messageLimit = 20
 		}
 	}
-	trace := traceEnabled(portalMeta(portal))
-	if trace {
-		oc.loggerForContext(ctx).Debug().
-			Int("limit", limit).
-			Int("active_minutes", activeMinutes).
-			Int("message_limit", messageLimit).
-			Int("kind_filters", len(allowedKinds)).
-			Msg("Sessions list requested")
-	}
-
 	portals, err := oc.listAllChatPortals(ctx)
 	if err != nil {
 		return toolsErrorResult(err)
@@ -206,10 +196,6 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 	for _, entry := range entries {
 		result = append(result, entry.data)
 	}
-	if trace {
-		oc.loggerForContext(ctx).Debug().Int("count", len(result)).Msg("Sessions list completed")
-	}
-
 	resultPayload["sessions"] = result
 	resultPayload["count"] = len(result)
 	return tools.JSONResult(resultPayload), nil
@@ -231,20 +217,12 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 			includeTools = value
 		}
 	}
-	trace := traceEnabled(portalMeta(portal))
-	if trace {
-		oc.loggerForContext(ctx).Debug().Str("session_key", sessionKey).Int("limit", limit).Msg("Sessions history requested")
-	}
-
 	if instance, chatID, ok := parseDesktopSessionKey(sessionKey); ok {
 		resolvedInstance, resolveErr := resolveDesktopInstanceName(oc.desktopAPIInstances(), instance)
 		if resolveErr != nil {
 			return toolsErrorResult(resolveErr)
 		}
 		instance = resolvedInstance
-		if trace {
-			oc.loggerForContext(ctx).Debug().Str("instance", instance).Str("chat_id", chatID).Msg("Fetching desktop session history")
-		}
 		client, clientErr := oc.desktopAPIClient(instance)
 		if clientErr != nil || client == nil {
 			if clientErr == nil {
@@ -297,10 +275,6 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 	if err != nil {
 		return toolsErrorResult(err)
 	}
-	if trace {
-		oc.loggerForContext(ctx).Debug().Int("count", len(messages)).Msg("Sessions history fetched from Matrix")
-	}
-
 	openClawMessages := buildOpenClawSessionMessages(messages, true)
 	if len(openClawMessages) > limit {
 		openClawMessages = openClawMessages[len(openClawMessages)-limit:]
@@ -320,20 +294,6 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	message, err := tools.ReadString(args, "message", true)
 	if err != nil || strings.TrimSpace(message) == "" {
 		return toolsErrorResult(errors.New("message is required"))
-	}
-	meta := portalMeta(portal)
-	trace := traceEnabled(meta)
-	traceFull := traceFull(meta)
-	if trace {
-		if portal != nil {
-			oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg("Sessions send requested")
-		} else {
-			oc.loggerForContext(ctx).Debug().Msg("Sessions send requested")
-		}
-		oc.loggerForContext(ctx).Debug().Int("message_len", len(strings.TrimSpace(message))).Msg("Sessions send message length")
-	}
-	if traceFull {
-		oc.loggerForContext(ctx).Debug().Str("message", strings.TrimSpace(message)).Msg("Sessions send body")
 	}
 	sessionKey := tools.ReadStringDefault(args, "sessionKey", "")
 	label := tools.ReadStringDefault(args, "label", "")
@@ -358,9 +318,6 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 			return toolsErrorResult(resolveErr)
 		}
 		instance = resolvedInstance
-		if trace {
-			oc.loggerForContext(ctx).Debug().Str("instance", instance).Str("chat_id", chatID).Msg("Sending to desktop session by key")
-		}
 		_, sendErr := oc.sendDesktopMessage(ctx, instance, chatID, desktopSendMessageRequest{
 			Text: message,
 		})
@@ -388,9 +345,6 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		}
 		targetPortal = target
 		displayKey = display
-		if trace {
-			oc.loggerForContext(ctx).Debug().Stringer("portal", targetPortal.PortalKey).Msg("Resolved session key to Matrix portal")
-		}
 	} else {
 		if strings.TrimSpace(label) == "" {
 			return toolsErrorResult(errors.New("sessionKey or label is required"))
@@ -414,9 +368,6 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 			if desktopErr != nil {
 				return toolsErrorResult(desktopErr)
 			}
-			if trace {
-				oc.loggerForContext(ctx).Debug().Str("instance", desktopInstance).Str("chat_id", chatID).Msg("Sending to desktop session by label")
-			}
 			_, sendErr := oc.sendDesktopMessage(ctx, desktopInstance, chatID, desktopSendMessageRequest{
 				Text: message,
 			})
@@ -436,9 +387,6 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		}
 		targetPortal = target
 		displayKey = display
-		if trace {
-			oc.loggerForContext(ctx).Debug().Stringer("portal", targetPortal.PortalKey).Msg("Resolved session label to Matrix portal")
-		}
 	}
 
 	if targetPortal == nil {
@@ -450,8 +398,7 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	}
 
 	lastAssistantID, lastAssistantTimestamp := oc.lastAssistantMessageInfo(ctx, targetPortal)
-	queued := false
-	if dispatchEventID, queuedFlag, dispatchErr := oc.dispatchInternalMessage(ctx, targetPortal, portalMeta(targetPortal), message, "sessions-send", false); dispatchErr != nil {
+	if dispatchEventID, _, dispatchErr := oc.dispatchInternalMessage(ctx, targetPortal, portalMeta(targetPortal), message, "sessions-send", false); dispatchErr != nil {
 		status := "error"
 		if isForbiddenSessionSendError(dispatchErr.Error()) {
 			status = "forbidden"
@@ -465,10 +412,6 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		if dispatchEventID != "" {
 			runID = dispatchEventID.String()
 		}
-		queued = queuedFlag
-	}
-	if trace {
-		oc.loggerForContext(ctx).Debug().Bool("queued", queued).Msg("Sessions send dispatched")
 	}
 
 	delivery := map[string]any{
@@ -503,9 +446,6 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 		time.Sleep(250 * time.Millisecond)
 	}
 
-	if trace {
-		oc.loggerForContext(ctx).Debug().Bool("queued", queued).Str("session_key", displayKey).Msg("Sessions send timed out waiting for assistant reply")
-	}
 	result["status"] = "timeout"
 	result["error"] = "timeout waiting for assistant reply"
 	return tools.JSONResult(result), nil
