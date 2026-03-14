@@ -245,21 +245,11 @@ func initCommands() {
 }
 
 func envNames() []string {
-	names := make([]string, 0, len(envDomains))
-	for k := range envDomains {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return names
+	return sortedMapKeys(envDomains)
 }
 
 func bridgeNames() []string {
-	names := make([]string, 0, len(bridgeRegistry))
-	for k := range bridgeRegistry {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return names
+	return sortedMapKeys(bridgeRegistry)
 }
 
 func visibleCommands() []cmdDef {
@@ -278,6 +268,35 @@ func commandNames() []string {
 		out = append(out, c.Name)
 	}
 	return out
+}
+
+func sortedMapKeys[T any](m map[string]T) []string {
+	names := make([]string, 0, len(m))
+	for k := range m {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func visibleCommandsByGroup(group string) []cmdDef {
+	var out []cmdDef
+	for _, c := range visibleCommands() {
+		if c.Group == group {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func visibleCommandsByPosArg() map[string][]string {
+	groups := make(map[string][]string)
+	for _, c := range visibleCommands() {
+		if c.PosArgs != "" {
+			groups[c.PosArgs] = append(groups[c.PosArgs], c.Name)
+		}
+	}
+	return groups
 }
 
 func findCommand(name string) *cmdDef {
@@ -352,12 +371,7 @@ func generateUsage() string {
 
 	groups := []string{"Auth", "Bridges", "Other"}
 	for _, group := range groups {
-		var cmds []cmdDef
-		for _, c := range visibleCommands() {
-			if c.Group == group {
-				cmds = append(cmds, c)
-			}
-		}
+		cmds := visibleCommandsByGroup(group)
 		if len(cmds) == 0 {
 			continue
 		}
@@ -392,12 +406,7 @@ func generateBashCompletion() string {
 	b.WriteString("            ;;\n")
 
 	// Group commands by PosArgs type for positional completion
-	posGroups := map[string][]string{}
-	for _, c := range visibleCommands() {
-		if c.PosArgs != "" {
-			posGroups[c.PosArgs] = append(posGroups[c.PosArgs], c.Name)
-		}
-	}
+	posGroups := visibleCommandsByPosArg()
 	if cmds, ok := posGroups["bridge"]; ok {
 		fmt.Fprintf(&b, "        %s)\n", strings.Join(cmds, "|"))
 		fmt.Fprintf(&b, "            COMPREPLY=($(compgen -W %q -- \"${cur}\"))\n", strings.Join(bridges, " "))
@@ -571,17 +580,10 @@ func generateFishCompletion() string {
 
 	// Positional arg completions
 	b.WriteString("\n# Positional argument completions\n")
-	var bridgeCmds, shellCmds, commandCmds []string
-	for _, c := range visibleCommands() {
-		switch c.PosArgs {
-		case "bridge":
-			bridgeCmds = append(bridgeCmds, c.Name)
-		case "shell":
-			shellCmds = append(shellCmds, c.Name)
-		case "command":
-			commandCmds = append(commandCmds, c.Name)
-		}
-	}
+	posGroups := visibleCommandsByPosArg()
+	bridgeCmds := posGroups["bridge"]
+	shellCmds := posGroups["shell"]
+	commandCmds := posGroups["command"]
 	if len(bridgeCmds) > 0 {
 		fmt.Fprintf(&b, "complete -c agentremote -n \"__fish_seen_subcommand_from %s\" -a \"$bridges\"\n", strings.Join(bridgeCmds, " "))
 	}

@@ -3,6 +3,8 @@ package agentremote
 import (
 	"fmt"
 	"net/url"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
@@ -51,6 +53,11 @@ func NextUserLoginID(user *bridgev2.User, prefix string) networkid.UserLoginID {
 	// Should be unreachable: there are at most len(used) occupied ordinals,
 	// so ordinal len(used)+1 must be free. Fall back to a safe default.
 	return MakeUserLoginID(prefix, user.MXID, len(used)+1)
+}
+
+// NewTurnID generates a new unique, sortable turn ID using a timestamp-based format.
+func NewTurnID() string {
+	return "turn_" + strings.ReplaceAll(time.Now().UTC().Format("20060102T150405.000000000"), ".", "")
 }
 
 func SingleLoginFlow(enabled bool, flow bridgev2.LoginFlow) []bridgev2.LoginFlow {

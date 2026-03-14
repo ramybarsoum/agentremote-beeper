@@ -162,7 +162,7 @@ func openClawAttachmentSourceFromValue(value any, block map[string]any) *openCla
 		URL:      strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(source["url"]), stringValue(source["href"]))),
 		Data:     strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(source["data"]), stringValue(source["content"]))),
 		MimeType: openClawSourceMimeType(source, block),
-		FileName: firstNonEmpty(stringValue(source["filename"]), stringValue(source["fileName"]), stringValue(source["name"]), stringValue(source["path"]), openClawBlockFilename(block)),
+		FileName: stringutil.FirstNonEmpty(stringValue(source["filename"]), stringValue(source["fileName"]), stringValue(source["name"]), stringValue(source["path"]), openClawBlockFilename(block)),
 	}
 	switch result.Kind {
 	case "base64", "url":
@@ -273,7 +273,7 @@ func downloadOpenClawAttachment(ctx context.Context, source *openClawAttachmentS
 		}
 		return data, mimeType, nil
 	case "url":
-		return downloadOpenClawAttachmentURL(ctx, source.URL, source.MimeType, maxBytes, maxSizeMB)
+		return downloadOpenClawAttachmentURL(ctx, source.URL, source.MimeType, maxBytes)
 	default:
 		return nil, "", fmt.Errorf("unsupported attachment source kind %q", source.Kind)
 	}
@@ -302,7 +302,7 @@ func decodeOpenClawDataOrBase64(raw, fallbackMime string) ([]byte, string, error
 	return decoded, mimeType, nil
 }
 
-func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime string, maxBytes int64, _ int) ([]byte, string, error) {
+func downloadOpenClawAttachmentURL(ctx context.Context, rawURL, fallbackMime string, maxBytes int64) ([]byte, string, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return nil, "", errors.New("missing attachment URL")

@@ -266,7 +266,7 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	persistCtx := ol.BackgroundProcessContext()
 	log := ol.User.Log.With().Str("component", "openclaw_login").Str("gateway_url", pending.gatewayURL).Logger()
 	remoteName := openClawRemoteName(pending.gatewayURL, pending.label)
-	loginID := nextOpenClawUserLoginID(ol.User)
+	loginID := agentremote.NextUserLoginID(ol.User, "openclaw")
 	log.Debug().Str("login_id", string(loginID)).Str("remote_name", remoteName).Msg("Creating OpenClaw user login")
 	login, err := ol.User.NewLogin(persistCtx, &database.UserLogin{
 		ID:         loginID,

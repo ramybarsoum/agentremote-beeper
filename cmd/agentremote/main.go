@@ -864,29 +864,21 @@ func ensureInitialized(instName, bridgeType, beeperName string, sp *instancePath
 }
 
 func readOrSynthesizeMetadata(instName, bridgeType, beeperName string, sp *instancePaths) (*metadata, error) {
+	m := metadata{UpdatedAt: time.Now().UTC()}
 	if data, err := os.ReadFile(sp.MetaPath); err == nil {
-		var m metadata
-		if err = json.Unmarshal(data, &m); err == nil {
-			m.Instance = instName
-			m.BridgeType = bridgeType
-			m.BeeperBridgeName = beeperName
-			m.ConfigPath = sp.ConfigPath
-			m.RegistrationPath = sp.RegistrationPath
-			m.LogPath = sp.LogPath
-			m.PIDPath = sp.PIDPath
-			return &m, nil
-		}
+		// Ignore unmarshal errors; fall through to a fresh metadata.
+		_ = json.Unmarshal(data, &m)
 	}
-	return &metadata{
-		Instance:         instName,
-		BridgeType:       bridgeType,
-		BeeperBridgeName: beeperName,
-		ConfigPath:       sp.ConfigPath,
-		RegistrationPath: sp.RegistrationPath,
-		LogPath:          sp.LogPath,
-		PIDPath:          sp.PIDPath,
-		UpdatedAt:        time.Now().UTC(),
-	}, nil
+	// Always override paths and identity from current arguments so stale
+	// metadata files don't strand an instance on old paths.
+	m.Instance = instName
+	m.BridgeType = bridgeType
+	m.BeeperBridgeName = beeperName
+	m.ConfigPath = sp.ConfigPath
+	m.RegistrationPath = sp.RegistrationPath
+	m.LogPath = sp.LogPath
+	m.PIDPath = sp.PIDPath
+	return &m, nil
 }
 
 func readMetadata(sp *instancePaths) (*metadata, error) {
@@ -989,10 +981,10 @@ func deleteRemoteBridge(profile, beeperName string) error {
 	if auth.Username != "" {
 		hc := hungryapi.NewClient(auth.Domain, auth.Username, auth.Token)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		if err := hc.DeleteAppService(ctx, beeperName); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to delete appservice: %v\n", err)
 		}
-		cancel()
 	}
 	if err = beeperapi.DeleteBridge(auth.Domain, beeperName, auth.Token); err != nil {
 		return fmt.Errorf("failed to delete bridge in beeper api: %w", err)

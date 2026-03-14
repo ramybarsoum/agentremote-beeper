@@ -2,7 +2,6 @@ package codex
 
 import (
 	"strings"
-	"time"
 
 	"go.mau.fi/util/jsontime"
 	"maunium.net/go/mautrix/bridgev2"
@@ -114,6 +113,3 @@ func isManagedAuthLogin(meta *UserLoginMetadata) bool {
 	return normalizedCodexAuthSource(meta) == CodexAuthSourceManaged
 }
 
-func NewTurnID() string {
-	return "turn_" + strings.ReplaceAll(time.Now().UTC().Format("20060102T150405.000000000"), ".", "")
-}

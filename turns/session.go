@@ -108,7 +108,7 @@ func NewStreamSession(params StreamSessionParams) *StreamSession {
 
 // EmitStreamEvent logs the stream start once and emits a part through a session.
 func EmitStreamEvent(ctx context.Context, portal *bridgev2.Portal, state StreamEventState, part map[string]any) {
-	if portal == nil || portal.MXID == "" || state.SuppressSend {
+	if portal == nil || portal.MXID == "" || state.SuppressSend || state.EnsureSession == nil {
 		return
 	}
 	if state.LoggedStart != nil && !*state.LoggedStart {
@@ -120,14 +120,9 @@ func EmitStreamEvent(ctx context.Context, portal *bridgev2.Portal, state StreamE
 				Msg("Streaming events")
 		}
 	}
-	if state.EnsureSession == nil {
-		return
+	if session := state.EnsureSession(); session != nil {
+		session.EmitPart(ctx, part)
 	}
-	session := state.EnsureSession()
-	if session == nil {
-		return
-	}
-	session.EmitPart(ctx, part)
 }
 
 func (s *StreamSession) IsClosed() bool {

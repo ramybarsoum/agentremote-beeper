@@ -783,36 +783,22 @@ func readOrSynthesizeMetadata(instance string, cfg instanceConfig, sp *statePath
 	if !filepath.IsAbs(binPath) {
 		binPath = filepath.Join(repo, binPath)
 	}
+	m := metadata{UpdatedAt: time.Now().UTC()}
 	if data, err := os.ReadFile(sp.MetaPath); err == nil {
-		var m metadata
-		if err = json.Unmarshal(data, &m); err == nil {
-			// Repo and binary locations are derived from the current manifest.
-			// Refresh them on every load so moving the checkout doesn't strand
-			// an instance on stale absolute paths from an older clone.
-			m.Instance = instance
-			m.BridgeType = cfg.BridgeType
-			m.RepoPath = repo
-			m.BinaryPath = binPath
-			m.ConfigPath = sp.ConfigPath
-			m.RegistrationPath = sp.RegistrationPath
-			m.LogPath = sp.LogPath
-			m.PIDPath = sp.PIDPath
-			m.BeeperBridgeName = cfg.BeeperBridgeName
-			return &m, nil
-		}
+		_ = json.Unmarshal(data, &m)
 	}
-	return &metadata{
-		Instance:         instance,
-		BridgeType:       cfg.BridgeType,
-		RepoPath:         repo,
-		BinaryPath:       binPath,
-		ConfigPath:       sp.ConfigPath,
-		RegistrationPath: sp.RegistrationPath,
-		LogPath:          sp.LogPath,
-		PIDPath:          sp.PIDPath,
-		BeeperBridgeName: cfg.BeeperBridgeName,
-		UpdatedAt:        time.Now().UTC(),
-	}, nil
+	// Always refresh from current manifest so moving the checkout doesn't
+	// strand an instance on stale absolute paths from an older clone.
+	m.Instance = instance
+	m.BridgeType = cfg.BridgeType
+	m.RepoPath = repo
+	m.BinaryPath = binPath
+	m.ConfigPath = sp.ConfigPath
+	m.RegistrationPath = sp.RegistrationPath
+	m.LogPath = sp.LogPath
+	m.PIDPath = sp.PIDPath
+	m.BeeperBridgeName = cfg.BeeperBridgeName
+	return &m, nil
 }
 
 func writeMetadata(meta *metadata, path string) error {
@@ -919,10 +905,10 @@ func deleteRemoteBridge(name string) error {
 	if auth.Username != "" {
 		hc := hungryapi.NewClient(auth.Domain, auth.Username, auth.Token)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		if err := hc.DeleteAppService(ctx, name); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to delete appservice: %v\n", err)
 		}
-		cancel()
 	}
 	if err = beeperapi.DeleteBridge(auth.Domain, name, auth.Token); err != nil {
 		return fmt.Errorf("failed to delete bridge in beeper api: %w", err)

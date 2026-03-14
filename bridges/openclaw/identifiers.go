@@ -8,9 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 )
@@ -19,31 +17,6 @@ var (
 	openClawValidAgentIDRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 	openClawInvalidAgentIDRe = regexp.MustCompile(`[^a-z0-9_-]+`)
 )
-
-func makeOpenClawUserLoginID(mxid id.UserID, ordinal int) networkid.UserLoginID {
-	escaped := url.PathEscape(string(mxid))
-	base := networkid.UserLoginID(fmt.Sprintf("openclaw:%s", escaped))
-	if ordinal <= 1 {
-		return base
-	}
-	return networkid.UserLoginID(fmt.Sprintf("%s:%d", base, ordinal))
-}
-
-func nextOpenClawUserLoginID(user *bridgev2.User) networkid.UserLoginID {
-	used := make(map[string]struct{})
-	for _, existing := range user.GetUserLogins() {
-		if existing == nil {
-			continue
-		}
-		used[string(existing.ID)] = struct{}{}
-	}
-	for ordinal := 1; ; ordinal++ {
-		loginID := makeOpenClawUserLoginID(user.MXID, ordinal)
-		if _, ok := used[string(loginID)]; !ok {
-			return loginID
-		}
-	}
-}
 
 func openClawGatewayID(gatewayURL, label string) string {
 	key := strings.ToLower(strings.TrimSpace(gatewayURL)) + "|" + strings.ToLower(strings.TrimSpace(label))
