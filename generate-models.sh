@@ -11,6 +11,7 @@ set -e
 # Parse arguments
 OPENROUTER_TOKEN=""
 OUTPUT_FILE="bridges/ai/beeper_models_generated.go"
+JSON_FILE="pkg/connector/beeper_models.json"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -28,7 +29,12 @@ while [[ $# -gt 0 ]]; do
       echo "Options:"
       echo "  --openrouter-token=TOKEN  OpenRouter API token (required)"
       echo "  --output=FILE             Output file path (default: bridges/ai/beeper_models_generated.go)"
+      echo "  --json=FILE               Output JSON path (default: pkg/connector/beeper_models.json)"
       exit 0
+      ;;
+    --json=*)
+      JSON_FILE="${1#*=}"
+      shift
       ;;
     *)
       echo "Unknown option: $1"
@@ -48,7 +54,8 @@ cd "$(dirname "$0")"
 
 # Run the generator
 echo "Generating models from OpenRouter API..."
-go run ./cmd/generate-models/main.go --openrouter-token="$OPENROUTER_TOKEN" --output="$OUTPUT_FILE"
+go run ./cmd/generate-models/main.go --openrouter-token="$OPENROUTER_TOKEN" --output="$OUTPUT_FILE" --json="$JSON_FILE"
 
 echo "Generated: $OUTPUT_FILE"
+echo "Generated: $JSON_FILE"
 echo "Don't forget to check in the generated file!"

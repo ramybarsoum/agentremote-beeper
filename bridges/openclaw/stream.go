@@ -6,20 +6,14 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/format"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
-	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	bridgesdk "github.com/beeper/agentremote/sdk"
-	"github.com/beeper/agentremote/turns"
 )
 
 func openClawStreamPartTimestamp(part map[string]any) time.Time {
@@ -359,125 +353,6 @@ func (oc *OpenClawClient) ensureStreamStateLocked(portal *bridgev2.Portal, turnI
 	return state
 }
 
-func (oc *OpenClawClient) ensureStreamPlaceholder(portal *bridgev2.Portal, turnID, agentID string) {
-	oc.StreamMu.Lock()
-	state := oc.streamStates[turnID]
-	if state == nil || state.initialEventID != "" {
-		oc.StreamMu.Unlock()
-		return
-	}
-	uiMessage := oc.currentCanonicalUIMessage(state)
-	startedAtMs := state.startedAtMs
-	runID := state.runID
-	sessionID := state.sessionID
-	sessionKey := state.sessionKey
-	messageTS := openClawStreamMessageTimestamp(state)
-	oc.StreamMu.Unlock()
-
-	msgID := newOpenClawMessageID()
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:      networkid.PartID("0"),
-			Type:    event.EventMessage,
-			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "..."},
-			Extra: map[string]any{
-				"msgtype":                event.MsgText,
-				"body":                   "...",
-				"m.mentions":             map[string]any{},
-				matrixevents.BeeperAIKey: uiMessage,
-			},
-			DBMetadata: &MessageMetadata{
-				BaseMessageMetadata: agentremote.BaseMessageMetadata{
-					Role:               "assistant",
-					Body:               "...",
-					TurnID:             turnID,
-					AgentID:            agentID,
-					CanonicalSchema:    "ai-sdk-ui-message-v1",
-					CanonicalUIMessage: uiMessage,
-					StartedAtMs:        startedAtMs,
-				},
-				RunID:      runID,
-				SessionID:  sessionID,
-				SessionKey: sessionKey,
-			},
-		}},
-	}
-	result := oc.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-		portal:    portal.PortalKey,
-		id:        msgID,
-		sender:    oc.senderForAgent(agentID, false),
-		timestamp: messageTS,
-		preBuilt:  converted,
-	})
-	oc.applyStreamPlaceholderResult(turnID, msgID, result)
-}
-
-func (oc *OpenClawClient) applyStreamPlaceholderResult(turnID string, msgID networkid.MessageID, result bridgev2.EventHandlingResult) {
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
-
-	state := oc.streamStates[turnID]
-	if state == nil {
-		return
-	}
-	state.placeholderPending = false
-	if !result.Success {
-		return
-	}
-
-	state.networkMessageID = msgID
-	if result.EventID != "" {
-		state.initialEventID = result.EventID
-		return
-	}
-
-	// Without a concrete target event ID, ephemeral stream events cannot be
-	// correlated to the placeholder message, so stay on edit-based streaming.
-	state.streamFallbackToDebounced.Store(true)
-}
-
-func (oc *OpenClawClient) resolveStreamTargetEventID(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	turnID string,
-	target turns.StreamTarget,
-) (id.EventID, error) {
-	if oc == nil {
-		return "", nil
-	}
-	receiver := networkid.UserLoginID("")
-	if portal != nil {
-		receiver = portal.Receiver
-	}
-	if receiver == "" && oc.UserLogin != nil {
-		receiver = oc.UserLogin.ID
-	}
-	var bridge *bridgev2.Bridge
-	if oc.UserLogin != nil {
-		bridge = oc.UserLogin.Bridge
-	}
-	return agentremote.ResolveStreamTargetEventID(ctx, bridge, receiver, target, oc.streamInitialEventID(turnID), func(eventID id.EventID) {
-		oc.setStreamInitialEventID(turnID, eventID)
-	})
-}
-
-func (oc *OpenClawClient) streamInitialEventID(turnID string) id.EventID {
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
-	if state := oc.streamStates[turnID]; state != nil {
-		return state.initialEventID
-	}
-	return ""
-}
-
-func (oc *OpenClawClient) setStreamInitialEventID(turnID string, eventID id.EventID) {
-	oc.StreamMu.Lock()
-	defer oc.StreamMu.Unlock()
-	if state := oc.streamStates[turnID]; state != nil && state.initialEventID == "" {
-		state.initialEventID = eventID
-	}
-}
-
 func (oc *OpenClawClient) applyStreamMessageMetadata(state *openClawStreamState, metadata map[string]any) {
 	if state == nil || len(metadata) == 0 {
 		return
@@ -603,94 +478,4 @@ func (oc *OpenClawClient) buildStreamDBMetadata(state *openClawStreamState) *Mes
 		TotalTokens:    state.totalTokens,
 		FirstTokenAtMs: state.firstTokenAtMs,
 	}
-}
-
-func (oc *OpenClawClient) persistStreamDBMetadata(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState, meta *MessageMetadata) {
-	if oc == nil || portal == nil || state == nil || meta == nil {
-		return
-	}
-	agentremote.UpdateExistingMessageMetadata(
-		ctx,
-		oc.UserLogin,
-		portal,
-		state.networkMessageID,
-		state.initialEventID,
-		meta,
-		oc.Log(),
-		"Failed to load OpenClaw stream message for metadata update",
-		"Failed to persist OpenClaw stream metadata",
-	)
-}
-
-func (oc *OpenClawClient) queueStreamEdit(portal *bridgev2.Portal, state *openClawStreamState, body, formattedBody string, htmlFormat event.Format) {
-	if oc == nil || portal == nil || portal.MXID == "" || state == nil || state.networkMessageID == "" {
-		return
-	}
-	oc.UserLogin.QueueRemoteEvent(&OpenClawRemoteEdit{
-		portal:        portal.PortalKey,
-		sender:        oc.senderForAgent(state.agentID, false),
-		targetMessage: state.networkMessageID,
-		timestamp:     openClawStreamMessageTimestamp(state),
-		preBuilt: &bridgev2.ConvertedEdit{
-			ModifiedParts: []*bridgev2.ConvertedEditPart{{
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          body,
-					Format:        htmlFormat,
-					FormattedBody: formattedBody,
-				},
-				Extra: map[string]any{"m.mentions": map[string]any{}},
-				TopLevelExtra: map[string]any{
-					"body":                          body,
-					matrixevents.BeeperAIKey:        oc.currentCanonicalUIMessage(state),
-					"com.beeper.dont_render_edited": true,
-					"format":                        htmlFormat,
-					"formatted_body":                formattedBody,
-					"m.mentions":                    map[string]any{},
-				},
-			}},
-		},
-	})
-}
-
-func (oc *OpenClawClient) queueDebouncedStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState, force bool) error {
-	if oc == nil || portal == nil || portal.MXID == "" || state == nil || state.networkMessageID == "" {
-		return nil
-	}
-	visibleBody := strings.TrimSpace(state.lastVisibleText)
-	if visibleBody == "" {
-		visibleBody = strings.TrimSpace(state.visible.String())
-	}
-	fallbackBody := strings.TrimSpace(state.accumulated.String())
-	content := turns.BuildDebouncedEditContent(turns.DebouncedEditParams{
-		PortalMXID:   portal.MXID.String(),
-		Force:        force,
-		SuppressSend: false,
-		VisibleBody:  visibleBody,
-		FallbackBody: fallbackBody,
-	})
-	if content == nil {
-		return nil
-	}
-	oc.queueStreamEdit(portal, state, content.Body, content.FormattedBody, content.Format)
-	return nil
-}
-
-func (oc *OpenClawClient) queueFinalStreamEdit(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) {
-	if oc == nil || portal == nil || portal.MXID == "" || state == nil || state.networkMessageID == "" {
-		return
-	}
-	body := strings.TrimSpace(state.lastVisibleText)
-	if body == "" {
-		body = strings.TrimSpace(state.visible.String())
-	}
-	if body == "" {
-		body = strings.TrimSpace(state.accumulated.String())
-	}
-	if body == "" {
-		body = "..."
-	}
-	rendered := format.RenderMarkdown(body, true, true)
-	oc.queueStreamEdit(portal, state, body, rendered.FormattedBody, rendered.Format)
 }
