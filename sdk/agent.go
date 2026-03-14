@@ -30,6 +30,31 @@ type AgentCapabilities struct {
 	MaxTextLength int
 }
 
+const DefaultAgentMaxTextLength = 100000
+
+// BaseAgentCapabilities returns the common capabilities shared by text-first bridge agents.
+func BaseAgentCapabilities() AgentCapabilities {
+	return AgentCapabilities{
+		SupportsStreaming:   true,
+		SupportsReasoning:   true,
+		SupportsToolCalling: true,
+		SupportsTextInput:   true,
+		SupportsFilesOutput: true,
+		MaxTextLength:       DefaultAgentMaxTextLength,
+	}
+}
+
+// MultimodalAgentCapabilities extends the base agent capabilities with broad media input support.
+func MultimodalAgentCapabilities() AgentCapabilities {
+	caps := BaseAgentCapabilities()
+	caps.SupportsImageInput = true
+	caps.SupportsAudioInput = true
+	caps.SupportsVideoInput = true
+	caps.SupportsFileInput = true
+	caps.SupportsPDFInput = true
+	return caps
+}
+
 // Agent is the thin SDK identity model for an AI agent.
 type Agent struct {
 	ID           string

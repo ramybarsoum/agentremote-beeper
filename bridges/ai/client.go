@@ -263,6 +263,7 @@ func videoFileFeatures() *event.FileFeatures {
 
 // AIClient handles communication with AI providers
 type AIClient struct {
+	agentremote.ClientBase
 	UserLogin *bridgev2.UserLogin
 	connector *OpenAIConnector
 	api       openai.Client
@@ -272,7 +273,6 @@ type AIClient struct {
 	// Provider abstraction layer - all providers use OpenAI SDK
 	provider AIProvider
 
-	loggedIn      atomic.Bool
 	chatLock      sync.Mutex
 	bootstrapOnce sync.Once // Ensures bootstrap only runs once per client instance
 
@@ -404,6 +404,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
 	}
+	oc.HumanUserIDPrefix = "openai-user"
 	oc.approvalFlow = agentremote.NewApprovalFlow(agentremote.ApprovalFlowConfig[*pendingToolApprovalData]{
 		Login: func() *bridgev2.UserLogin { return oc.UserLogin },
 		Sender: func(portal *bridgev2.Portal) bridgev2.EventSender {
@@ -1050,10 +1051,6 @@ func (oc *AIClient) Disconnect() {
 	})
 }
 
-func (oc *AIClient) IsLoggedIn() bool {
-	return oc.IsLoggedIn()
-}
-
 func (oc *AIClient) LogoutRemote(ctx context.Context) {
 	// Best-effort: remove per-login data not covered by bridgev2's user_login/portal/message cleanup.
 	if oc != nil && oc.UserLogin != nil {
@@ -1072,10 +1069,6 @@ func (oc *AIClient) LogoutRemote(ctx context.Context) {
 		StateEvent: status.StateLoggedOut,
 		Message:    "Disconnected by user",
 	})
-}
-
-func (oc *AIClient) IsThisUser(ctx context.Context, userID networkid.UserID) bool {
-	return userID == humanUserID(oc.UserLogin.ID)
 }
 
 func (oc *AIClient) agentUserID(agentID string) networkid.UserID {

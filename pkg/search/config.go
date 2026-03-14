@@ -1,10 +1,8 @@
 package search
 
 import (
-	"slices"
-	"strings"
-
 	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/agentremote/pkg/shared/providerkit"
 )
 
 const (
@@ -43,12 +41,7 @@ func (c *Config) WithDefaults() *Config {
 	if c == nil {
 		c = &Config{}
 	}
-	if strings.TrimSpace(c.Provider) == "" {
-		c.Provider = ProviderExa
-	}
-	if len(c.Fallbacks) == 0 {
-		c.Fallbacks = slices.Clone(DefaultFallbackOrder)
-	}
+	providerkit.ApplyDefaults(&c.Provider, &c.Fallbacks, ProviderExa, DefaultFallbackOrder)
 	c.Exa = c.Exa.withDefaults()
 	return c
 }

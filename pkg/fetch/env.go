@@ -2,24 +2,16 @@ package fetch
 
 import (
 	"os"
-	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/exa"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/shared/providerkit"
 )
 
 // ConfigFromEnv builds a fetch config using environment variables.
 func ConfigFromEnv() *Config {
 	cfg := &Config{}
-
-	if provider := strings.TrimSpace(os.Getenv("FETCH_PROVIDER")); provider != "" {
-		cfg.Provider = provider
-	}
-	if fallbacks := strings.TrimSpace(os.Getenv("FETCH_FALLBACKS")); fallbacks != "" {
-		cfg.Fallbacks = stringutil.SplitCSV(fallbacks)
-	}
+	providerkit.ApplyNamedEnv(&cfg.Provider, &cfg.Fallbacks, os.Getenv("FETCH_PROVIDER"), os.Getenv("FETCH_FALLBACKS"))
 	exa.ApplyEnv(&cfg.Exa.APIKey, &cfg.Exa.BaseURL)
-
 	return cfg.WithDefaults()
 }
 
@@ -28,11 +20,17 @@ func ApplyEnvDefaults(cfg *Config) *Config {
 	if cfg == nil {
 		return ConfigFromEnv()
 	}
+	hasProvider := cfg.Provider != ""
+	hasFallbacks := len(cfg.Fallbacks) > 0
 	current := cfg.WithDefaults()
 	envCfg := ConfigFromEnv()
 
-	// WithDefaults already fills Provider and Fallbacks, so only credentials
-	// need merging from the environment.
+	if !hasProvider {
+		current.Provider = envCfg.Provider
+	}
+	if !hasFallbacks {
+		current.Fallbacks = envCfg.Fallbacks
+	}
 	if current.Exa.APIKey == "" {
 		current.Exa.APIKey = envCfg.Exa.APIKey
 	}

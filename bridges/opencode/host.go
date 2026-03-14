@@ -171,17 +171,15 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		toolCallID, _ := part["toolCallId"].(string)
 		turn.ToolDenied(toolCallID)
 	case "tool-approval-request":
-		turn.SetMetadata(nil)
 		approvalID, _ := part["approvalId"].(string)
 		toolCallID, _ := part["toolCallId"].(string)
-		turn.Emitter().EmitUIToolApprovalRequest(turn.Context(), portal, approvalID, toolCallID)
+		turn.Approvals().EmitRequest(approvalID, toolCallID)
 	case "tool-approval-response":
-		turn.SetMetadata(nil)
 		approvalID, _ := part["approvalId"].(string)
 		toolCallID, _ := part["toolCallId"].(string)
 		approved, _ := part["approved"].(bool)
 		reason, _ := part["reason"].(string)
-		turn.Emitter().EmitUIToolApprovalResponse(turn.Context(), portal, approvalID, toolCallID, approved, reason)
+		turn.Approvals().Respond(approvalID, toolCallID, approved, reason)
 	case "file":
 		url, _ := part["url"].(string)
 		mediaType, _ := part["mediaType"].(string)
@@ -198,10 +196,8 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 		turn.AddSourceURL(url, title)
 	case "error":
 		errText, _ := part["errorText"].(string)
-		turn.SetMetadata(nil)
-		turn.Emitter().EmitUIError(turn.Context(), portal, errText)
+		turn.Stream().Error(errText)
 	case "finish":
-		turn.SetMetadata(nil)
 		finishReason, _ := part["finishReason"].(string)
 		if strings.TrimSpace(finishReason) == "" {
 			finishReason = "stop"
@@ -214,7 +210,7 @@ func (oc *OpenCodeClient) EmitOpenCodeStreamEvent(ctx context.Context, portal *b
 	default:
 		if strings.HasPrefix(strings.TrimSpace(partType), "data-") {
 			turn.SetMetadata(nil)
-			turn.Emitter().Emit(turn.Context(), portal, part)
+			turn.Stream().Emitter().Emit(turn.Context(), portal, part)
 		}
 	}
 }

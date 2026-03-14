@@ -14,9 +14,11 @@ import (
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/maputil"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 	"github.com/beeper/agentremote/turns"
 )
 
@@ -130,71 +132,96 @@ func (oc *OpenClawClient) EmitStreamPart(ctx context.Context, portal *bridgev2.P
 		}
 	}
 	streamui.ApplyChunk(&state.ui, part)
-	needPlaceholder := state.networkMessageID == "" && !state.placeholderPending
-	if needPlaceholder {
-		state.placeholderPending = true
+	turn := state.turn
+	if turn == nil {
+		turn = oc.newSDKStreamTurn(ctx, portal, state)
+		state.turn = turn
 	}
 	oc.StreamMu.Unlock()
 
 	if oc.IsStreamShuttingDown() {
 		return
 	}
-	if needPlaceholder {
-		oc.ensureStreamPlaceholder(portal, turnID, agentID)
-	}
-
-	oc.StreamMu.Lock()
-	if oc.IsStreamShuttingDown() {
-		oc.StreamMu.Unlock()
+	if turn == nil {
 		return
 	}
-	state = oc.ensureStreamStateLocked(portal, turnID, agentID, sessionKey)
-	session := oc.StreamSessions[turnID]
-	if session == nil {
-		session = turns.NewStreamSession(turns.StreamSessionParams{
-			TurnID:  turnID,
-			AgentID: state.agentID,
-			GetStreamTarget: func() turns.StreamTarget {
-				oc.StreamMu.Lock()
-				defer oc.StreamMu.Unlock()
-				if current := oc.streamStates[turnID]; current != nil {
-					return turns.StreamTarget{NetworkMessageID: current.networkMessageID}
-				}
-				return turns.StreamTarget{}
-			},
-			ResolveTargetEventID: func(callCtx context.Context, target turns.StreamTarget) (id.EventID, error) {
-				return oc.resolveStreamTargetEventID(callCtx, portal, turnID, target)
-			},
-			GetRoomID: func() id.RoomID {
-				return portal.MXID
-			},
-			GetSuppressSend: func() bool { return false },
-			NextSeq: func() int {
-				oc.StreamMu.Lock()
-				defer oc.StreamMu.Unlock()
-				if current := oc.streamStates[turnID]; current != nil {
-					current.sequenceNum++
-					return current.sequenceNum
-				}
-				return 0
-			},
-			RuntimeFallbackFlag: &state.streamFallbackToDebounced,
-			GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
-				ephemeralSender, ok := any(oc.UserLogin.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
-				return ephemeralSender, ok
-			},
-			SendDebouncedEdit: func(callCtx context.Context, force bool) error {
-				oc.StreamMu.Lock()
-				current := oc.streamStates[turnID]
-				oc.StreamMu.Unlock()
-				return oc.queueDebouncedStreamEdit(callCtx, portal, current, force)
-			},
-			Logger: oc.Log(),
+
+	stream := turn.Stream()
+	switch partType {
+	case "start", "message-metadata":
+		if metadata, _ := part["messageMetadata"].(map[string]any); len(metadata) > 0 {
+			stream.Metadata(metadata)
+		}
+	case "start-step":
+		stream.StepStart()
+	case "finish-step":
+		stream.StepFinish()
+	case "text-delta":
+		if delta := stringValue(part["delta"]); delta != "" {
+			stream.TextDelta(delta)
+		}
+	case "reasoning-delta":
+		if delta := stringValue(part["delta"]); delta != "" {
+			stream.ReasoningDelta(delta)
+		}
+	case "tool-input-start":
+		toolName := strings.TrimSpace(stringValue(part["toolName"]))
+		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		stream.EnsureToolInputStart(toolCallID, nil, bridgesdk.ToolInputOptions{
+			ToolName:         toolName,
+			ProviderExecuted: providerExecuted,
 		})
-		oc.StreamSessions[turnID] = session
+	case "tool-input-delta":
+		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
+		inputTextDelta := stringValue(part["inputTextDelta"])
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		stream.ToolInputDelta(toolCallID, inputTextDelta, providerExecuted)
+	case "tool-input-available":
+		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
+		toolName := strings.TrimSpace(stringValue(part["toolName"]))
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		stream.ToolInput(toolCallID, toolName, part["input"], providerExecuted)
+	case "tool-output-available":
+		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		stream.ToolOutput(toolCallID, part["output"], bridgesdk.ToolOutputOptions{ProviderExecuted: providerExecuted})
+	case "tool-output-error":
+		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
+		errorText := stringValue(part["errorText"])
+		providerExecuted, _ := part["providerExecuted"].(bool)
+		stream.ToolOutputError(toolCallID, errorText, providerExecuted)
+	case "tool-output-denied":
+		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
+		stream.ToolDenied(toolCallID)
+	case "tool-approval-request":
+		approvalID := strings.TrimSpace(stringValue(part["approvalId"]))
+		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
+		turn.Approvals().EmitRequest(approvalID, toolCallID)
+	case "tool-approval-response":
+		approvalID := strings.TrimSpace(stringValue(part["approvalId"]))
+		toolCallID := strings.TrimSpace(stringValue(part["toolCallId"]))
+		approved, _ := part["approved"].(bool)
+		reason := stringValue(part["reason"])
+		turn.Approvals().Respond(approvalID, toolCallID, approved, reason)
+	case "file":
+		stream.File(stringValue(part["url"]), stringValue(part["mediaType"]))
+	case "source-document":
+		stream.SourceDocument(citations.SourceDocument{
+			ID:        stringValue(part["sourceId"]),
+			Title:     stringValue(part["title"]),
+			MediaType: stringValue(part["mediaType"]),
+			Filename:  stringValue(part["filename"]),
+		})
+	case "source-url":
+		stream.SourceURL(stringValue(part["url"]), stringValue(part["title"]))
+	case "error":
+		stream.Error(stringValue(part["errorText"]))
+	default:
+		if strings.HasPrefix(partType, "data-") {
+			stream.Emitter().Emit(turn.Context(), portal, part)
+		}
 	}
-	oc.StreamMu.Unlock()
-	session.EmitPart(ctx, part)
 }
 
 func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
@@ -204,10 +231,10 @@ func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
 	}
 
 	oc.StreamMu.Lock()
-	session := oc.StreamSessions[turnID]
 	state := oc.streamStates[turnID]
-	delete(oc.StreamSessions, turnID)
+	var turn *bridgesdk.Turn
 	if state != nil {
+		turn = state.turn
 		if state.finishReason == "" {
 			state.finishReason = strings.TrimSpace(finishReason)
 		}
@@ -217,19 +244,48 @@ func (oc *OpenClawClient) FinishStream(turnID, finishReason string) {
 	}
 	oc.StreamMu.Unlock()
 
-	if state != nil && state.portal != nil {
-		ctx := oc.BackgroundContext(context.Background())
-		oc.queueFinalStreamEdit(ctx, state.portal, state)
-		oc.persistStreamDBMetadata(ctx, state.portal, state, oc.buildStreamDBMetadata(state))
-	}
-
 	oc.StreamMu.Lock()
 	delete(oc.streamStates, turnID)
 	oc.StreamMu.Unlock()
 
-	if session != nil {
-		session.End(oc.BackgroundContext(context.Background()), turns.EndReasonFinish)
+	if turn == nil {
+		return
 	}
+	switch strings.TrimSpace(state.finishReason) {
+	case "abort", "aborted":
+		turn.Abort(openclawconv.StringsTrimDefault(state.finishReason, "aborted"))
+	case "error":
+		turn.EndWithError(openclawconv.StringsTrimDefault(state.errorText, "OpenClaw stream failed"))
+	default:
+		reason := openclawconv.StringsTrimDefault(state.finishReason, strings.TrimSpace(finishReason))
+		turn.End(openclawconv.StringsTrimDefault(reason, "stop"))
+	}
+}
+
+func (oc *OpenClawClient) newSDKStreamTurn(ctx context.Context, portal *bridgev2.Portal, state *openClawStreamState) *bridgesdk.Turn {
+	if oc == nil || portal == nil || state == nil || oc.connector == nil || oc.connector.sdkConfig == nil {
+		return nil
+	}
+	profile := oc.resolveAgentProfile(ctx, state.agentID, state.sessionKey, nil, nil)
+	state.agentID = openclawconv.StringsTrimDefault(profile.AgentID, state.agentID)
+	state.agentID = openclawconv.StringsTrimDefault(state.agentID, "gateway")
+	agent := oc.sdkAgentForProfile(profile)
+	sender := oc.senderForAgent(state.agentID, false)
+	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, oc.connector.sdkConfig, oc)
+	_ = conv.EnsureRoomAgent(ctx, agent)
+	turn := conv.StartTurn(ctx, agent, nil)
+	turn.SetID(state.turnID)
+	turn.SetSender(sender)
+	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, finishReason string) any {
+		if strings.TrimSpace(finishReason) != "" {
+			state.finishReason = strings.TrimSpace(finishReason)
+		}
+		if state.completedAtMs == 0 {
+			state.completedAtMs = time.Now().UnixMilli()
+		}
+		return oc.buildStreamDBMetadata(state)
+	}))
+	return turn
 }
 
 func (oc *OpenClawClient) computeVisibleDelta(turnID, text string) string {
@@ -479,7 +535,11 @@ func (oc *OpenClawClient) currentCanonicalUIMessage(state *openClawStreamState) 
 	if state == nil {
 		return nil
 	}
-	uiMessage := streamui.SnapshotCanonicalUIMessage(&state.ui)
+	uiState := &state.ui
+	if state.turn != nil && state.turn.UIState() != nil {
+		uiState = state.turn.UIState()
+	}
+	uiMessage := streamui.SnapshotCanonicalUIMessage(uiState)
 	update := msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,

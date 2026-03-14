@@ -12,6 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -21,8 +22,9 @@ var (
 
 type OpenClawConnector struct {
 	*agentremote.ConnectorBase
-	br     *bridgev2.Bridge
-	Config Config
+	br        *bridgev2.Bridge
+	Config    Config
+	sdkConfig *bridgesdk.Config
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
@@ -30,13 +32,17 @@ type OpenClawConnector struct {
 
 func NewConnector() *OpenClawConnector {
 	oc := &OpenClawConnector{}
-	oc.ConnectorBase = agentremote.NewConnector(agentremote.ConnectorSpec{
-		ProtocolID: "ai-openclaw",
-		Init: func(bridge *bridgev2.Bridge) {
+	oc.sdkConfig = &bridgesdk.Config{
+		Name:             "openclaw",
+		Description:      "A Matrix↔OpenClaw bridge built on mautrix-go bridgev2.",
+		ProtocolID:       "ai-openclaw",
+		ProviderIdentity: bridgesdk.ProviderIdentity{IDPrefix: "openclaw", LogKey: "openclaw_msg_id", StatusNetwork: "openclaw"},
+		ClientCacheMu:    &oc.clientsMu,
+		ClientCache:      &oc.clients,
+		InitConnector: func(bridge *bridgev2.Bridge) {
 			oc.br = bridge
-			agentremote.EnsureClientMap(&oc.clientsMu, &oc.clients)
 		},
-		Start: func(context.Context) error {
+		StartConnector: func(_ context.Context, _ *bridgev2.Bridge) error {
 			if oc.Config.Bridge.CommandPrefix == "" {
 				oc.Config.Bridge.CommandPrefix = "!openclaw"
 			}
@@ -45,10 +51,7 @@ func NewConnector() *OpenClawConnector {
 			}
 			return nil
 		},
-		Stop: func(context.Context) {
-			agentremote.StopClients(&oc.clientsMu, &oc.clients)
-		},
-		Name: func() bridgev2.BridgeName {
+		BridgeName: func() bridgev2.BridgeName {
 			return bridgev2.BridgeName{
 				DisplayName:          "OpenClaw Bridge",
 				NetworkURL:           "https://github.com/openclaw/openclaw",
@@ -58,9 +61,9 @@ func NewConnector() *OpenClawConnector {
 				DefaultCommandPrefix: oc.Config.Bridge.CommandPrefix,
 			}
 		},
-		Config: func() (example string, data any, upgrader configupgrade.Upgrader) {
-			return exampleNetworkConfig, &oc.Config, configupgrade.SimpleUpgrader(upgradeConfig)
-		},
+		ExampleConfig:  exampleNetworkConfig,
+		ConfigData:     &oc.Config,
+		ConfigUpgrader: configupgrade.SimpleUpgrader(upgradeConfig),
 		DBMeta: func() database.MetaTypes {
 			return database.MetaTypes{
 				Portal:    func() any { return &PortalMetadata{} },
@@ -69,42 +72,36 @@ func NewConnector() *OpenClawConnector {
 				Ghost:     func() any { return &GhostMetadata{} },
 			}
 		},
-		Capabilities: func() *bridgev2.NetworkGeneralCapabilities {
+		NetworkCapabilities: func() *bridgev2.NetworkGeneralCapabilities {
 			caps := agentremote.DefaultNetworkCapabilities()
 			caps.DisappearingMessages = false
 			return caps
 		},
-		LoadLogin: agentremote.TypedClientLoader(agentremote.TypedClientLoaderSpec[*OpenClawClient]{
-			Accept: func(login *bridgev2.UserLogin) (bool, string) {
-				meta := loginMetadata(login)
-				return strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderOpenClaw), "This bridge only supports OpenClaw logins."
-			},
-			LoadUserLoginConfig: agentremote.LoadUserLoginConfig[*OpenClawClient]{
-				Mu:         &oc.clientsMu,
-				Clients:    oc.clients,
-				BridgeName: "OpenClaw",
-				Update: func(e *OpenClawClient, l *bridgev2.UserLogin) {
-					e.SetUserLogin(l)
-				},
-				Create: func(l *bridgev2.UserLogin) (*OpenClawClient, error) {
-					return newOpenClawClient(l, oc)
-				},
-			},
-		}),
-		LoginFlows: func() []bridgev2.LoginFlow {
-			return agentremote.SingleLoginFlow(oc.openClawEnabled(), bridgev2.LoginFlow{
-				ID:          ProviderOpenClaw,
-				Name:        "OpenClaw",
-				Description: "Create a login for an OpenClaw gateway.",
-			})
+		AcceptLogin: func(login *bridgev2.UserLogin) (bool, string) {
+			meta := loginMetadata(login)
+			return strings.EqualFold(strings.TrimSpace(meta.Provider), ProviderOpenClaw), "This bridge only supports OpenClaw logins."
 		},
+		CreateClient: func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
+			return newOpenClawClient(login, oc)
+		},
+		UpdateClient: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
+			if c, ok := client.(*OpenClawClient); ok {
+				c.SetUserLogin(login)
+			}
+		},
+		LoginFlows: agentremote.SingleLoginFlow(oc.openClawEnabled(), bridgev2.LoginFlow{
+			ID:          ProviderOpenClaw,
+			Name:        "OpenClaw",
+			Description: "Create a login for an OpenClaw gateway.",
+		}),
 		CreateLogin: func(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 			if err := agentremote.ValidateSingleLoginFlow(flowID, ProviderOpenClaw, oc.openClawEnabled()); err != nil {
 				return nil, err
 			}
 			return &OpenClawLogin{User: user, Connector: oc}, nil
 		},
-	})
+	}
+	oc.ConnectorBase = bridgesdk.NewConnectorBase(oc.sdkConfig)
 	return oc
 }
 

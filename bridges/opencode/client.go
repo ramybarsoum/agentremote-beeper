@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"sync/atomic"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -80,6 +79,7 @@ func newOpenCodeClient(login *bridgev2.UserLogin, connector *OpenCodeConnector) 
 		streamStates: make(map[string]*openCodeStreamState),
 	}
 	client.InitClientBase(login, client)
+	client.HumanUserIDPrefix = "opencode-user"
 	client.bridge = NewBridge(client)
 	return client, nil
 }
@@ -115,10 +115,6 @@ func (oc *OpenCodeClient) Disconnect() {
 	if oc.UserLogin != nil {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected"})
 	}
-}
-
-func (oc *OpenCodeClient) IsLoggedIn() bool {
-	return oc.IsLoggedIn()
 }
 
 func (oc *OpenCodeClient) GetUserLogin() *bridgev2.UserLogin { return oc.UserLogin }
@@ -232,9 +228,6 @@ func (oc *OpenCodeClient) LogoutRemote(_ context.Context) {
 	}
 }
 
-func (oc *OpenCodeClient) IsThisUser(_ context.Context, userID networkid.UserID) bool {
-	return userID == humanUserID(oc.UserLogin.ID)
-}
 
 func (oc *OpenCodeClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	if portal == nil {

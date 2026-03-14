@@ -21,23 +21,11 @@ func (oc *AIClient) sdkAgentForDefinition(ctx context.Context, agent *agents.Age
 	}
 	modelID := oc.agentDefaultModel(agent)
 	return &bridgesdk.Agent{
-		ID:          string(oc.agentUserID(agent.ID)),
-		Name:        displayName,
-		Description: agent.Description,
-		Identifiers: stringutil.DedupeStrings(agentContactIdentifiers(agent.ID, modelID, oc.findModelInfo(modelID))),
-		ModelKey:    modelID,
-		Capabilities: bridgesdk.AgentCapabilities{
-			SupportsStreaming:   true,
-			SupportsReasoning:   true,
-			SupportsToolCalling: true,
-			SupportsTextInput:   true,
-			SupportsImageInput:  true,
-			SupportsAudioInput:  true,
-			SupportsVideoInput:  true,
-			SupportsFileInput:   true,
-			SupportsPDFInput:    true,
-			SupportsFilesOutput: true,
-			MaxTextLength:       100000,
-		},
+		ID:           string(oc.agentUserID(agent.ID)),
+		Name:         displayName,
+		Description:  agent.Description,
+		Identifiers:  stringutil.DedupeStrings(agentContactIdentifiers(agent.ID, modelID, oc.findModelInfo(modelID))),
+		ModelKey:     modelID,
+		Capabilities: bridgesdk.MultimodalAgentCapabilities(),
 	}
 }

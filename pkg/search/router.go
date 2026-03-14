@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/exa"
 	"github.com/beeper/agentremote/pkg/shared/providerchain"
 	"github.com/beeper/agentremote/pkg/shared/registry"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
@@ -20,9 +19,7 @@ func Search(ctx context.Context, req Request, cfg *Config) (*Response, error) {
 	req = normalizeRequest(req)
 
 	reg := registry.New[Provider]()
-	if exa.Enabled(cfg.Exa.Enabled, cfg.Exa.APIKey) {
-		reg.Register(&exaProvider{cfg: cfg.Exa})
-	}
+	registerProviders(reg, cfg)
 	order := stringutil.BuildProviderOrder(cfg.Provider, cfg.Fallbacks, DefaultFallbackOrder)
 
 	return providerchain.RunFirst(
@@ -54,4 +51,10 @@ func normalizeRequest(req Request) Request {
 		req.Count = MaxSearchCount
 	}
 	return req
+}
+
+func registerProviders(reg *registry.Registry[Provider], cfg *Config) {
+	if p := newExaProvider(cfg); p != nil {
+		reg.Register(p)
+	}
 }

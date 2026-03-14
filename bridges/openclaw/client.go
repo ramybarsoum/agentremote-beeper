@@ -26,6 +26,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 var (
@@ -91,6 +92,7 @@ type openClawStreamState struct {
 	portal                    *bridgev2.Portal
 	turnID                    string
 	agentID                   string
+	turn                      *bridgesdk.Turn
 	sessionKey                string
 	messageTS                 time.Time
 	placeholderPending        bool
@@ -179,12 +181,27 @@ func (oc *OpenClawClient) Disconnect() {
 		oc.manager.Stop()
 	}
 	oc.SetLoggedIn(false)
+	oc.abortActiveTurns()
 	oc.CloseAllSessions()
 	oc.StreamMu.Lock()
 	oc.streamStates = make(map[string]*openClawStreamState)
 	oc.StreamMu.Unlock()
 	if oc.UserLogin != nil {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected"})
+	}
+}
+
+func (oc *OpenClawClient) abortActiveTurns() {
+	oc.StreamMu.Lock()
+	turns := make([]*bridgesdk.Turn, 0, len(oc.streamStates))
+	for _, state := range oc.streamStates {
+		if state != nil && state.turn != nil {
+			turns = append(turns, state.turn)
+		}
+	}
+	oc.StreamMu.Unlock()
+	for _, turn := range turns {
+		turn.Abort("disconnect")
 	}
 }
 
