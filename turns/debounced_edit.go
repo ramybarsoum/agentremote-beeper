@@ -8,13 +8,6 @@ import (
 	"maunium.net/go/mautrix/format"
 )
 
-// DebouncedEditContent is the rendered content for a debounced streaming edit.
-type DebouncedEditContent struct {
-	Body          string
-	FormattedBody string
-	Format        event.Format
-}
-
 // DebouncedEditParams holds the inputs needed by BuildDebouncedEditContent.
 type DebouncedEditParams struct {
 	PortalMXID   string
@@ -26,7 +19,7 @@ type DebouncedEditParams struct {
 
 // BuildDebouncedEditContent validates inputs and renders the edit content.
 // Returns nil if the edit should be skipped.
-func BuildDebouncedEditContent(p DebouncedEditParams) *DebouncedEditContent {
+func BuildDebouncedEditContent(p DebouncedEditParams) *RenderedMarkdownContent {
 	if strings.TrimSpace(p.PortalMXID) == "" || p.SuppressSend {
 		return nil
 	}
@@ -38,7 +31,7 @@ func BuildDebouncedEditContent(p DebouncedEditParams) *DebouncedEditContent {
 		return nil
 	}
 	rendered := format.RenderMarkdown(body, true, true)
-	return &DebouncedEditContent{
+	return &RenderedMarkdownContent{
 		Body:          rendered.Body,
 		FormattedBody: rendered.FormattedBody,
 		Format:        rendered.Format,
