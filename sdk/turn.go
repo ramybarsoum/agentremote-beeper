@@ -118,6 +118,10 @@ type Turn struct {
 	streamHook            func(turnID string, seq int, content map[string]any, txnID string) bool
 	approvalRequester     func(ctx context.Context, turn *Turn, req ApprovalRequest) ApprovalHandle
 	finalMetadataProvider FinalMetadataProvider
+	sendFunc              func(ctx context.Context) (id.EventID, networkid.MessageID, error)
+	suppressSend          bool
+	ephemeralSenderFunc   func(ctx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool)
+	debouncedEditFunc     func(ctx context.Context, force bool) error
 }
 
 func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *SourceRef) *Turn {
@@ -247,6 +251,17 @@ func (t *Turn) ensureSession() {
 		}
 		sender := t.resolveSender(t.turnCtx)
 		identity := t.providerIdentity()
+
+		ephemeralSender := t.defaultEphemeralSender
+		if t.ephemeralSenderFunc != nil {
+			ephemeralSender = t.ephemeralSenderFunc
+		}
+
+		debouncedEdit := t.defaultDebouncedEdit(identity)
+		if t.debouncedEditFunc != nil {
+			debouncedEdit = t.debouncedEditFunc
+		}
+
 		t.session = turns.NewStreamSession(turns.StreamSessionParams{
 			TurnID:  t.turnID,
 			AgentID: strings.TrimSpace(string(sender.Sender)),
@@ -269,45 +284,52 @@ func (t *Turn) ensureSession() {
 				}
 				return t.conv.portal.MXID
 			},
-			GetSuppressSend: func() bool { return false },
-			NextSeq: func() int {
-				t.mu.Lock()
-				defer t.mu.Unlock()
-				state := t.state
-				state.InitMaps()
-				state.UIStepCount++
-				return state.UIStepCount
-			},
+			GetSuppressSend:     func() bool { return t.suppressSend },
+			NextSeq:             t.nextSeq,
 			RuntimeFallbackFlag: &t.conv.runtimeFallback,
-			GetEphemeralSender: func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
-				if t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.login.Bridge.Bot == nil {
-					return nil, false
-				}
-				ephemeralSender, ok := any(t.conv.login.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
-				return ephemeralSender, ok
-			},
-			SendDebouncedEdit: func(callCtx context.Context, force bool) error {
-				if t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
-					return nil
-				}
-				body := strings.TrimSpace(t.visibleText.String())
-				uiMessage := streamui.SnapshotCanonicalUIMessage(t.state)
-				return agentremote.SendDebouncedStreamEdit(agentremote.SendDebouncedStreamEditParams{
-					Login:            t.conv.login,
-					Portal:           t.conv.portal,
-					Sender:           t.resolveSender(callCtx),
-					NetworkMessageID: t.networkMessageID,
-					VisibleBody:      body,
-					FallbackBody:     body,
-					LogKey:           identity.LogKey,
-					Force:            force,
-					UIMessage:        uiMessage,
-				})
-			},
-			SendHook: t.streamHook,
-			Logger:   &logger,
+			GetEphemeralSender:  ephemeralSender,
+			SendDebouncedEdit:   debouncedEdit,
+			SendHook:            t.streamHook,
+			Logger:              &logger,
 		})
 	})
+}
+
+func (t *Turn) nextSeq() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.state.InitMaps()
+	t.state.UIStepCount++
+	return t.state.UIStepCount
+}
+
+func (t *Turn) defaultEphemeralSender(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
+	if t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.login.Bridge.Bot == nil {
+		return nil, false
+	}
+	ephemeralSender, ok := any(t.conv.login.Bridge.Bot).(bridgev2.EphemeralSendingMatrixAPI)
+	return ephemeralSender, ok
+}
+
+func (t *Turn) defaultDebouncedEdit(identity ProviderIdentity) func(context.Context, bool) error {
+	return func(callCtx context.Context, force bool) error {
+		if t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
+			return nil
+		}
+		body := strings.TrimSpace(t.visibleText.String())
+		uiMessage := streamui.SnapshotCanonicalUIMessage(t.state)
+		return agentremote.SendDebouncedStreamEdit(agentremote.SendDebouncedStreamEditParams{
+			Login:            t.conv.login,
+			Portal:           t.conv.portal,
+			Sender:           t.resolveSender(callCtx),
+			NetworkMessageID: t.networkMessageID,
+			VisibleBody:      body,
+			FallbackBody:     body,
+			LogKey:           identity.LogKey,
+			Force:            force,
+			UIMessage:        uiMessage,
+		})
+	}
 }
 
 func (t *Turn) ensureStarted() {
@@ -324,22 +346,32 @@ func (t *Turn) ensureStarted() {
 		}
 	}
 	t.ensureSession()
-	if t.conv != nil && t.conv.portal != nil && t.conv.login != nil {
-		identity := t.providerIdentity()
-		evtID, msgID, err := agentremote.SendViaPortal(agentremote.SendViaPortalParams{
-			Login:     t.conv.login,
-			Portal:    t.conv.portal,
-			Sender:    t.resolveSender(t.turnCtx),
-			IDPrefix:  identity.IDPrefix,
-			LogKey:    identity.LogKey,
-			Timestamp: time.Now(),
-			Converted: t.buildPlaceholderMessage(),
-		})
-		if err == nil {
-			t.initialEventID = evtID
-			t.networkMessageID = msgID
-		} else if t.startErr == nil {
-			t.startErr = err
+	if !t.suppressSend {
+		if t.sendFunc != nil {
+			evtID, msgID, err := t.sendFunc(t.turnCtx)
+			if err == nil {
+				t.initialEventID = evtID
+				t.networkMessageID = msgID
+			} else if t.startErr == nil {
+				t.startErr = err
+			}
+		} else if t.conv != nil && t.conv.portal != nil && t.conv.login != nil {
+			identity := t.providerIdentity()
+			evtID, msgID, err := agentremote.SendViaPortal(agentremote.SendViaPortalParams{
+				Login:     t.conv.login,
+				Portal:    t.conv.portal,
+				Sender:    t.resolveSender(t.turnCtx),
+				IDPrefix:  identity.IDPrefix,
+				LogKey:    identity.LogKey,
+				Timestamp: time.Now(),
+				Converted: t.buildPlaceholderMessage(),
+			})
+			if err == nil {
+				t.initialEventID = evtID
+				t.networkMessageID = msgID
+			} else if t.startErr == nil {
+				t.startErr = err
+			}
 		}
 	}
 	baseMeta := map[string]any{
@@ -419,6 +451,49 @@ func (t *Turn) SetStreamHook(hook func(turnID string, seq int, content map[strin
 // SetFinalMetadataProvider overrides the final DB metadata object persisted for the assistant message.
 func (t *Turn) SetFinalMetadataProvider(provider FinalMetadataProvider) {
 	t.finalMetadataProvider = provider
+}
+
+// SetSendFunc overrides the default placeholder message sending in ensureStarted.
+// The function should send the initial message and return the event/message IDs.
+func (t *Turn) SetSendFunc(fn func(ctx context.Context) (id.EventID, networkid.MessageID, error)) {
+	t.sendFunc = fn
+}
+
+// SetSuppressSend prevents the turn from sending any messages to the room.
+// The turn still tracks state and emits UI events for local consumption.
+func (t *Turn) SetSuppressSend(suppress bool) {
+	t.suppressSend = suppress
+}
+
+// InitialEventID returns the Matrix event ID of the placeholder message.
+func (t *Turn) InitialEventID() id.EventID { return t.initialEventID }
+
+// NetworkMessageID returns the bridge network message ID of the placeholder.
+func (t *Turn) NetworkMessageID() networkid.MessageID { return t.networkMessageID }
+
+// SetStreamTransport overrides the stream delivery mechanism. The provided
+// function is called for every emitted part instead of the default session-
+// based transport. UIState tracking (ApplyChunk) is still handled automatically.
+func (t *Turn) SetStreamTransport(fn func(ctx context.Context, portal *bridgev2.Portal, part map[string]any)) {
+	if fn == nil {
+		return
+	}
+	t.emitter.Emit = func(callCtx context.Context, portal *bridgev2.Portal, part map[string]any) {
+		streamui.ApplyChunk(t.state, part)
+		fn(callCtx, portal, part)
+	}
+}
+
+// SetEphemeralSenderFunc overrides how the Turn's stream session resolves the
+// ephemeral sender (used for ephemeral event delivery during streaming).
+func (t *Turn) SetEphemeralSenderFunc(fn func(ctx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool)) {
+	t.ephemeralSenderFunc = fn
+}
+
+// SetDebouncedEditFunc overrides how the Turn's stream session sends debounced
+// edits (used as fallback when ephemeral delivery is unavailable).
+func (t *Turn) SetDebouncedEditFunc(fn func(ctx context.Context, force bool) error) {
+	t.debouncedEditFunc = fn
 }
 
 // SendStatus emits a bridge-level status update for the source event when possible.

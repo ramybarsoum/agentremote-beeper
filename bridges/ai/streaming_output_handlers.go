@@ -313,7 +313,7 @@ func (oc *AIClient) handleResponseOutputItemDone(
 	if files := codeInterpreterFileParts(item); len(files) > 0 {
 		for _, file := range files {
 			recordGeneratedFile(state, file.URL, file.MediaType)
-			oc.writer(state, portal).File(ctx, file.URL, file.MediaType)
+			state.writer().File(ctx, file.URL, file.MediaType)
 		}
 	}
 

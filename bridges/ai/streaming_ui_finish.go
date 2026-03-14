@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -15,18 +14,9 @@ func (oc *AIClient) emitUIFinish(ctx context.Context, portal *bridgev2.Portal, s
 		return
 	}
 	finishReason := msgconv.MapFinishReason(state.finishReason)
-	oc.writer(state, portal).Finish(ctx, finishReason, oc.buildUIMessageMetadata(state, meta, true))
-	if state.session != nil {
-		state.session.End(ctx, mapTurnEndReason(finishReason))
-		state.session = nil
-	}
-
-	// Debounced done summary: log the finish only when the stream start was previously logged.
-	if state.loggedStreamStart {
-		oc.loggerForContext(ctx).Info().
-			Str("turn_id", strings.TrimSpace(state.turnID)).
-			Int("events_sent", state.sequenceNum).
-			Msg("Finished streaming events")
+	state.writer().Finish(ctx, finishReason, oc.buildUIMessageMetadata(state, meta, true))
+	if session := state.turn.Session(); session != nil {
+		session.End(ctx, mapTurnEndReason(finishReason))
 	}
 }
 

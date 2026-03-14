@@ -28,10 +28,10 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 		}},
 	}
 	state.accumulated.WriteString("hello")
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "start", "messageId": "turn-1"})
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "text-start", "id": "text-1"})
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "text-delta", "id": "text-1", "delta": "hello"})
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "text-end", "id": "text-1"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "start", "messageId": "turn-1"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "text-start", "id": "text-1"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "text-delta", "id": "text-1", "delta": "hello"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "text-end", "id": "text-1"})
 
 	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"), nil))
 	if ui == nil {
@@ -88,13 +88,13 @@ func TestBuildFinalEditUIMessage_OmitsTextAndReasoningParts(t *testing.T) {
 	state := &streamingState{turnID: "turn-2"}
 	state.accumulated.WriteString("hello")
 	state.reasoning.WriteString("thinking")
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "start", "messageId": "turn-2"})
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "text-start", "id": "text-2"})
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "text-delta", "id": "text-2", "delta": "hello"})
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "text-end", "id": "text-2"})
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "reasoning-start", "id": "reasoning-2"})
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "reasoning-delta", "id": "reasoning-2", "delta": "thinking"})
-	streamui.ApplyChunk(&state.ui, map[string]any{"type": "reasoning-end", "id": "reasoning-2"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "start", "messageId": "turn-2"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "text-start", "id": "text-2"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "text-delta", "id": "text-2", "delta": "hello"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "text-end", "id": "text-2"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "reasoning-start", "id": "reasoning-2"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "reasoning-delta", "id": "reasoning-2", "delta": "thinking"})
+	streamui.ApplyChunk(state.ui, map[string]any{"type": "reasoning-end", "id": "reasoning-2"})
 
 	ui := buildCompactFinalUIMessage(oc.buildStreamUIMessage(state, simpleModeTestMeta("openai/gpt-4.1"), nil))
 	parts, _ := ui["parts"].([]any)

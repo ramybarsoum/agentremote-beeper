@@ -22,6 +22,8 @@ import (
 
 // streamingState tracks the state of a streaming response
 type streamingState struct {
+	turn *sdk.Turn
+
 	turnID         string
 	agentID        string
 	startedAtMs    int64
@@ -48,8 +50,6 @@ type streamingState struct {
 	networkMessageID       networkid.MessageID // Network message ID for bridgev2 DB lookup
 	finishReason           string
 	responseID             string
-	sequenceNum            int
-	firstToken             bool
 	statusSent             bool
 	statusSentIDs          map[id.EventID]bool
 
@@ -68,17 +68,12 @@ type streamingState struct {
 	suppressSave      bool
 	suppressSend      bool
 
-	// AI SDK UIMessage stream tracking (shared across bridges)
-	ui      streamui.UIState
-	emitter *streamui.Emitter
-	session *turns.StreamSession
+	// AI SDK UIMessage stream tracking — accessed via turn.UIState().
+	ui *streamui.UIState
 
 	// Pending MCP approvals to resolve before the turn can continue.
 	pendingMcpApprovals     []mcpApprovalRequest
 	pendingMcpApprovalsSeen map[string]bool
-
-	// Debounced ephemeral logging: true once the "Streaming started" summary has been logged.
-	loggedStreamStart bool
 }
 
 func (s *streamingState) hasInitialMessageTarget() bool {
@@ -100,6 +95,34 @@ func (s *streamingState) hasEphemeralTarget() bool {
 	return s != nil && s.initialEventID != ""
 }
 
+func (s *streamingState) writer() *sdk.Writer {
+	if s == nil || s.turn == nil {
+		return nil
+	}
+	return s.turn.Writer()
+}
+
+// trackFirstToken records the first-token timestamp once.
+func (s *streamingState) trackFirstToken() {
+	if s != nil && s.firstTokenAtMs == 0 {
+		s.firstTokenAtMs = time.Now().UnixMilli()
+	}
+}
+
+// syncTurnIDs copies the Turn's initial message IDs back to streamingState
+// so that response_finalization.go can access them for final edits.
+func (s *streamingState) syncTurnIDs() {
+	if s == nil || s.turn == nil {
+		return
+	}
+	if s.initialEventID == "" {
+		s.initialEventID = s.turn.InitialEventID()
+	}
+	if s.networkMessageID == "" {
+		s.networkMessageID = s.turn.NetworkMessageID()
+	}
+}
+
 type mcpApprovalRequest struct {
 	approvalID  string
 	toolCallID  string
@@ -113,13 +136,12 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 		agentID = resolveAgentID(meta)
 	}
 	turnID := agentremote.NewTurnID()
-	ui := streamui.UIState{TurnID: turnID}
+	ui := &streamui.UIState{TurnID: turnID}
 	ui.InitMaps()
 	state := &streamingState{
 		turnID:                  turnID,
 		agentID:                 agentID,
 		startedAtMs:             time.Now().UnixMilli(),
-		firstToken:              true,
 		sourceEventID:           sourceEventID,
 		senderID:                senderID,
 		roomID:                  roomID,
@@ -137,50 +159,6 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, sourceEventID 
 		}
 	}
 	return state
-}
-
-func (oc *AIClient) setupEmitter(state *streamingState) {
-	if state == nil {
-		return
-	}
-	state.emitter = oc.newStreamingEmitter(state)
-}
-
-func (oc *AIClient) newStreamingEmitter(state *streamingState) *streamui.Emitter {
-	if state == nil {
-		fallback := &streamui.UIState{}
-		fallback.InitMaps()
-		return &streamui.Emitter{
-			State: fallback,
-			Emit:  func(context.Context, *bridgev2.Portal, map[string]any) {},
-		}
-	}
-	return &streamui.Emitter{
-		State: &state.ui,
-		Emit: func(ctx context.Context, portal *bridgev2.Portal, part map[string]any) {
-			streamui.ApplyChunk(&state.ui, part)
-			oc.emitStreamEvent(ctx, portal, state, part)
-		},
-	}
-}
-
-func (oc *AIClient) writer(state *streamingState, portal *bridgev2.Portal) *sdk.Writer {
-	if state == nil {
-		emitter := oc.newStreamingEmitter(nil)
-		return &sdk.Writer{
-			State:   emitter.State,
-			Emitter: emitter,
-			Portal:  portal,
-		}
-	}
-	if state.emitter == nil {
-		state.emitter = oc.newStreamingEmitter(state)
-	}
-	return &sdk.Writer{
-		State:   &state.ui,
-		Emitter: state.emitter,
-		Portal:  portal,
-	}
 }
 
 func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *runtimeparse.StreamingDirectiveResult) {

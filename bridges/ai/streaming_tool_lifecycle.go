@@ -28,7 +28,7 @@ func (l toolLifecycle) ensureInputStart(ctx context.Context, tool *activeToolCal
 	if tool == nil {
 		return
 	}
-	l.oc.writer(l.state, l.portal).Tools().EnsureInputStart(ctx, tool.callID, nil, bridgesdk.ToolInputOptions{
+	l.state.writer().Tools().EnsureInputStart(ctx, tool.callID, nil, bridgesdk.ToolInputOptions{
 		ToolName:         tool.toolName,
 		ProviderExecuted: providerExecuted,
 		DisplayTitle:     toolDisplayTitle(tool.toolName),
@@ -41,14 +41,14 @@ func (l toolLifecycle) appendInputDelta(ctx context.Context, tool *activeToolCal
 		return
 	}
 	tool.input.WriteString(delta)
-	l.oc.writer(l.state, l.portal).Tools().InputDelta(ctx, tool.callID, toolName, delta, providerExecuted)
+	l.state.writer().Tools().InputDelta(ctx, tool.callID, toolName, delta, providerExecuted)
 }
 
 func (l toolLifecycle) emitInput(ctx context.Context, tool *activeToolCall, toolName string, input any, providerExecuted bool) {
 	if tool == nil {
 		return
 	}
-	l.oc.writer(l.state, l.portal).Tools().Input(ctx, tool.callID, toolName, input, providerExecuted)
+	l.state.writer().Tools().Input(ctx, tool.callID, toolName, input, providerExecuted)
 }
 
 type toolFinalizeOptions struct {
@@ -68,11 +68,11 @@ func (l toolLifecycle) finalize(ctx context.Context, tool *activeToolCall, opts 
 	}
 	switch opts.resultStatus {
 	case ResultStatusDenied:
-		l.oc.writer(l.state, l.portal).Tools().Denied(ctx, tool.callID)
+		l.state.writer().Tools().Denied(ctx, tool.callID)
 	case ResultStatusError:
-		l.oc.writer(l.state, l.portal).Tools().OutputError(ctx, tool.callID, opts.errorText, opts.providerExecuted)
+		l.state.writer().Tools().OutputError(ctx, tool.callID, opts.errorText, opts.providerExecuted)
 	default:
-		l.oc.writer(l.state, l.portal).Tools().Output(ctx, tool.callID, opts.output, bridgesdk.ToolOutputOptions{
+		l.state.writer().Tools().Output(ctx, tool.callID, opts.output, bridgesdk.ToolOutputOptions{
 			ProviderExecuted: opts.providerExecuted,
 			Streaming:        opts.streaming,
 		})

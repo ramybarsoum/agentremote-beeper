@@ -38,7 +38,7 @@ func (oc *AIClient) processToolMediaResult(
 			return "Error: failed to send TTS audio", ResultStatusError
 		} else {
 			recordGeneratedFile(state, mediaURL, mimeType)
-			oc.writer(state, portal).File(ctx, mediaURL, mimeType)
+			state.writer().File(ctx, mediaURL, mimeType)
 			return "Audio message sent successfully", resultStatus
 		}
 	}
@@ -70,7 +70,7 @@ func (oc *AIClient) processToolMediaResult(
 				continue
 			}
 			recordGeneratedFile(state, mediaURL, mimeType)
-			oc.writer(state, portal).File(ctx, mediaURL, mimeType)
+			state.writer().File(ctx, mediaURL, mimeType)
 			sentURLs = append(sentURLs, mediaURL)
 			success++
 		}
@@ -94,7 +94,7 @@ func (oc *AIClient) processToolMediaResult(
 			return "Error: failed to send generated image", ResultStatusError
 		} else {
 			recordGeneratedFile(state, mediaURL, mimeType)
-			oc.writer(state, portal).File(ctx, mediaURL, mimeType)
+			state.writer().File(ctx, mediaURL, mimeType)
 			return fmt.Sprintf("Image generated and sent to the user. Media URL: %s", mediaURL), resultStatus
 		}
 	}
@@ -222,7 +222,7 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	var inputMap any
 	if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 		inputMap = argsJSON
-		oc.writer(state, portal).Tools().InputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
+		state.writer().Tools().InputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
 	}
 	lifecycle.emitInput(ctx, tool, toolName, inputMap, tool.toolType == ToolTypeProvider)
 

@@ -6,9 +6,65 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
+
+// createStreamingTurn builds an sdk.Turn configured with bridges/ai-specific
+// hooks for initial message sending, ephemeral delivery, and debounced edits.
+func (oc *AIClient) createStreamingTurn(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	state *streamingState,
+	sourceEventID id.EventID,
+) *bridgesdk.Turn {
+	var sdkConfig *bridgesdk.Config
+	if oc.connector != nil {
+		sdkConfig = oc.connector.sdkConfig
+	}
+	var sender bridgev2.EventSender
+	if oc.UserLogin != nil {
+		sender = oc.senderForPortal(ctx, portal)
+	}
+	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, sdkConfig, oc)
+	turn := conv.StartTurn(ctx, nil, &bridgesdk.SourceRef{EventID: string(sourceEventID)})
+	turn.SetID(state.turnID)
+	turn.SetSender(sender)
+
+	// Use bridges/ai's own initial message sending.
+	turn.SetSendFunc(func(sendCtx context.Context) (id.EventID, networkid.MessageID, error) {
+		if !state.suppressSend {
+			oc.ensureGhostDisplayName(sendCtx, oc.effectiveModel(meta))
+		}
+		evtID := oc.sendInitialStreamMessage(sendCtx, portal, state, "...", state.turnID, state.replyTarget)
+		return evtID, state.networkMessageID, nil
+	})
+
+	// Use model-specific intent for ephemeral streaming delivery.
+	turn.SetEphemeralSenderFunc(func(callCtx context.Context) (bridgev2.EphemeralSendingMatrixAPI, bool) {
+		intent, err := oc.getIntentForPortal(callCtx, portal, bridgev2.RemoteEventMessage)
+		if err != nil || intent == nil {
+			return nil, false
+		}
+		ephemeralSender, ok := intent.(bridgev2.EphemeralSendingMatrixAPI)
+		return ephemeralSender, ok
+	})
+
+	// Use bridges/ai's debounced edit with directive-processed visible text.
+	turn.SetDebouncedEditFunc(func(callCtx context.Context, force bool) error {
+		return oc.sendDebouncedStreamEdit(callCtx, portal, state, force)
+	})
+
+	if state.suppressSend {
+		turn.SetSuppressSend(true)
+	}
+
+	return turn
+}
 
 // streamingRunPrep holds the shared state produced by prepareStreamingRun.
 type streamingRunPrep struct {
@@ -46,11 +102,14 @@ func (oc *AIClient) prepareStreamingRun(
 		roomID = portal.MXID
 	}
 	state := newStreamingState(ctx, meta, sourceEventID, senderID, roomID)
-	oc.setupEmitter(state)
+
+	// Create SDK Turn for writer/emitter/session management.
+	turn := oc.createStreamingTurn(ctx, portal, meta, state, sourceEventID)
+	state.turn = turn
+	state.ui = turn.UIState()
+
 	state.replyTarget = oc.resolveInitialReplyTarget(evt)
 	if isSimpleMode(meta) {
-		// Simple mode does not include reply/thread context in prompts, so avoid
-		// attaching reply relations to outbound assistant events as well.
 		state.replyTarget = ReplyTarget{}
 	}
 

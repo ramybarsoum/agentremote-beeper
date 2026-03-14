@@ -25,7 +25,7 @@ func runStreamingStep[T any](
 	handleEvent func(T) (done bool, cle *ContextLengthError, err error),
 	handleErr func(error) (cle *ContextLengthError, err error),
 ) (bool, *ContextLengthError, error) {
-	writer := oc.writer(state, portal)
+	writer := state.writer()
 	writer.StepStart(ctx)
 	defer writer.StepFinish(ctx)
 	for stream.Next() {

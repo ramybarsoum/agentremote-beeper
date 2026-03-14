@@ -348,7 +348,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		if typingSignals != nil {
 			typingSignals.SignalToolStart()
 		}
-		oc.writer(state, portal).Data(ctx, "image_generation_partial", map[string]any{
+		state.writer().Data(ctx, "image_generation_partial", map[string]any{
 			"item_id":   streamEvent.ItemID,
 			"index":     streamEvent.PartialImageIndex,
 			"image_b64": streamEvent.PartialImageB64,
@@ -373,7 +373,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		if streamEvent.Response.ID != "" {
 			state.responseID = streamEvent.Response.ID
 		}
-		oc.writer(state, portal).MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
+		state.writer().MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
 
 		if !isContinuation {
 			// Extract any generated images from response output

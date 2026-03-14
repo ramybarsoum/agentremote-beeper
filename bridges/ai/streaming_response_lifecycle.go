@@ -38,7 +38,7 @@ func (oc *AIClient) handleResponseLifecycleEvent(
 
 	if eventType == "response.failed" {
 		if msg := strings.TrimSpace(response.Error.Message); msg != "" {
-			oc.writer(state, portal).Error(ctx, msg)
+			state.writer().Error(ctx, msg)
 		}
 	}
 }
