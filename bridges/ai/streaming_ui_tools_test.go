@@ -4,36 +4,38 @@ import (
 	"context"
 	"testing"
 
-	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/id"
-
 	"github.com/beeper/agentremote"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
-func TestEmitUIToolApprovalRequestWithoutApprovalFlow(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
-	oc := &AIClient{
-		UserLogin: &bridgev2.UserLogin{
-			UserLogin: &database.UserLogin{
-				UserMXID: owner,
-			},
-		},
+func TestRequestTurnApprovalWithoutApprovalFlowReturnsHandle(t *testing.T) {
+	oc := &AIClient{}
+
+	handle := oc.requestTurnApproval(context.Background(), nil, nil, nil, bridgesdk.ApprovalRequest{
+		ApprovalID:   "approval-1",
+		ToolCallID:   "tool-call-1",
+		ToolName:     "tool",
+		TTL:          60,
+		Presentation: &agentremote.ApprovalPromptPresentation{Title: "Prompt"},
+	})
+	if handle == nil {
+		t.Fatal("expected approval handle")
+	}
+	if handle.ID() != "approval-1" {
+		t.Fatalf("expected approval id to round-trip, got %q", handle.ID())
+	}
+	if handle.ToolCallID() != "tool-call-1" {
+		t.Fatalf("expected tool call id to round-trip, got %q", handle.ToolCallID())
 	}
 
-	ok := oc.emitUIToolApprovalRequest(
-		context.Background(),
-		portal,
-		nil,
-		"approval-1",
-		"tool-call-1",
-		"tool",
-		agentremote.ApprovalPromptPresentation{Title: "Prompt"},
-		"",
-		60,
-	)
-	if ok {
-		t.Fatalf("expected approval prompt emission to fail without an approval flow")
+	resp, err := handle.Wait(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected wait error: %v", err)
+	}
+	if resp.Approved {
+		t.Fatal("expected approval to be denied without an approval flow")
+	}
+	if resp.Reason != agentremote.ApprovalReasonTimeout {
+		t.Fatalf("expected timeout reason without approval flow, got %q", resp.Reason)
 	}
 }

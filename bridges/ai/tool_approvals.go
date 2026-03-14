@@ -218,7 +218,7 @@ func (oc *AIClient) requestTurnApproval(
 }
 
 func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*agentremote.Pending[*pendingToolApprovalData], bool) {
-	if oc == nil {
+	if oc == nil || oc.approvalFlow == nil {
 		return nil, false
 	}
 	data := &pendingToolApprovalData{
@@ -254,35 +254,6 @@ func (oc *AIClient) resolveToolApproval(approvalID string, approved bool, reason
 		Approved:   approved,
 		Reason:     strings.TrimSpace(reason),
 	})
-}
-
-func (oc *AIClient) startToolApproval(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	params ToolApprovalParams,
-	targetEventID id.EventID,
-) error {
-	if _, created := oc.registerToolApproval(params); !created {
-		return fmt.Errorf("failed to register approval request")
-	}
-	if oc.emitUIToolApprovalRequest(
-		ctx,
-		portal,
-		state,
-		params.ApprovalID,
-		params.ToolCallID,
-		params.ToolName,
-		params.Presentation,
-		targetEventID,
-		int(params.TTL/time.Second),
-	) {
-		return nil
-	}
-	if err := oc.resolveToolApproval(params.ApprovalID, false, agentremote.ApprovalReasonDeliveryError); err != nil {
-		return fmt.Errorf("failed to resolve undeliverable approval prompt: %w", err)
-	}
-	return nil
 }
 
 func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (toolApprovalResolution, *pendingToolApprovalData, bool) {
