@@ -105,19 +105,40 @@ func (cc *CodexClient) syncStoredCodexThreads(ctx context.Context) error {
 	if err := cc.ensureRPC(ctx); err != nil {
 		return err
 	}
-	threads, err := cc.listCodexThreads(ctx)
-	if err != nil {
-		return err
-	}
-	if len(threads) == 0 {
+	directories := managedCodexPaths(loginMetadata(cc.UserLogin))
+	if len(directories) == 0 {
 		return nil
 	}
+	totalCreated := 0
+	for _, directory := range directories {
+		_, createdCount, err := cc.syncStoredCodexThreadsForPath(ctx, directory)
+		if err != nil {
+			return err
+		}
+		totalCreated += createdCount
+	}
+	if totalCreated > 0 {
+		cc.log.Info().Int("created_rooms", totalCreated).Msg("Synced stored Codex threads into Matrix")
+	}
+	return nil
+}
 
+func (cc *CodexClient) syncStoredCodexThreadsForPath(ctx context.Context, cwd string) (int, int, error) {
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		return 0, 0, nil
+	}
+	threads, err := cc.listCodexThreads(ctx, cwd)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(threads) == 0 {
+		return 0, 0, nil
+	}
 	portalsByThreadID, err := cc.existingCodexPortalsByThreadID(ctx)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
-
 	createdCount := 0
 	for _, thread := range threads {
 		threadID := strings.TrimSpace(thread.ID)
@@ -126,7 +147,7 @@ func (cc *CodexClient) syncStoredCodexThreads(ctx context.Context) error {
 		}
 		portal, created, err := cc.ensureCodexThreadPortal(ctx, portalsByThreadID[threadID], thread)
 		if err != nil {
-			cc.log.Warn().Err(err).Str("thread_id", threadID).Msg("Failed to sync Codex thread portal")
+			cc.log.Warn().Err(err).Str("thread_id", threadID).Str("cwd", cwd).Msg("Failed to sync Codex thread portal")
 			continue
 		}
 		portalsByThreadID[threadID] = portal
@@ -134,10 +155,7 @@ func (cc *CodexClient) syncStoredCodexThreads(ctx context.Context) error {
 			createdCount++
 		}
 	}
-	if createdCount > 0 {
-		cc.log.Info().Int("created_rooms", createdCount).Msg("Synced stored Codex threads into Matrix")
-	}
-	return nil
+	return len(threads), createdCount, nil
 }
 
 func (cc *CodexClient) existingCodexPortalsByThreadID(ctx context.Context) (map[string]*bridgev2.Portal, error) {
@@ -201,6 +219,7 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	meta := portalMeta(portal)
 	meta.IsCodexRoom = true
 	meta.CodexThreadID = threadID
+	meta.ManagedImport = true
 	if cwd := strings.TrimSpace(thread.Cwd); cwd != "" {
 		meta.CodexCwd = cwd
 	}
@@ -218,7 +237,7 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	portal.RoomType = database.RoomTypeDM
 	portal.OtherUserID = codexGhostID
 
-	info := cc.composeCodexChatInfo(title, true)
+	info := cc.composeCodexChatInfo(portal, title, true)
 	portal.Name = title
 	portal.NameSet = true
 	created, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
@@ -239,6 +258,10 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	} else {
 		cc.UserLogin.Bridge.WakeupBackfillQueue()
 	}
+	if err := portal.Save(ctx); err != nil {
+		return nil, false, err
+	}
+	cc.syncCodexRoomTopic(ctx, portal, meta)
 
 	return portal, created, nil
 }
@@ -265,10 +288,11 @@ func codexThreadSlug(threadID string) string {
 	return "thread-" + hex.EncodeToString(sum[:6])
 }
 
-func (cc *CodexClient) listCodexThreads(ctx context.Context) ([]codexThread, error) {
+func (cc *CodexClient) listCodexThreads(ctx context.Context, cwd string) ([]codexThread, error) {
 	if err := cc.ensureRPC(ctx); err != nil {
 		return nil, err
 	}
+	cwd = strings.TrimSpace(cwd)
 	var (
 		cursor string
 		out    []codexThread
@@ -278,6 +302,9 @@ func (cc *CodexClient) listCodexThreads(ctx context.Context) ([]codexThread, err
 		params := map[string]any{
 			"limit":       codexThreadListPageSize,
 			"sourceKinds": codexThreadListSourceKinds,
+		}
+		if cwd != "" {
+			params["cwd"] = cwd
 		}
 		if cursor != "" {
 			params["cursor"] = cursor

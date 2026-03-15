@@ -26,6 +26,7 @@ func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any)
 			"completion_tokens":   state.completionTokens,
 			"reasoning_tokens":    state.reasoningTokens,
 			"response_id":         state.responseID,
+			"response_status":     canonicalResponseStatus(state),
 			"started_at_ms":       state.startedAtMs,
 			"completed_at_ms":     state.completedAtMs,
 			"first_token_at_ms":   state.firstTokenAtMs,
@@ -61,6 +62,36 @@ func buildCanonicalTurnData(
 	})
 }
 
+func canonicalResponseStatus(state *streamingState) string {
+	if state == nil {
+		return ""
+	}
+	status := strings.TrimSpace(state.responseStatus)
+	if state.completedAtMs == 0 {
+		return status
+	}
+
+	switch status {
+	case "completed", "failed", "incomplete", "cancelled":
+		return status
+	}
+
+	if strings.TrimSpace(state.responseID) == "" {
+		return status
+	}
+
+	switch strings.TrimSpace(state.finishReason) {
+	case "", "stop":
+		return "completed"
+	case "cancelled":
+		return "cancelled"
+	case "error":
+		return "failed"
+	default:
+		return status
+	}
+}
+
 func buildTurnDataMetadata(state *streamingState, meta *PortalMetadata) map[string]any {
 	if state == nil {
 		return nil
@@ -74,6 +105,8 @@ func buildTurnDataMetadata(state *streamingState, meta *PortalMetadata) map[stri
 		"agent_id":          state.agentID,
 		"model":             modelID,
 		"finish_reason":     state.finishReason,
+		"response_id":       state.responseID,
+		"response_status":   canonicalResponseStatus(state),
 		"prompt_tokens":     state.promptTokens,
 		"completion_tokens": state.completionTokens,
 		"reasoning_tokens":  state.reasoningTokens,

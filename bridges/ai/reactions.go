@@ -47,15 +47,18 @@ func (oc *AIClient) sendReaction(ctx context.Context, portal *bridgev2.Portal, t
 	}
 
 	normalizedEmoji := variationselector.Remove(emoji)
-	oc.UserLogin.QueueRemoteEvent(&agentremote.RemoteReaction{
-		Portal:        portal.PortalKey,
-		Sender:        bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
-		TargetMessage: targetPart.ID,
-		Emoji:         normalizedEmoji,
-		EmojiID:       networkid.EmojiID(normalizedEmoji),
-		Timestamp:     time.Now(),
-		LogKey:        "ai_reaction_target",
-	})
+	oc.UserLogin.QueueRemoteEvent(agentremote.BuildReactionEvent(
+		portal.PortalKey,
+		bridgev2.EventSender{Sender: senderID, SenderLogin: oc.UserLogin.ID},
+		targetPart.ID,
+		normalizedEmoji,
+		networkid.EmojiID(normalizedEmoji),
+		time.Now(),
+		0,
+		"ai_reaction_target",
+		nil,
+		nil,
+	))
 }
 
 func (oc *AIClient) reactionSenderID(_ context.Context, portal *bridgev2.Portal) networkid.UserID {

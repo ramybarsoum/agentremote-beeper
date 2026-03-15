@@ -43,16 +43,16 @@ func buildReplyRelatesTo(replyTarget ReplyTarget) map[string]any {
 }
 
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
-func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string, replyTarget ReplyTarget) {
+func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string, replyTarget ReplyTarget, timing agentremote.EventTiming) {
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	msg := agentremote.BuildContinuationMessage(portal.PortalKey, body, oc.senderForPortal(ctx, portal), "ai", "ai_msg_id")
-	if relatesTo := buildReplyRelatesTo(replyTarget); relatesTo != nil && msg != nil && msg.PreBuilt != nil && len(msg.PreBuilt.Parts) > 0 {
-		if msg.PreBuilt.Parts[0].Extra == nil {
-			msg.PreBuilt.Parts[0].Extra = map[string]any{}
+	msg := agentremote.BuildContinuationMessage(portal.PortalKey, body, oc.senderForPortal(ctx, portal), "ai", "ai_msg_id", timing.Timestamp, timing.StreamOrder)
+	if relatesTo := buildReplyRelatesTo(replyTarget); relatesTo != nil && msg != nil && msg.Data != nil && len(msg.Data.Parts) > 0 {
+		if msg.Data.Parts[0].Extra == nil {
+			msg.Data.Parts[0].Extra = map[string]any{}
 		}
-		msg.PreBuilt.Parts[0].Extra["m.relates_to"] = relatesTo
+		msg.Data.Parts[0].Extra["m.relates_to"] = relatesTo
 	}
 	oc.UserLogin.QueueRemoteEvent(msg)
 	oc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
@@ -60,7 +60,7 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 
 // sendInitialStreamMessage sends the first message in a streaming session via bridgev2's pipeline.
 // Returns the event ID and network message ID.
-func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string, replyTarget ReplyTarget) (id.EventID, networkid.MessageID) {
+func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridgev2.Portal, content string, turnID string, replyTarget ReplyTarget, timing agentremote.EventTiming) (id.EventID, networkid.MessageID) {
 	relatesTo := buildReplyRelatesTo(replyTarget)
 
 	uiMessage := map[string]any{
@@ -93,7 +93,7 @@ func (oc *AIClient) sendInitialStreamMessage(ctx context.Context, portal *bridge
 		}},
 	}
 
-	eventID, _, err := oc.sendViaPortal(ctx, portal, converted, msgID)
+	eventID, _, err := oc.sendViaPortalWithTiming(ctx, portal, converted, msgID, timing.Timestamp, timing.StreamOrder)
 	if err != nil {
 		oc.loggerForContext(ctx).Error().Err(err).Msg("Failed to send initial streaming message")
 		return "", ""
@@ -630,10 +630,13 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 			Str("turn_id", state.turn.ID()).
 			Msg("Skipping final assistant edit: no network or initial event target")
 	} else {
+		timing := state.nextMessageTiming()
 		oc.UserLogin.QueueRemoteEvent(&agentremote.RemoteEdit{
 			Portal:        portal.PortalKey,
 			Sender:        sender,
 			TargetMessage: editTarget,
+			Timestamp:     timing.Timestamp,
+			StreamOrder:   timing.StreamOrder,
 			LogKey:        "ai_edit_target",
 			PreBuilt:      editContent,
 		})
@@ -650,7 +653,7 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	for continuationBody != "" {
 		var chunk string
 		chunk, continuationBody = turns.SplitAtMarkdownBoundary(continuationBody, turns.MaxMatrixEventBodyBytes)
-		oc.sendContinuationMessage(ctx, portal, chunk, state.replyTarget)
+		oc.sendContinuationMessage(ctx, portal, chunk, state.replyTarget, state.nextMessageTiming())
 	}
 }
 

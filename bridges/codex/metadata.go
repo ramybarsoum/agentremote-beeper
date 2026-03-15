@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"slices"
 	"strings"
 
 	"go.mau.fi/util/jsontime"
@@ -11,15 +12,16 @@ import (
 )
 
 type UserLoginMetadata struct {
-	Provider          string `json:"provider,omitempty"`
-	CodexHome         string `json:"codex_home,omitempty"`
-	CodexAuthSource   string `json:"codex_auth_source,omitempty"`
-	CodexCommand      string `json:"codex_command,omitempty"`
-	CodexAuthMode     string `json:"codex_auth_mode,omitempty"`
-	CodexAccountEmail string `json:"codex_account_email,omitempty"`
-	ChatGPTAccountID  string `json:"chatgpt_account_id,omitempty"`
-	ChatGPTPlanType   string `json:"chatgpt_plan_type,omitempty"`
-	ChatsSynced       bool   `json:"chats_synced,omitempty"`
+	Provider          string   `json:"provider,omitempty"`
+	CodexHome         string   `json:"codex_home,omitempty"`
+	CodexAuthSource   string   `json:"codex_auth_source,omitempty"`
+	CodexCommand      string   `json:"codex_command,omitempty"`
+	CodexAuthMode     string   `json:"codex_auth_mode,omitempty"`
+	CodexAccountEmail string   `json:"codex_account_email,omitempty"`
+	ChatGPTAccountID  string   `json:"chatgpt_account_id,omitempty"`
+	ChatGPTPlanType   string   `json:"chatgpt_plan_type,omitempty"`
+	ChatsSynced       bool     `json:"chats_synced,omitempty"`
+	ManagedPaths      []string `json:"managed_paths,omitempty"`
 }
 
 const (
@@ -35,6 +37,7 @@ type PortalMetadata struct {
 	CodexCwd         string `json:"codex_cwd,omitempty"`
 	ElevatedLevel    string `json:"elevated_level,omitempty"`
 	AwaitingCwdSetup bool   `json:"awaiting_cwd_setup,omitempty"`
+	ManagedImport    bool   `json:"managed_import,omitempty"`
 }
 
 type MessageMetadata struct {
@@ -80,4 +83,76 @@ func isHostAuthLogin(meta *UserLoginMetadata) bool {
 
 func isManagedAuthLogin(meta *UserLoginMetadata) bool {
 	return normalizedCodexAuthSource(meta) == CodexAuthSourceManaged
+}
+
+func normalizeManagedCodexPaths(paths []string) []string {
+	if len(paths) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	slices.Sort(out)
+	return out
+}
+
+func managedCodexPaths(meta *UserLoginMetadata) []string {
+	if meta == nil {
+		return nil
+	}
+	meta.ManagedPaths = normalizeManagedCodexPaths(meta.ManagedPaths)
+	return slices.Clone(meta.ManagedPaths)
+}
+
+func hasManagedCodexPath(meta *UserLoginMetadata, path string) bool {
+	path = strings.TrimSpace(path)
+	if meta == nil || path == "" {
+		return false
+	}
+	for _, candidate := range meta.ManagedPaths {
+		if strings.TrimSpace(candidate) == path {
+			return true
+		}
+	}
+	return false
+}
+
+func addManagedCodexPath(meta *UserLoginMetadata, path string) bool {
+	path = strings.TrimSpace(path)
+	if meta == nil || path == "" || hasManagedCodexPath(meta, path) {
+		return false
+	}
+	meta.ManagedPaths = normalizeManagedCodexPaths(append(meta.ManagedPaths, path))
+	return true
+}
+
+func removeManagedCodexPath(meta *UserLoginMetadata, path string) bool {
+	path = strings.TrimSpace(path)
+	if meta == nil || path == "" || len(meta.ManagedPaths) == 0 {
+		return false
+	}
+	next := make([]string, 0, len(meta.ManagedPaths))
+	removed := false
+	for _, candidate := range meta.ManagedPaths {
+		if strings.TrimSpace(candidate) == path {
+			removed = true
+			continue
+		}
+		next = append(next, candidate)
+	}
+	meta.ManagedPaths = normalizeManagedCodexPaths(next)
+	return removed
 }

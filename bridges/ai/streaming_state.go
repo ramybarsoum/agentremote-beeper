@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/agentremote"
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/sdk"
@@ -20,11 +21,12 @@ import (
 type streamingState struct {
 	turn *sdk.Turn
 
-	agentID        string
-	startedAtMs    int64
-	firstTokenAtMs int64
-	completedAtMs  int64
-	roomID         id.RoomID
+	agentID         string
+	startedAtMs     int64
+	lastStreamOrder int64
+	firstTokenAtMs  int64
+	completedAtMs   int64
+	roomID          id.RoomID
 
 	promptTokens     int64
 	completionTokens int64
@@ -43,6 +45,7 @@ type streamingState struct {
 	generatedFiles         []citations.GeneratedFilePart
 	finishReason           string
 	responseID             string
+	responseStatus         string
 	statusSent             bool
 	statusSentIDs          map[id.EventID]bool
 
@@ -97,6 +100,19 @@ func (s *streamingState) writer() *sdk.Writer {
 		return nil
 	}
 	return s.turn.Writer()
+}
+
+func (s *streamingState) nextMessageTiming() agentremote.EventTiming {
+	if s == nil {
+		return agentremote.ResolveEventTiming(time.Time{}, 0)
+	}
+	ts := time.UnixMilli(s.startedAtMs)
+	if s.startedAtMs <= 0 {
+		ts = time.Now()
+	}
+	timing := agentremote.NextEventTiming(s.lastStreamOrder, ts)
+	s.lastStreamOrder = timing.StreamOrder
+	return timing
 }
 
 // clearContinuationState resets pending function outputs and MCP approvals

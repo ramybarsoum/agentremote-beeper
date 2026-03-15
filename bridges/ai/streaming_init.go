@@ -46,7 +46,7 @@ func (oc *AIClient) createStreamingTurn(
 		if !state.suppressSend {
 			oc.ensureGhostDisplayName(sendCtx, oc.effectiveModel(meta))
 		}
-		evtID, msgID := oc.sendInitialStreamMessage(sendCtx, portal, "...", turn.ID(), state.replyTarget)
+		evtID, msgID := oc.sendInitialStreamMessage(sendCtx, portal, "...", turn.ID(), state.replyTarget, state.nextMessageTiming())
 		return evtID, msgID, nil
 	})
 

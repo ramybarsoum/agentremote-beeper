@@ -3,6 +3,7 @@ package opencode
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/opencode/api"
+	"github.com/beeper/agentremote/pkg/shared/backfillutil"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
@@ -70,15 +72,17 @@ type OpenCodeInstance struct {
 
 // Bridge coordinates OpenCode sessions with Matrix rooms.
 type Bridge struct {
-	host    Host
-	manager *OpenCodeManager
+	host          Host
+	manager       *OpenCodeManager
+	orderingMu    sync.Mutex
+	liveOrderByID map[string]int64
 }
 
 func NewBridge(host Host) *Bridge {
 	if host == nil {
 		return nil
 	}
-	bridge := &Bridge{host: host}
+	bridge := &Bridge{host: host, liveOrderByID: make(map[string]int64)}
 	if log := host.Log(); log != nil {
 		log.Info().Msg("Initializing OpenCode bridge")
 	}
@@ -135,6 +139,21 @@ func (b *Bridge) queueRemoteEvent(ev bridgev2.RemoteEvent) {
 		return
 	}
 	login.QueueRemoteEvent(ev)
+}
+
+func (b *Bridge) nextLiveStreamOrder(instanceID, sessionID string, ts time.Time) int64 {
+	if b == nil {
+		return backfillutil.NextStreamOrder(0, ts)
+	}
+	key := instanceID + ":" + sessionID
+	if key == ":" {
+		key = instanceID
+	}
+	b.orderingMu.Lock()
+	defer b.orderingMu.Unlock()
+	next := backfillutil.NextStreamOrder(b.liveOrderByID[key], ts)
+	b.liveOrderByID[key] = next
+	return next
 }
 
 func (b *Bridge) emitOpenCodeStreamEvent(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string, part map[string]any) {

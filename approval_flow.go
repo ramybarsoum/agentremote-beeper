@@ -1110,15 +1110,18 @@ func (f *ApprovalFlow[D]) sendPrefillReactions(_ context.Context, portal *bridge
 				continue
 			}
 			seen[key] = struct{}{}
-			login.QueueRemoteEvent(&RemoteReaction{
-				Portal:        portal.PortalKey,
-				Sender:        sender,
-				TargetMessage: msgID,
-				Emoji:         key,
-				EmojiID:       networkid.EmojiID(key),
-				Timestamp:     now,
-				LogKey:        f.logKey,
-			})
+			login.QueueRemoteEvent(BuildReactionEvent(
+				portal.PortalKey,
+				sender,
+				msgID,
+				key,
+				networkid.EmojiID(key),
+				now,
+				0,
+				f.logKey,
+				nil,
+				nil,
+			))
 		}
 	}
 }
@@ -1218,15 +1221,18 @@ func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prom
 		}
 		targetMessage = target.ID
 	}
-	login.QueueRemoteEvent(&RemoteReaction{
-		Portal:        portal.PortalKey,
-		Sender:        sender,
-		TargetMessage: targetMessage,
-		Emoji:         reactionKey,
-		EmojiID:       networkid.EmojiID(reactionKey),
-		Timestamp:     time.Now(),
-		LogKey:        f.logKey,
-	})
+	login.QueueRemoteEvent(BuildReactionEvent(
+		portal.PortalKey,
+		sender,
+		targetMessage,
+		reactionKey,
+		networkid.EmojiID(reactionKey),
+		time.Now(),
+		0,
+		f.logKey,
+		nil,
+		nil,
+	))
 }
 
 func (f *ApprovalFlow[D]) finalizeWithPromptVersion(approvalID string, decision *ApprovalDecisionPayload, resolved bool, promptVersion uint64) bool {

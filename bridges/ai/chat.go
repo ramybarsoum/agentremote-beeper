@@ -176,6 +176,44 @@ func agentMatchesQuery(query string, agent *bridgesdk.Agent) bool {
 	return false
 }
 
+func (oc *AIClient) modelContactResponse(ctx context.Context, model *ModelInfo) *bridgev2.ResolveIdentifierResponse {
+	if model == nil || model.ID == "" {
+		return nil
+	}
+	resp := &bridgev2.ResolveIdentifierResponse{
+		UserID: modelUserID(model.ID),
+		UserInfo: &bridgev2.UserInfo{
+			Name:        ptr.Ptr(modelContactName(model.ID, model)),
+			IsBot:       ptr.Ptr(false),
+			Identifiers: modelContactIdentifiers(model.ID, model),
+		},
+	}
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return resp
+	}
+	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, resp.UserID)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Str("model", model.ID).Msg("Failed to hydrate ghost for model contact")
+		return resp
+	}
+	resp.Ghost = ghost
+	return resp
+}
+
+func (oc *AIClient) agentContactResponse(ctx context.Context, agent *bridgesdk.Agent) *bridgev2.ResolveIdentifierResponse {
+	resp := sdkResolveResponseForAgent(agent)
+	if resp == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || resp.UserID == "" {
+		return resp
+	}
+	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, resp.UserID)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Str("agent", string(resp.UserID)).Msg("Failed to hydrate ghost for agent contact")
+		return resp
+	}
+	resp.Ghost = ghost
+	return resp
+}
+
 func catalogAgentID(agent *bridgesdk.Agent) string {
 	if agent == nil {
 		return ""
@@ -217,7 +255,7 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 		if !agentMatchesQuery(query, agent) {
 			continue
 		}
-		resp := sdkResolveResponseForAgent(agent)
+		resp := oc.agentContactResponse(ctx, agent)
 		if resp == nil {
 			continue
 		}
@@ -235,19 +273,15 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 			if model.ID == "" || !modelMatchesQuery(query, model) {
 				continue
 			}
-			userID := modelUserID(model.ID)
-			if _, ok := seen[userID]; ok {
+			resp := oc.modelContactResponse(ctx, model)
+			if resp == nil {
 				continue
 			}
-			results = append(results, &bridgev2.ResolveIdentifierResponse{
-				UserID: userID,
-				UserInfo: &bridgev2.UserInfo{
-					Name:        ptr.Ptr(modelContactName(model.ID, model)),
-					IsBot:       ptr.Ptr(false),
-					Identifiers: modelContactIdentifiers(model.ID, model),
-				},
-			})
-			seen[userID] = struct{}{}
+			if _, ok := seen[resp.UserID]; ok {
+				continue
+			}
+			results = append(results, resp)
+			seen[resp.UserID] = struct{}{}
 		}
 	}
 
@@ -270,7 +304,7 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 
 	contacts := make([]*bridgev2.ResolveIdentifierResponse, 0, len(agentsList))
 	for _, agent := range agentsList {
-		if resp := sdkResolveResponseForAgent(agent); resp != nil {
+		if resp := oc.agentContactResponse(ctx, agent); resp != nil {
 			contacts = append(contacts, resp)
 		}
 	}
@@ -282,18 +316,9 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 	} else {
 		for i := range models {
 			model := &models[i]
-			if model.ID == "" {
-				continue
+			if resp := oc.modelContactResponse(ctx, model); resp != nil {
+				contacts = append(contacts, resp)
 			}
-			userID := modelUserID(model.ID)
-			contacts = append(contacts, &bridgev2.ResolveIdentifierResponse{
-				UserID: userID,
-				UserInfo: &bridgev2.UserInfo{
-					Name:        ptr.Ptr(modelContactName(model.ID, model)),
-					IsBot:       ptr.Ptr(false),
-					Identifiers: modelContactIdentifiers(model.ID, model),
-				},
-			})
 		}
 	}
 

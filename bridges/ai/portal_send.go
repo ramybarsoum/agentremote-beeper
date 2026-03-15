@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -37,6 +39,17 @@ func (oc *AIClient) sendViaPortal(
 	converted *bridgev2.ConvertedMessage,
 	msgID networkid.MessageID,
 ) (id.EventID, networkid.MessageID, error) {
+	return oc.sendViaPortalWithTiming(ctx, portal, converted, msgID, time.Now(), 0)
+}
+
+func (oc *AIClient) sendViaPortalWithTiming(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	converted *bridgev2.ConvertedMessage,
+	msgID networkid.MessageID,
+	timestamp time.Time,
+	streamOrder int64,
+) (id.EventID, networkid.MessageID, error) {
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return "", "", fmt.Errorf("bridge unavailable")
 	}
@@ -45,7 +58,7 @@ func (oc *AIClient) sendViaPortal(
 	}
 	ensureConvertedMessageParts(converted)
 	sender := oc.senderForPortal(ctx, portal)
-	return oc.ClientBase.SendViaPortalWithOptions(portal, sender, msgID, time.Time{}, 0, converted)
+	return oc.ClientBase.SendViaPortalWithOptions(portal, sender, msgID, timestamp, streamOrder, converted)
 }
 
 // The targetMsgID is the network message ID of the message to edit.
@@ -54,6 +67,17 @@ func (oc *AIClient) sendEditViaPortal(
 	portal *bridgev2.Portal,
 	targetMsgID networkid.MessageID,
 	converted *bridgev2.ConvertedEdit,
+) error {
+	return oc.sendEditViaPortalWithTiming(ctx, portal, targetMsgID, converted, time.Now(), 0)
+}
+
+func (oc *AIClient) sendEditViaPortalWithTiming(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	targetMsgID networkid.MessageID,
+	converted *bridgev2.ConvertedEdit,
+	timestamp time.Time,
+	streamOrder int64,
 ) error {
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return fmt.Errorf("bridge unavailable")
@@ -65,7 +89,7 @@ func (oc *AIClient) sendEditViaPortal(
 		return fmt.Errorf("invalid target message")
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	return agentremote.SendEditViaPortal(oc.UserLogin, portal, sender, targetMsgID, "ai_edit_target", converted)
+	return agentremote.SendEditViaPortal(oc.UserLogin, portal, sender, targetMsgID, timestamp, streamOrder, "ai_edit_target", converted)
 }
 
 func (oc *AIClient) redactViaPortal(
@@ -77,10 +101,16 @@ func (oc *AIClient) redactViaPortal(
 		return fmt.Errorf("invalid portal")
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	evt := &AIRemoteMessageRemove{
-		portal:        portal.PortalKey,
-		sender:        sender,
-		targetMessage: targetMsgID,
+	evt := &simplevent.MessageRemove{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventMessageRemove,
+			PortalKey: portal.PortalKey,
+			Sender:    sender,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str("ai_remove_target", string(targetMsgID))
+			},
+		},
+		TargetMessage: targetMsgID,
 	}
 	result := oc.UserLogin.QueueRemoteEvent(evt)
 	if !result.Success {

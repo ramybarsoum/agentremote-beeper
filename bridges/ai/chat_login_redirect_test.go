@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -57,6 +58,25 @@ func TestResolveModelIDFromManifestAcceptsRawModelID(t *testing.T) {
 	const modelID = "google/gemini-2.0-flash-lite-001"
 	if got := resolveModelIDFromManifest(modelID); got != modelID {
 		t.Fatalf("expected raw model ID %q to resolve, got %q", modelID, got)
+	}
+}
+
+func TestResolveModelIDFromManifestAcceptsEncodedModelIDViaCandidates(t *testing.T) {
+	const encoded = "google%2Fgemini-2.0-flash-lite-001"
+	candidates := candidateModelLookupIDs(encoded)
+	const canonical = "google/gemini-2.0-flash-lite-001"
+	if !slices.Contains(candidates, canonical) {
+		t.Fatalf("expected decoded model candidate in %#v", candidates)
+	}
+	if got := resolveModelIDFromManifest(canonical); got != canonical {
+		t.Fatalf("expected canonical candidate %q to resolve via manifest, got %q", canonical, got)
+	}
+}
+
+func TestCandidateModelLookupIDsRejectsMalformedEncoding(t *testing.T) {
+	candidates := candidateModelLookupIDs("model-%ZZ")
+	if len(candidates) != 1 || candidates[0] != "model-%ZZ" {
+		t.Fatalf("expected malformed encoding to remain unchanged, got %#v", candidates)
 	}
 }
 

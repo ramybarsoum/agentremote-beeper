@@ -72,6 +72,8 @@ func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMe
 			"agent_id":          metadata["agent_id"],
 			"model":             metadata["model"],
 			"finish_reason":     metadata["finish_reason"],
+			"response_id":       metadata["response_id"],
+			"response_status":   metadata["response_status"],
 			"started_at_ms":     metadata["started_at_ms"],
 			"first_token_at_ms": metadata["first_token_at_ms"],
 			"completed_at_ms":   metadata["completed_at_ms"],

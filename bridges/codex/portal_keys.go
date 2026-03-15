@@ -8,11 +8,15 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
-func defaultCodexChatPortalKey(loginID networkid.UserLoginID) networkid.PortalKey {
-	return networkid.PortalKey{
-		ID:       networkid.PortalID(fmt.Sprintf("codex:%s:default-chat", loginID)),
-		Receiver: loginID,
+func codexWelcomePortalKey(loginID networkid.UserLoginID, slug string) (networkid.PortalKey, error) {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return networkid.PortalKey{}, fmt.Errorf("empty welcome slug")
 	}
+	return networkid.PortalKey{
+		ID:       networkid.PortalID(fmt.Sprintf("codex:%s:welcome:%s", loginID, url.PathEscape(slug))),
+		Receiver: loginID,
+	}, nil
 }
 
 func codexThreadPortalKey(loginID networkid.UserLoginID, threadID string) (networkid.PortalKey, error) {

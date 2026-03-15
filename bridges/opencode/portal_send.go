@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"context"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 
@@ -15,7 +16,8 @@ func (oc *OpenCodeClient) sendViaPortal(
 	instanceID string,
 	converted *bridgev2.ConvertedMessage,
 ) error {
-	_, _, err := oc.ClientBase.SendViaPortal(portal, oc.SenderForOpenCode(instanceID, false), converted)
+	timing := agentremote.ResolveEventTiming(time.Now(), 0)
+	_, _, err := oc.ClientBase.SendViaPortalWithOptions(portal, oc.SenderForOpenCode(instanceID, false), "", timing.Timestamp, timing.StreamOrder, converted)
 	return err
 }
 

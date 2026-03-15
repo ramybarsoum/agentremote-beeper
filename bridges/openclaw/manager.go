@@ -1266,7 +1266,7 @@ func (m *openClawManager) handleDirectChatEvent(ctx context.Context, portal *bri
 		id:          messageID,
 		sender:      sender,
 		timestamp:   eventTS,
-		streamOrder: payload.Seq,
+		streamOrder: payload.Seq * 2,
 		preBuilt:    converted,
 	})
 	if maybeUpdatePreviewSnippet(meta, openclawconv.ExtractMessageText(payload.Message), eventTS) {
@@ -1301,11 +1301,12 @@ func (m *openClawManager) emitLatestUserMessageFromHistory(ctx context.Context, 
 		m.mu.Unlock()
 		eventTS := extractOpenClawEventTimestamp(payload.TS, message)
 		m.client.UserLogin.QueueRemoteEvent(&OpenClawRemoteMessage{
-			portal:    portal.PortalKey,
-			id:        messageID,
-			sender:    sender,
-			timestamp: eventTS,
-			preBuilt:  converted,
+			portal:      portal.PortalKey,
+			id:          messageID,
+			sender:      sender,
+			timestamp:   eventTS,
+			streamOrder: payload.Seq*2 - 1,
+			preBuilt:    converted,
 		})
 		if maybeUpdatePreviewSnippet(meta, openclawconv.ExtractMessageText(message), eventTS) {
 			_ = portal.Save(ctx)

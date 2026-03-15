@@ -357,14 +357,16 @@ func (t *Turn) ensureStarted() {
 			}
 		} else if t.conv != nil && t.conv.portal != nil && t.conv.login != nil {
 			identity := t.providerIdentity()
+			timing := agentremote.ResolveEventTiming(time.UnixMilli(t.startedAtMs), 0)
 			evtID, msgID, err := agentremote.SendViaPortal(agentremote.SendViaPortalParams{
-				Login:     t.conv.login,
-				Portal:    t.conv.portal,
-				Sender:    t.resolveSender(t.turnCtx),
-				IDPrefix:  identity.IDPrefix,
-				LogKey:    identity.LogKey,
-				Timestamp: time.Now(),
-				Converted: t.buildPlaceholderMessage(),
+				Login:       t.conv.login,
+				Portal:      t.conv.portal,
+				Sender:      t.resolveSender(t.turnCtx),
+				IDPrefix:    identity.IDPrefix,
+				LogKey:      identity.LogKey,
+				Timestamp:   timing.Timestamp,
+				StreamOrder: timing.StreamOrder,
+				Converted:   t.buildPlaceholderMessage(),
 			})
 			if err == nil {
 				t.initialEventID = evtID

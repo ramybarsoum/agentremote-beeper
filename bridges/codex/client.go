@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -381,7 +382,7 @@ func (cc *CodexClient) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (
 		}
 		return agentremote.BuildChatInfoWithFallback(metaTitle, portal.Name, "Codex", portal.Topic), nil
 	}
-	return cc.composeCodexChatInfo(codexPortalTitle(portal), strings.TrimSpace(meta.CodexThreadID) != ""), nil
+	return cc.composeCodexChatInfo(portal, codexPortalTitle(portal), strings.TrimSpace(meta.CodexThreadID) != ""), nil
 }
 
 func (cc *CodexClient) GetUserInfo(_ context.Context, _ *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
@@ -403,18 +404,15 @@ func (cc *CodexClient) ResolveIdentifier(ctx context.Context, identifier string,
 
 	var chat *bridgev2.CreateChatResponse
 	if createChat {
-		if err := cc.ensureDefaultCodexChat(ctx); err != nil {
-			return nil, fmt.Errorf("failed to ensure Codex chat: %w", err)
-		}
-		portal, err := cc.UserLogin.Bridge.GetPortalByKey(ctx, defaultCodexChatPortalKey(cc.UserLogin.ID))
+		portal, err := cc.createWelcomeCodexChat(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load Codex chat: %w", err)
+			return nil, fmt.Errorf("failed to ensure Codex chat: %w", err)
 		}
 		if portal == nil {
 			return nil, errors.New("codex chat unavailable")
 		}
 		meta := portalMeta(portal)
-		chatInfo := cc.composeCodexChatInfo(codexPortalTitle(portal), strings.TrimSpace(meta.CodexThreadID) != "")
+		chatInfo := cc.composeCodexChatInfo(portal, codexPortalTitle(portal), strings.TrimSpace(meta.CodexThreadID) != "")
 		chat = &bridgev2.CreateChatResponse{
 			PortalKey:  portal.PortalKey,
 			PortalInfo: chatInfo,
@@ -484,29 +482,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 
 	if meta.AwaitingCwdSetup {
-		path, err := resolveCodexWorkingDirectory(strings.TrimSpace(msg.Content.Body))
-		if err != nil {
-			cc.sendSystemNotice(ctx, portal, "That path must be absolute. `~/...` is also accepted.")
-			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
-		}
-		info, err := os.Stat(path)
-		if err != nil || !info.IsDir() {
-			cc.sendSystemNotice(ctx, portal, fmt.Sprintf("That path doesn't exist or isn't a directory: %s", path))
-			return &bridgev2.MatrixMessageResponse{Pending: false}, nil
-		}
-		meta.CodexCwd = path
-		meta.AwaitingCwdSetup = false
-		if err := portal.Save(ctx); err != nil {
-			return nil, messageSendStatusError(err, "Failed to save portal.", "")
-		}
-		if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
-			return nil, messageSendStatusError(err, "Codex isn't available. Sign in again.", "")
-		}
-		if err := cc.ensureCodexThread(ctx, portal, meta); err != nil {
-			return nil, messageSendStatusError(err, "Failed to start Codex thread.", "")
-		}
-		cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Working directory set to %s", path))
-		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
+		return cc.handleWelcomeCodexMessage(ctx, portal, meta, body)
 	}
 
 	if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
@@ -1521,7 +1497,7 @@ func (cc *CodexClient) backgroundContext(ctx context.Context) context.Context {
 func (cc *CodexClient) bootstrap(ctx context.Context) {
 	cc.waitForLoginPersisted(ctx)
 	syncSucceeded := true
-	if err := cc.ensureDefaultCodexChat(cc.backgroundContext(ctx)); err != nil {
+	if err := cc.ensureWelcomeCodexChat(cc.backgroundContext(ctx)); err != nil {
 		cc.log.Warn().Err(err).Msg("Failed to ensure default Codex chat during bootstrap")
 		syncSucceeded = false
 	}
@@ -1554,64 +1530,11 @@ func (cc *CodexClient) waitForLoginPersisted(ctx context.Context) {
 	}
 }
 
-func (cc *CodexClient) ensureDefaultCodexChat(ctx context.Context) error {
-	cc.defaultChatMu.Lock()
-	defer cc.defaultChatMu.Unlock()
-
-	portalKey := defaultCodexChatPortalKey(cc.UserLogin.ID)
-	portal, err := cc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
-	if err != nil {
-		return err
-	}
-	if portal.Metadata == nil {
-		portal.Metadata = &PortalMetadata{}
-	}
-	meta := portalMeta(portal)
-	meta.IsCodexRoom = true
-	if meta.Title == "" {
-		meta.Title = "Codex"
-	}
-	if meta.Slug == "" {
-		meta.Slug = "codex"
-	}
-	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = codexGhostID
-	portal.Name = meta.Title
-	portal.NameSet = true
-	info := cc.composeCodexChatInfo(meta.Title, false)
-	created, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
-		Login:             cc.UserLogin,
-		Portal:            portal,
-		ChatInfo:          info,
-		SaveBeforeCreate:  true,
-		AIRoomKind:        agentremote.AIRoomKindAgent,
-		ForceCapabilities: true,
-	})
-	if err != nil {
-		return err
-	}
-	if created {
-		cc.sendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
-		cc.sendSystemNotice(ctx, portal, "What directory should Codex work in? Send an absolute path or `~/...`.")
-		meta.AwaitingCwdSetup = true
-		if err := portal.Save(ctx); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// Ensure thread started if directory is already set.
-	if strings.TrimSpace(meta.CodexCwd) != "" {
-		return cc.ensureCodexThread(ctx, portal, meta)
-	}
-	return nil
-}
-
-func (cc *CodexClient) composeCodexChatInfo(title string, canBackfill bool) *bridgev2.ChatInfo {
+func (cc *CodexClient) composeCodexChatInfo(portal *bridgev2.Portal, title string, canBackfill bool) *bridgev2.ChatInfo {
 	if title == "" {
 		title = "Codex"
 	}
-	return agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
+	info := agentremote.BuildLoginDMChatInfo(agentremote.LoginDMChatInfoParams{
 		Title:             title,
 		Login:             cc.UserLogin,
 		HumanUserIDPrefix: cc.HumanUserIDPrefix,
@@ -1619,6 +1542,10 @@ func (cc *CodexClient) composeCodexChatInfo(title string, canBackfill bool) *bri
 		BotDisplayName:    "Codex",
 		CanBackfill:       canBackfill,
 	})
+	if info != nil {
+		info.Topic = ptr.NonZero(cc.codexTopicForPortal(portal, portalMeta(portal)))
+	}
+	return info
 }
 
 func resolveCodexWorkingDirectory(raw string) (string, error) {
@@ -1725,6 +1652,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	cc.loadedThreads[meta.CodexThreadID] = true
 	cc.loadedMu.Unlock()
 	cc.restoreRecoveredActiveTurns(portal, meta, resp.Thread, resp.Model)
+	cc.syncCodexRoomTopic(ctx, portal, meta)
 	return nil
 }
 
@@ -1760,17 +1688,13 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 		"persistExtendedHistory": true,
 	}, &resp)
 	if err != nil {
-		// If the stored thread can't be resumed (missing/corrupt), fall back to a fresh thread.
-		meta.CodexThreadID = ""
-		if err2 := portal.Save(ctx); err2 != nil {
-			return err2
-		}
-		return cc.ensureCodexThread(ctx, portal, meta)
+		return err
 	}
 	cc.loadedMu.Lock()
 	cc.loadedThreads[threadID] = true
 	cc.loadedMu.Unlock()
 	cc.restoreRecoveredActiveTurns(portal, meta, resp.Thread, resp.Model)
+	cc.syncCodexRoomTopic(ctx, portal, meta)
 	return nil
 }
 
@@ -1782,6 +1706,13 @@ func (cc *CodexClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2
 	}
 	meta := portalMeta(msg.Portal)
 	if meta == nil || !meta.IsCodexRoom {
+		return nil
+	}
+	if meta.AwaitingCwdSetup {
+		go func() {
+			time.Sleep(1 * time.Second)
+			_ = cc.ensureWelcomeCodexChat(cc.backgroundContext(ctx))
+		}()
 		return nil
 	}
 	if err := cc.ensureRPC(ctx); err != nil {
@@ -1829,7 +1760,8 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 	if portal == nil || portal.MXID == "" || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
 		return
 	}
-	cc.sendViaPortal(portal, agentremote.BuildSystemNotice(strings.TrimSpace(message)), "", time.Time{}, 0)
+	timing := agentremote.ResolveEventTiming(time.Now(), 0)
+	cc.sendViaPortal(portal, agentremote.BuildSystemNotice(strings.TrimSpace(message)), "", timing.Timestamp, timing.StreamOrder)
 }
 
 func (cc *CodexClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {

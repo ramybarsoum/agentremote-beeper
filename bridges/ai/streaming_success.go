@@ -21,6 +21,9 @@ func (oc *AIClient) completeStreamingSuccess(
 	if state.finishReason == "" {
 		state.finishReason = "stop"
 	}
+	if state.responseStatus == "" && state.responseID != "" {
+		state.responseStatus = canonicalResponseStatus(state)
+	}
 	oc.finalizeStreamingReplyAccumulator(state)
 	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
 	state.writer().MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))

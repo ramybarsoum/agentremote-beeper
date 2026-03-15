@@ -13,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
@@ -76,6 +77,7 @@ func SendDebouncedStreamEdit(p SendDebouncedStreamEditParams) error {
 	if content == nil || p.NetworkMessageID == "" {
 		return nil
 	}
+	timing := ResolveEventTiming(time.Now(), 0)
 	topLevelExtra := map[string]any{
 		"com.beeper.dont_render_edited": true,
 		"m.mentions":                    map[string]any{},
@@ -87,7 +89,8 @@ func SendDebouncedStreamEdit(p SendDebouncedStreamEditParams) error {
 		Portal:        p.Portal.PortalKey,
 		Sender:        p.Sender,
 		TargetMessage: p.NetworkMessageID,
-		Timestamp:     time.Now(),
+		Timestamp:     timing.Timestamp,
+		StreamOrder:   timing.StreamOrder,
 		LogKey:        p.LogKey,
 		PreBuilt:      turns.BuildRenderedConvertedEdit(*content, topLevelExtra),
 	})
@@ -191,14 +194,20 @@ func SendViaPortal(p SendViaPortalParams) (id.EventID, networkid.MessageID, erro
 	if p.MsgID == "" {
 		p.MsgID = NewMessageID(p.IDPrefix)
 	}
-	evt := &RemoteMessage{
-		Portal:      p.Portal.PortalKey,
-		ID:          p.MsgID,
-		Sender:      p.Sender,
-		Timestamp:   p.Timestamp,
-		StreamOrder: p.StreamOrder,
-		LogKey:      p.LogKey,
-		PreBuilt:    p.Converted,
+	timing := ResolveEventTiming(p.Timestamp, p.StreamOrder)
+	evt := &simplevent.PreConvertedMessage{
+		EventMeta: simplevent.EventMeta{
+			Type:        bridgev2.RemoteEventMessage,
+			PortalKey:   p.Portal.PortalKey,
+			Sender:      p.Sender,
+			Timestamp:   timing.Timestamp,
+			StreamOrder: timing.StreamOrder,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str(p.LogKey, string(p.MsgID))
+			},
+		},
+		ID:   p.MsgID,
+		Data: p.Converted,
 	}
 	result := p.Login.QueueRemoteEvent(evt)
 	if !result.Success {
@@ -216,6 +225,8 @@ func SendEditViaPortal(
 	portal *bridgev2.Portal,
 	sender bridgev2.EventSender,
 	targetMessage networkid.MessageID,
+	timestamp time.Time,
+	streamOrder int64,
 	logKey string,
 	converted *bridgev2.ConvertedEdit,
 ) error {
@@ -228,11 +239,13 @@ func SendEditViaPortal(
 	if targetMessage == "" {
 		return fmt.Errorf("invalid target message")
 	}
+	timing := ResolveEventTiming(timestamp, streamOrder)
 	result := login.QueueRemoteEvent(&RemoteEdit{
 		Portal:        portal.PortalKey,
 		Sender:        sender,
 		TargetMessage: targetMessage,
-		Timestamp:     time.Now(),
+		Timestamp:     timing.Timestamp,
+		StreamOrder:   timing.StreamOrder,
 		LogKey:        logKey,
 		PreBuilt:      converted,
 	})
@@ -495,7 +508,15 @@ func ComputeApprovalExpiry(ttlSeconds int) time.Time {
 
 // BuildContinuationMessage constructs a ConvertedMessage for overflow
 // continuation text, flagged with "com.beeper.continuation".
-func BuildContinuationMessage(portal networkid.PortalKey, body string, sender bridgev2.EventSender, idPrefix, logKey string) *RemoteMessage {
+func BuildContinuationMessage(
+	portal networkid.PortalKey,
+	body string,
+	sender bridgev2.EventSender,
+	idPrefix,
+	logKey string,
+	timestamp time.Time,
+	streamOrder int64,
+) *simplevent.PreConvertedMessage {
 	rendered := format.RenderMarkdown(body, true, true)
 	raw := map[string]any{
 		"msgtype":                 event.MsgText,
@@ -505,13 +526,21 @@ func BuildContinuationMessage(portal networkid.PortalKey, body string, sender br
 		"com.beeper.continuation": true,
 		"m.mentions":              map[string]any{},
 	}
-	return &RemoteMessage{
-		Portal:    portal,
-		ID:        NewMessageID(idPrefix),
-		Sender:    sender,
-		Timestamp: time.Now(),
-		LogKey:    logKey,
-		PreBuilt: &bridgev2.ConvertedMessage{
+	msgID := NewMessageID(idPrefix)
+	timing := ResolveEventTiming(timestamp, streamOrder)
+	return &simplevent.PreConvertedMessage{
+		EventMeta: simplevent.EventMeta{
+			Type:        bridgev2.RemoteEventMessage,
+			PortalKey:   portal,
+			Sender:      sender,
+			Timestamp:   timing.Timestamp,
+			StreamOrder: timing.StreamOrder,
+			LogContext: func(c zerolog.Context) zerolog.Context {
+				return c.Str(logKey, string(msgID))
+			},
+		},
+		ID: msgID,
+		Data: &bridgev2.ConvertedMessage{
 			Parts: []*bridgev2.ConvertedMessagePart{{
 				ID:      networkid.PartID("0"),
 				Type:    event.EventMessage,

@@ -88,3 +88,77 @@ func TestHandleResponseLifecycleEventEmitsMetadataForCompleted(t *testing.T) {
 		t.Fatalf("expected model metadata, got %#v", metadata["model"])
 	}
 }
+
+func TestBuildStreamUIMessageCanonicalizesTerminalResponseStatus(t *testing.T) {
+	state := newTestStreamingStateWithTurn()
+	oc := &AIClient{}
+
+	state.writer().Start(context.Background(), map[string]any{
+		"turn_id": state.turn.ID(),
+	})
+
+	oc.handleResponseLifecycleEvent(context.Background(), nil, state, nil, "response.in_progress", responses.Response{
+		ID:     "resp_123",
+		Status: "in_progress",
+	})
+	state.completedAtMs = 123
+	state.finishReason = "stop"
+
+	message := oc.buildStreamUIMessage(state, nil, nil)
+	metadata, _ := message["metadata"].(map[string]any)
+	if metadata["response_status"] != "completed" {
+		t.Fatalf("expected canonical completed response_status, got %#v", metadata["response_status"])
+	}
+	if metadata["response_id"] != "resp_123" {
+		t.Fatalf("expected response_id metadata, got %#v", metadata["response_id"])
+	}
+}
+
+func TestProcessResponseStreamEventUpdatesCompletedResponseStatus(t *testing.T) {
+	state := newTestStreamingStateWithTurn()
+	oc := &AIClient{}
+
+	state.turn.SetSuppressSend(true)
+	state.writer().Start(context.Background(), map[string]any{
+		"turn_id": state.turn.ID(),
+	})
+
+	rsc := &responseStreamContext{
+		base: &agentLoopProviderBase{
+			oc:    oc,
+			log:   zerolog.Nop(),
+			state: state,
+		},
+	}
+
+	_, _, err := oc.processResponseStreamEvent(context.Background(), rsc, responses.ResponseStreamEventUnion{
+		Type: "response.in_progress",
+		Response: responses.Response{
+			ID:     "resp_123",
+			Status: "in_progress",
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("unexpected in_progress error: %v", err)
+	}
+
+	_, _, err = oc.processResponseStreamEvent(context.Background(), rsc, responses.ResponseStreamEventUnion{
+		Type: "response.completed",
+		Response: responses.Response{
+			ID:     "resp_123",
+			Status: "completed",
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("unexpected completed error: %v", err)
+	}
+
+	if state.responseStatus != "completed" {
+		t.Fatalf("expected completed responseStatus, got %q", state.responseStatus)
+	}
+	message := streamui.SnapshotUIMessage(state.turn.UIState())
+	metadata, _ := message["metadata"].(map[string]any)
+	if metadata["response_status"] != "completed" {
+		t.Fatalf("expected writer metadata to be completed, got %#v", metadata["response_status"])
+	}
+}

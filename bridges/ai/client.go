@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -1542,24 +1543,44 @@ func (oc *AIClient) validateModel(ctx context.Context, modelID string) (bool, er
 	return false, nil
 }
 
-// resolveModelID validates canonical model IDs only (hard-cut mode).
-func (oc *AIClient) resolveModelID(ctx context.Context, modelID string) (string, bool, error) {
+func candidateModelLookupIDs(modelID string) []string {
 	normalized := strings.TrimSpace(modelID)
 	if normalized == "" {
+		return nil
+	}
+	candidates := []string{normalized}
+	decoded, err := url.PathUnescape(normalized)
+	if err == nil {
+		decoded = strings.TrimSpace(decoded)
+		if decoded != "" && decoded != normalized {
+			candidates = append(candidates, decoded)
+		}
+	}
+	return candidates
+}
+
+// resolveModelID validates canonical model IDs only (hard-cut mode).
+func (oc *AIClient) resolveModelID(ctx context.Context, modelID string) (string, bool, error) {
+	candidates := candidateModelLookupIDs(modelID)
+	if len(candidates) == 0 {
 		return "", true, nil
 	}
 
 	models, err := oc.listAvailableModels(ctx, false)
 	if err == nil && len(models) > 0 {
-		for _, model := range models {
-			if model.ID == normalized {
-				return model.ID, true, nil
+		for _, candidate := range candidates {
+			for _, model := range models {
+				if model.ID == candidate {
+					return model.ID, true, nil
+				}
 			}
 		}
 	}
 
-	if fallback := resolveModelIDFromManifest(normalized); fallback != "" {
-		return fallback, true, nil
+	for _, candidate := range candidates {
+		if fallback := resolveModelIDFromManifest(candidate); fallback != "" {
+			return fallback, true, nil
+		}
 	}
 
 	return "", false, nil
@@ -2244,7 +2265,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		Metadata: &MessageMetadata{
 			BaseMessageMetadata: agentremote.BaseMessageMetadata{Role: "user", Body: combinedBody},
 		},
-		Timestamp: time.Now(),
+		Timestamp: agentremote.MatrixEventTimestamp(last.Event),
 	}
 	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
 	ensureCanonicalUserMessage(userMessage)

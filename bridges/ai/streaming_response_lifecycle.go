@@ -16,10 +16,38 @@ func (oc *AIClient) handleResponseLifecycleEvent(
 	eventType string,
 	response responses.Response,
 ) {
+	if !applyResponseLifecycleState(state, eventType, response) {
+		return
+	}
+
+	base := oc.buildUIMessageMetadata(state, meta, false)
+	extra := responseMetadataDeltaFromResponse(response)
+	if len(extra) > 0 {
+		base = mergeMaps(base, extra)
+	}
+	state.writer().MessageMetadata(ctx, base)
+
+	if eventType == "response.failed" {
+		if msg := strings.TrimSpace(response.Error.Message); msg != "" {
+			state.writer().Error(ctx, msg)
+		}
+	}
+}
+
+func applyResponseLifecycleState(
+	state *streamingState,
+	eventType string,
+	response responses.Response,
+) bool {
+	if state == nil {
+		return false
+	}
 	if strings.TrimSpace(response.ID) != "" {
 		state.responseID = response.ID
 	}
-
+	if status := strings.TrimSpace(string(response.Status)); status != "" {
+		state.responseStatus = status
+	}
 	switch eventType {
 	case "response.created", "response.queued", "response.in_progress", "response.completed":
 		// No additional state changes needed.
@@ -31,19 +59,7 @@ func (oc *AIClient) handleResponseLifecycleEvent(
 			state.finishReason = "other"
 		}
 	default:
-		return
+		return false
 	}
-
-	extra := responseMetadataDeltaFromResponse(response)
-	base := oc.buildUIMessageMetadata(state, meta, false)
-	if len(extra) > 0 {
-		base = mergeMaps(base, extra)
-	}
-	state.writer().MessageMetadata(ctx, base)
-
-	if eventType == "response.failed" {
-		if msg := strings.TrimSpace(response.Error.Message); msg != "" {
-			state.writer().Error(ctx, msg)
-		}
-	}
+	return true
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -25,11 +26,14 @@ func (b *Bridge) emitOpenCodePartEvent(portal *bridgev2.Portal, instanceID strin
 	if portal == nil || part.ID == "" {
 		return
 	}
+	timestamp := openCodePartTimestamp(part)
 	remote := &simplevent.Message[openCodePartEvent]{
 		EventMeta: simplevent.EventMeta{
-			Type:      eventType,
-			PortalKey: portal.PortalKey,
-			Sender:    b.opencodeSender(instanceID, fromMe),
+			Type:        eventType,
+			PortalKey:   portal.PortalKey,
+			Sender:      b.opencodeSender(instanceID, fromMe),
+			Timestamp:   timestamp,
+			StreamOrder: b.nextLiveStreamOrder(instanceID, part.SessionID, timestamp),
 		},
 		Data: openCodePartEvent{InstanceID: instanceID, Part: part},
 	}
@@ -41,6 +45,24 @@ func (b *Bridge) emitOpenCodePartEvent(portal *bridgev2.Portal, instanceID strin
 		remote.ConvertEditFunc = b.convertOpenCodePartEdit
 	}
 	b.queueRemoteEvent(remote)
+}
+
+func openCodePartTimestamp(part api.Part) time.Time {
+	if part.Time != nil && part.Time.Start > 0 {
+		return time.UnixMilli(int64(part.Time.Start))
+	}
+	if part.State != nil && part.State.Time != nil {
+		if part.State.Time.Start > 0 {
+			return time.UnixMilli(int64(part.State.Time.Start))
+		}
+		if part.State.Time.Compacted > 0 {
+			return time.UnixMilli(int64(part.State.Time.Compacted))
+		}
+		if part.State.Time.End > 0 {
+			return time.UnixMilli(int64(part.State.Time.End))
+		}
+	}
+	return time.Now()
 }
 
 func (b *Bridge) convertOpenCodePartMessage(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, data openCodePartEvent) (*bridgev2.ConvertedMessage, error) {

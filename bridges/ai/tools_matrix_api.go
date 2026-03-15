@@ -148,13 +148,15 @@ func removeMatrixReactions(ctx context.Context, btc *BridgeToolContext, eventID 
 		if emojiID == "" {
 			emojiID = networkid.EmojiID(reaction.Emoji)
 		}
-		btc.Client.UserLogin.QueueRemoteEvent(&agentremote.RemoteReactionRemove{
-			Portal:        btc.Portal.PortalKey,
-			Sender:        sender,
-			TargetMessage: targetPart.ID,
-			EmojiID:       emojiID,
-			LogKey:        "ai_reaction_remove_target",
-		})
+		btc.Client.UserLogin.QueueRemoteEvent(agentremote.BuildReactionRemoveEvent(
+			btc.Portal.PortalKey,
+			sender,
+			targetPart.ID,
+			emojiID,
+			time.Now(),
+			0,
+			"ai_reaction_remove_target",
+		))
 		removed++
 	}
 

@@ -359,6 +359,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		actions.annotationAdded(streamEvent.Annotation, streamEvent.AnnotationIndex)
 
 	case "response.completed":
+		applyResponseLifecycleState(state, streamEvent.Type, streamEvent.Response)
 		state.completedAtMs = time.Now().UnixMilli()
 		if streamEvent.Response.Usage.TotalTokens > 0 || streamEvent.Response.Usage.InputTokens > 0 || streamEvent.Response.Usage.OutputTokens > 0 {
 			actions.updateUsage(
