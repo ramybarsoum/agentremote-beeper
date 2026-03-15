@@ -36,6 +36,13 @@ type pendingQueue struct {
 	lastItem       *pendingQueueItem
 }
 
+type pendingQueueDispatchCandidate struct {
+	items         []pendingQueueItem
+	summaryPrompt string
+	collect       bool
+	synthetic     bool
+}
+
 func (oc *AIClient) getPendingQueue(roomID id.RoomID, settings airuntime.QueueSettings) *pendingQueue {
 	oc.pendingQueuesMu.Lock()
 	defer oc.pendingQueuesMu.Unlock()
@@ -177,6 +184,73 @@ func (oc *AIClient) takeQueueSummary(roomID id.RoomID, noun string) string {
 		return ""
 	}
 	return buildQueueSummaryPrompt(queue, noun)
+}
+
+func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly bool) (*pendingQueueDispatchCandidate, *pendingQueue) {
+	snapshot := oc.getQueueSnapshot(roomID)
+	if snapshot == nil || (len(snapshot.items) == 0 && snapshot.droppedCount == 0) {
+		return nil, snapshot
+	}
+	behavior := airuntime.ResolveQueueBehavior(snapshot.mode)
+
+	if behavior.Collect && len(snapshot.items) > 0 {
+		count := len(snapshot.items)
+		if count > 1 {
+			firstKey := oc.queueThreadKey(snapshot.items[0].pending.Event)
+			for i := 1; i < count; i++ {
+				if oc.queueThreadKey(snapshot.items[i].pending.Event) != firstKey {
+					count = i
+					break
+				}
+			}
+		}
+		if textOnly {
+			for i := 0; i < count; i++ {
+				if snapshot.items[i].pending.Type != pendingTypeText {
+					return nil, snapshot
+				}
+			}
+		}
+		summary := ""
+		if snapshot.droppedCount > 0 {
+			summary = oc.takeQueueSummary(roomID, "message")
+		}
+		items := oc.popQueueItems(roomID, count)
+		for idx := range items {
+			if items[idx].prompt == "" {
+				items[idx].prompt = items[idx].pending.MessageBody
+			}
+		}
+		return &pendingQueueDispatchCandidate{
+			items:         items,
+			summaryPrompt: summary,
+			collect:       true,
+		}, snapshot
+	}
+
+	if snapshot.dropPolicy == airuntime.QueueDropSummarize && snapshot.droppedCount > 0 {
+		item := snapshot.items[0]
+		if snapshot.lastItem != nil {
+			item = *snapshot.lastItem
+		}
+		if textOnly && item.pending.Type != pendingTypeText {
+			return nil, snapshot
+		}
+		return &pendingQueueDispatchCandidate{
+			items:         []pendingQueueItem{item},
+			summaryPrompt: oc.takeQueueSummary(roomID, "message"),
+			synthetic:     true,
+		}, snapshot
+	}
+
+	if len(snapshot.items) == 0 {
+		return nil, snapshot
+	}
+	if textOnly && snapshot.items[0].pending.Type != pendingTypeText {
+		return nil, snapshot
+	}
+	items := oc.popQueueItems(roomID, 1)
+	return &pendingQueueDispatchCandidate{items: items}, snapshot
 }
 
 func (oc *AIClient) markQueueDraining(roomID id.RoomID) bool {

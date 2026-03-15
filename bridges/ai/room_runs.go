@@ -113,6 +113,24 @@ func (oc *AIClient) enqueueSteerQueue(roomID id.RoomID, item pendingQueueItem) b
 		}
 	}
 	run.steerQueue = append(run.steerQueue, item)
+	oc.registerRoomRunPendingItemLocked(run, item)
+	return true
+}
+
+func (oc *AIClient) registerRoomRunPendingItem(roomID id.RoomID, item pendingQueueItem) {
+	run := oc.getRoomRun(roomID)
+	if run == nil {
+		return
+	}
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	oc.registerRoomRunPendingItemLocked(run, item)
+}
+
+func (oc *AIClient) registerRoomRunPendingItemLocked(run *roomRunState, item pendingQueueItem) {
+	if run == nil {
+		return
+	}
 	if item.pending.Event != nil {
 		run.statusEvents = append(run.statusEvents, item.pending.Event)
 	}
@@ -122,7 +140,6 @@ func (oc *AIClient) enqueueSteerQueue(roomID id.RoomID, item pendingQueueItem) b
 	if item.pending.Meta != nil && item.pending.Meta.AckReactionRemoveAfter {
 		run.ackPending = append(run.ackPending, item.pending)
 	}
-	return true
 }
 
 func (oc *AIClient) drainSteerQueue(roomID id.RoomID) []pendingQueueItem {

@@ -30,7 +30,7 @@ func (oc *AIClient) dispatchCompletionInternal(
 	runCtx := oc.backgroundContext(ctx)
 
 	// Always use streaming responses
-	oc.streamingResponseWithRetry(runCtx, sourceEvent, portal, meta, promptContext)
+	oc.runAgentLoopWithRetry(runCtx, sourceEvent, portal, meta, promptContext)
 }
 
 func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, err error) {

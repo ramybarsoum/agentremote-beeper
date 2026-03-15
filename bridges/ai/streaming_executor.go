@@ -9,15 +9,17 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-// streamingTurnAdapter owns provider-specific request construction and stream parsing
-// while the executor owns the shared turn lifecycle.
-type streamingTurnAdapter interface {
+// agentLoopProvider owns provider-specific request construction and stream parsing
+// while the agent loop owns the shared turn lifecycle.
+type agentLoopProvider interface {
 	TrackRoomRunStreaming() bool
-	RunRound(ctx context.Context, evt *event.Event, round int) (continueLoop bool, cle *ContextLengthError, err error)
-	Finalize(ctx context.Context)
+	RunAgentTurn(ctx context.Context, evt *event.Event, round int) (continueLoop bool, cle *ContextLengthError, err error)
+	GetFollowUpMessages(ctx context.Context) []openai.ChatCompletionMessageParamUnion
+	ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion)
+	FinalizeAgentLoop(ctx context.Context)
 }
 
-type streamingAdapterBase struct {
+type agentLoopProviderBase struct {
 	oc            *AIClient
 	log           zerolog.Logger
 	portal        *bridgev2.Portal
@@ -29,15 +31,15 @@ type streamingAdapterBase struct {
 	messages      []openai.ChatCompletionMessageParamUnion
 }
 
-func newStreamingAdapterBase(
+func newAgentLoopProviderBase(
 	oc *AIClient,
 	log zerolog.Logger,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	prep streamingRunPrep,
 	messages []openai.ChatCompletionMessageParamUnion,
-) streamingAdapterBase {
-	return streamingAdapterBase{
+) agentLoopProviderBase {
+	return agentLoopProviderBase{
 		oc:            oc,
 		log:           log,
 		portal:        portal,
@@ -50,36 +52,52 @@ func newStreamingAdapterBase(
 	}
 }
 
-func (oc *AIClient) runStreamingTurn(
+func (oc *AIClient) runAgentLoop(
 	ctx context.Context,
 	log zerolog.Logger,
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	messages []openai.ChatCompletionMessageParamUnion,
-	newAdapter func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) streamingTurnAdapter,
+	newProvider func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) agentLoopProvider,
 ) (bool, *ContextLengthError, error) {
 	prep, pruned, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta, messages)
 	defer typingCleanup()
 
 	state := prep.State
-	adapter := newAdapter(prep, pruned)
+	provider := newProvider(prep, pruned)
 	if state.roomID != "" {
-		if adapter.TrackRoomRunStreaming() {
+		if provider.TrackRoomRunStreaming() {
 			oc.markRoomRunStreaming(state.roomID, true)
 			defer oc.markRoomRunStreaming(state.roomID, false)
 		}
 	}
 
 	state.writer().Start(ctx, oc.buildUIMessageMetadata(state, meta, false))
+	return executeAgentLoopRounds(ctx, provider, evt)
+}
+
+func executeAgentLoopRounds(
+	ctx context.Context,
+	provider agentLoopProvider,
+	evt *event.Event,
+) (bool, *ContextLengthError, error) {
 	for round := 0; ; round++ {
-		continueLoop, cle, err := adapter.RunRound(ctx, evt, round)
+		continueLoop, cle, err := provider.RunAgentTurn(ctx, evt, round)
 		if cle != nil || err != nil {
 			return false, cle, err
 		}
-		if !continueLoop {
-			adapter.Finalize(ctx)
-			return true, nil, nil
+		if continueLoop {
+			continue
 		}
+
+		followUpMessages := provider.GetFollowUpMessages(ctx)
+		if len(followUpMessages) > 0 {
+			provider.ContinueAgentLoop(followUpMessages)
+			continue
+		}
+
+		provider.FinalizeAgentLoop(ctx)
+		return true, nil, nil
 	}
 }

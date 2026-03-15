@@ -28,7 +28,7 @@ type ClientInfo struct {
 }
 
 type InitializeCapabilities struct {
-	ExperimentalAPI          bool     `json:"experimentalApi,omitempty"`
+	ExperimentalAPI           bool     `json:"experimentalApi,omitempty"`
 	OptOutNotificationMethods []string `json:"optOutNotificationMethods,omitempty"`
 }
 
@@ -230,7 +230,7 @@ func (c *Client) HandleRequest(method string, fn func(ctx context.Context, req R
 }
 
 type InitializeOptions struct {
-	ExperimentalAPI          bool
+	ExperimentalAPI           bool
 	OptOutNotificationMethods []string
 }
 

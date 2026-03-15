@@ -762,8 +762,8 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		}
 		oc.stopQueueTyping(roomID)
 
-		actionSnapshot := oc.getQueueSnapshot(roomID)
-		if actionSnapshot == nil || (len(actionSnapshot.items) == 0 && actionSnapshot.droppedCount == 0) {
+		candidate, actionSnapshot := oc.takePendingQueueDispatchCandidate(roomID, false)
+		if actionSnapshot == nil || candidate == nil || len(candidate.items) == 0 {
 			oc.releaseRoom(roomID)
 			return
 		}
@@ -772,26 +772,10 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		var promptContext PromptContext
 		var err error
 
-		if airuntime.ResolveQueueBehavior(actionSnapshot.mode).Collect && len(actionSnapshot.items) > 0 {
-			count := len(actionSnapshot.items)
-			if count > 1 {
-				firstKey := oc.queueThreadKey(actionSnapshot.items[0].pending.Event)
-				for i := 1; i < count; i++ {
-					if oc.queueThreadKey(actionSnapshot.items[i].pending.Event) != firstKey {
-						count = i
-						break
-					}
-				}
-			}
-			items := oc.popQueueItems(roomID, count)
-			if len(items) == 0 {
-				oc.releaseRoom(roomID)
-				return
-			}
+		if candidate.collect {
+			items := candidate.items
 			ackIDs := make([]id.EventID, 0, len(items))
-			summary := oc.takeQueueSummary(roomID, "message")
 			for idx := range items {
-				prompt := items[idx].pending.MessageBody
 				if items[idx].pending.Event != nil {
 					if len(items[idx].pending.AckEventIDs) > 0 {
 						ackIDs = append(ackIDs, items[idx].pending.AckEventIDs...)
@@ -799,13 +783,15 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 						ackIDs = append(ackIDs, items[idx].pending.Event.ID)
 					}
 				}
-				items[idx].prompt = prompt
+				if items[idx].prompt == "" {
+					items[idx].prompt = items[idx].pending.MessageBody
+				}
 			}
 			item = items[len(items)-1]
 			if len(ackIDs) > 0 {
 				item.pending.AckEventIDs = ackIDs
 			}
-			combined := buildCollectPrompt("[Queued messages while agent was busy]", items, summary)
+			combined := buildCollectPrompt("[Queued messages while agent was busy]", items, candidate.summaryPrompt)
 			metaSnapshot := clonePortalMetadata(item.pending.Meta)
 			promptCtx := ctx
 			if item.pending.InboundContext != nil {
@@ -813,24 +799,14 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			}
 			promptContext, err = oc.buildContextWithLinkContext(promptCtx, item.pending.Portal, metaSnapshot, combined, nil, "")
 		} else {
-			summaryPrompt := oc.takeQueueSummary(roomID, "message")
-			if summaryPrompt != "" {
-				if actionSnapshot.lastItem != nil {
-					item = *actionSnapshot.lastItem
-				} else {
-					item = actionSnapshot.items[0]
-				}
+			if candidate.summaryPrompt != "" && candidate.synthetic {
+				item = candidate.items[0]
 				item.pending.Event = nil
-				item.pending.MessageBody = summaryPrompt
+				item.pending.MessageBody = candidate.summaryPrompt
 				item.backlogAfter = false
 				item.allowDuplicate = false
 			} else {
-				items := oc.popQueueItems(roomID, 1)
-				if len(items) == 0 {
-					oc.releaseRoom(roomID)
-					return
-				}
-				item = items[0]
+				item = candidate.items[0]
 			}
 
 			metaSnapshot := clonePortalMetadata(item.pending.Meta)

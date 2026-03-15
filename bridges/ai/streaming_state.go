@@ -37,6 +37,7 @@ type streamingState struct {
 	toolCalls              []ToolCallMetadata
 	pendingImages          []generatedImage
 	pendingFunctionOutputs []functionCallOutput // Function outputs to send back to API for continuation
+	pendingSteeringPrompts []string
 	sourceCitations        []citations.SourceCitation
 	sourceDocuments        []citations.SourceDocument
 	generatedFiles         []citations.GeneratedFilePart
@@ -106,6 +107,7 @@ func (s *streamingState) clearContinuationState() {
 	}
 	s.pendingFunctionOutputs = nil
 	s.pendingMcpApprovals = nil
+	s.pendingSteeringPrompts = nil
 }
 
 // trackFirstToken records the first-token timestamp once.

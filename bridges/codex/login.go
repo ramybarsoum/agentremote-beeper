@@ -128,13 +128,13 @@ func (cl *CodexLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 						Description: "Paste the ChatGPT accessToken JWT.",
 					},
 					{
-						Type:        bridgev2.LoginInputFieldTypeText,
+						Type:        bridgev2.LoginInputFieldTypeUsername,
 						ID:          "chatgpt_account_id",
 						Name:        "ChatGPT account ID",
 						Description: "Paste the ChatGPT workspace/account identifier.",
 					},
 					{
-						Type:        bridgev2.LoginInputFieldTypeText,
+						Type:        bridgev2.LoginInputFieldTypeUsername,
 						ID:          "chatgpt_plan_type",
 						Name:        "ChatGPT plan type",
 						Description: "Optional. Leave blank to let Codex infer it.",

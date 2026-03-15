@@ -350,7 +350,7 @@ func (oc *AIClient) runCompactionFlushHook(
 	})
 }
 
-func (oc *AIClient) streamingResponseWithRetry(
+func (oc *AIClient) runAgentLoopWithRetry(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
@@ -358,7 +358,7 @@ func (oc *AIClient) streamingResponseWithRetry(
 	promptContext PromptContext,
 ) {
 	prompt := oc.promptContextToDispatchMessages(ctx, portal, meta, promptContext)
-	responseFn, logLabel := oc.selectResponseFn(meta, promptContext)
+	responseFn, logLabel := oc.selectAgentLoopRunFunc(meta, promptContext)
 	success, err := oc.responseWithRetry(ctx, evt, portal, meta, prompt, responseFn, logLabel)
 	if success || err == nil {
 		return
@@ -369,9 +369,9 @@ func (oc *AIClient) streamingResponseWithRetry(
 	oc.notifyMatrixSendFailure(ctx, portal, evt, err)
 }
 
-func (oc *AIClient) selectResponseFn(meta *PortalMetadata, promptContext PromptContext) (responseFunc, string) {
+func (oc *AIClient) selectAgentLoopRunFunc(meta *PortalMetadata, promptContext PromptContext) (responseFunc, string) {
 	if bridgesdk.HasUnsupportedResponsesPromptContext(promptContext.PromptContext) {
-		return oc.streamChatCompletions, "chat_completions"
+		return oc.runChatCompletionsAgentLoop, "chat_completions"
 	}
 	modelID := ""
 	if oc != nil {
@@ -384,9 +384,9 @@ func (oc *AIClient) selectResponseFn(meta *PortalMetadata, promptContext PromptC
 				return false, nil, fmt.Errorf("invalid model configuration: direct OpenAI model %q cannot use chat_completions", modelID)
 			}, "invalid_model_api"
 		}
-		return oc.streamChatCompletions, "chat_completions"
+		return oc.runChatCompletionsAgentLoop, "chat_completions"
 	default:
-		return oc.streamingResponse, "responses"
+		return oc.runResponsesAgentLoop, "responses"
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
-	"github.com/openai/openai-go/v3/shared"
 )
 
 // buildContinuationParams builds params for continuing a response after tool execution
@@ -18,15 +17,6 @@ func (oc *AIClient) buildContinuationParams(
 	pendingOutputs []functionCallOutput,
 	approvalInputs []responses.ResponseInputItemUnionParam,
 ) responses.ResponseNewParams {
-	params := responses.ResponseNewParams{
-		Model:           shared.ResponsesModel(oc.effectiveModelForAPI(meta)),
-		MaxOutputTokens: openai.Int(int64(oc.effectiveMaxTokens(meta))),
-	}
-
-	if systemPrompt := oc.effectivePrompt(meta); systemPrompt != "" {
-		params.Instructions = openai.String(systemPrompt)
-	}
-
 	// Build function call outputs as input
 	var input responses.ResponseInputParam
 	if len(state.baseInput) > 0 {
@@ -44,9 +34,12 @@ func (oc *AIClient) buildContinuationParams(
 		}
 		input = append(input, buildFunctionCallOutputItem(output.callID, output.output, oc.isOpenRouterProvider()))
 	}
-	steerItems := oc.drainSteerQueue(state.roomID)
-	if len(steerItems) > 0 {
-		steerInput := oc.buildSteerInputItems(steerItems, meta)
+	steerPrompts := state.consumePendingSteeringPrompts()
+	if len(steerPrompts) == 0 {
+		steerPrompts = oc.getSteeringMessages(state.roomID)
+	}
+	if len(steerPrompts) > 0 {
+		steerInput := oc.buildSteeringInputItems(steerPrompts, meta)
 		if len(steerInput) > 0 {
 			input = append(input, steerInput...)
 			if len(state.baseInput) > 0 {
@@ -54,38 +47,15 @@ func (oc *AIClient) buildContinuationParams(
 			}
 		}
 	}
-	params.Input = responses.ResponseNewParamsInputUnion{
-		OfInputItemList: input,
-	}
-
-	// Add reasoning effort if configured
-	if reasoningEffort := oc.effectiveReasoningEffort(meta); reasoningEffort != "" {
-		params.Reasoning = shared.ReasoningParam{
-			Effort: shared.ReasoningEffort(reasoningEffort),
-		}
-	}
-
-	params.Tools = oc.selectedResponsesStreamingTools(ctx, meta, true)
-
-	// Prevent duplicate tool names (Anthropic rejects duplicates)
-	logToolParamDuplicates(&oc.log, params.Tools)
-
-	return params
+	return oc.buildResponsesAgentLoopParams(ctx, meta, input, true)
 }
 
-func (oc *AIClient) buildSteerInputItems(items []pendingQueueItem, meta *PortalMetadata) responses.ResponseInputParam {
-	if oc == nil || len(items) == 0 {
+func (oc *AIClient) buildSteeringInputItems(prompts []string, meta *PortalMetadata) responses.ResponseInputParam {
+	if oc == nil || len(prompts) == 0 {
 		return nil
 	}
 	var input responses.ResponseInputParam
-	for _, item := range items {
-		if item.pending.Type != pendingTypeText {
-			continue
-		}
-		prompt := strings.TrimSpace(item.prompt)
-		if prompt == "" {
-			prompt = item.pending.MessageBody
-		}
+	for _, prompt := range prompts {
 		prompt = strings.TrimSpace(prompt)
 		if prompt == "" {
 			continue

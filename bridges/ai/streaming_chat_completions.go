@@ -7,21 +7,20 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
-	"github.com/openai/openai-go/v3/shared/constant"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 )
 
 type chatCompletionsTurnAdapter struct {
-	streamingAdapterBase
+	agentLoopProviderBase
 }
 
 func (a *chatCompletionsTurnAdapter) TrackRoomRunStreaming() bool {
 	return false
 }
 
-func (a *chatCompletionsTurnAdapter) RunRound(
+func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 	ctx context.Context,
 	evt *event.Event,
 	round int,
@@ -36,20 +35,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 	isHeartbeat := a.isHeartbeat
 	currentMessages := a.messages
 
-	params := openai.ChatCompletionNewParams{
-		Model:    oc.effectiveModelForAPI(meta),
-		Messages: currentMessages,
-	}
-	params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
-		IncludeUsage: param.NewOpt(true),
-	}
-	if maxTokens := oc.effectiveMaxTokens(meta); maxTokens > 0 {
-		params.MaxCompletionTokens = openai.Int(int64(maxTokens))
-	}
-	if temp := oc.effectiveTemperature(meta); temp > 0 {
-		params.Temperature = openai.Float(temp)
-	}
-	params.Tools = oc.selectedChatStreamingTools(ctx, meta)
+	params := oc.buildChatCompletionsAgentLoopParams(ctx, meta, currentMessages)
 
 	stream := oc.api.Chat.Completions.NewStreaming(ctx, params)
 	if stream == nil {
@@ -76,7 +62,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 	var roundContent strings.Builder
 	state.finishReason = ""
 
-	_, cle, err := runStreamingStep(ctx, oc, portal, state, evt, stream,
+	_, cle, err := runAgentLoopStreamStep(ctx, oc, portal, state, evt, stream,
 		func(openai.ChatCompletionChunk) bool { return true },
 		func(chunk openai.ChatCompletionChunk) (bool, *ContextLengthError, error) {
 			if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
@@ -131,39 +117,16 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 		return false, cle, err
 	}
 
-	keys := activeTools.SortedKeys()
-	toolCallParams := make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(keys))
-
-	if len(keys) > 0 {
-		for _, key := range keys {
-			tool := activeTools.Lookup(key)
-			if tool == nil {
-				continue
-			}
-			if tool.callID == "" {
-				tool.callID = NewCallID()
-			}
-			toolName := strings.TrimSpace(tool.toolName)
-			if toolName == "" {
-				toolName = "unknown_tool"
-			}
-			tool.toolName = toolName
-
-			argsJSON := normalizeToolArgsJSON(tool.input.String())
-			toolCallParams = append(toolCallParams, openai.ChatCompletionMessageToolCallUnionParam{
-				OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
-					ID: tool.callID,
-					Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
-						Name:      toolName,
-						Arguments: argsJSON,
-					},
-					Type: constant.ValueOf[constant.Function](),
-				},
-			})
-
+	toolCallParams, steeringPrompts := executeChatToolCallsSequentially(
+		activeTools.SortedKeys(),
+		activeTools,
+		func(tool *activeToolCall, toolName, argsJSON string) {
 			actions.functionToolInputDone(tool.itemID, toolName, argsJSON)
-		}
-	}
+		},
+		func() []string {
+			return oc.getSteeringMessages(state.roomID)
+		},
+	)
 
 	if shouldContinueChatToolLoop(state.finishReason, len(toolCallParams)) {
 		state.needsTextSeparator = true
@@ -173,36 +136,13 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 		if content := strings.TrimSpace(roundContent.String()); content != "" {
 			assistantMsg.Content.OfString = param.NewOpt(content)
 		}
-		currentMessages = append(currentMessages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
-		for _, output := range state.pendingFunctionOutputs {
-			currentMessages = append(currentMessages, openai.ToolMessage(output.output, output.callID))
-		}
-		if round >= maxStreamingToolRounds {
+		currentMessages = oc.buildChatAgentLoopContinuationMessages(state, currentMessages, assistantMsg, steeringPrompts)
+		if round >= maxAgentLoopToolTurns {
 			log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
 			currentMessages = append(currentMessages, openai.AssistantMessage("Continuation stopped after reaching the maximum number of streaming tool rounds."))
 			state.clearContinuationState()
 			a.messages = currentMessages
 			return false, nil, nil
-		}
-		if steerItems := oc.drainSteerQueue(state.roomID); len(steerItems) > 0 {
-			for _, item := range steerItems {
-				if item.pending.Type != pendingTypeText {
-					log.Debug().
-						Str("pending_type", string(item.pending.Type)).
-						Str("message_id", strings.TrimSpace(item.messageID)).
-						Msg("Skipping non-text steer queue item in chat completions continuation")
-					continue
-				}
-				prompt := strings.TrimSpace(item.prompt)
-				if prompt == "" {
-					prompt = item.pending.MessageBody
-				}
-				prompt = strings.TrimSpace(prompt)
-				if prompt == "" {
-					continue
-				}
-				currentMessages = append(currentMessages, openai.UserMessage(prompt))
-			}
 		}
 		// Chat Completions does not support MCP approvals; clearContinuationState
 		// is safe here — it resets pendingFunctionOutputs (consumed above) and
@@ -216,7 +156,7 @@ func (a *chatCompletionsTurnAdapter) RunRound(
 	return false, nil, nil
 }
 
-func (a *chatCompletionsTurnAdapter) Finalize(ctx context.Context) {
+func (a *chatCompletionsTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 	oc := a.oc
 	state := a.state
 	portal := a.portal
@@ -233,7 +173,7 @@ func (a *chatCompletionsTurnAdapter) Finalize(ctx context.Context) {
 
 }
 
-func (oc *AIClient) streamChatCompletions(
+func (oc *AIClient) runChatCompletionsAgentLoop(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
@@ -249,9 +189,9 @@ func (oc *AIClient) streamChatCompletions(
 		Str("portal", portalID).
 		Logger()
 
-	return oc.runStreamingTurn(ctx, log, evt, portal, meta, messages, func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) streamingTurnAdapter {
+	return oc.runAgentLoop(ctx, log, evt, portal, meta, messages, func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) agentLoopProvider {
 		return &chatCompletionsTurnAdapter{
-			streamingAdapterBase: newStreamingAdapterBase(oc, log, portal, meta, prep, pruned),
+			agentLoopProviderBase: newAgentLoopProviderBase(oc, log, portal, meta, prep, pruned),
 		}
 	})
 }

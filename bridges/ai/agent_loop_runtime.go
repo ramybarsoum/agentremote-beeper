@@ -8,13 +8,13 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-const maxStreamingToolRounds = 10
+const maxAgentLoopToolTurns = 10
 
-func hasPendingStreamingContinuation(state *streamingState) bool {
+func hasPendingAgentLoopContinuation(state *streamingState) bool {
 	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0)
 }
 
-func runStreamingStep[T any](
+func runAgentLoopStreamStep[T any](
 	ctx context.Context,
 	oc *AIClient,
 	portal *bridgev2.Portal,

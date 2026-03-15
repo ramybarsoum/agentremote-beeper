@@ -146,7 +146,7 @@ func (oc *AIClient) runSubagentCompletion(
 	meta *PortalMetadata,
 	prompt []openai.ChatCompletionMessageParamUnion,
 ) (bool, error) {
-	responseFn, logLabel := oc.selectResponseFn(meta, PromptContext{PromptContext: bridgesdk.ChatMessagesToPromptContext(prompt)})
+	responseFn, logLabel := oc.selectAgentLoopRunFunc(meta, PromptContext{PromptContext: bridgesdk.ChatMessagesToPromptContext(prompt)})
 	return oc.responseWithRetry(ctx, nil, portal, meta, prompt, responseFn, logLabel)
 }
 

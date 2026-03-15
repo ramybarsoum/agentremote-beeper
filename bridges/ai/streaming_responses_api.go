@@ -20,14 +20,15 @@ import (
 // responseStreamContext holds loop-invariant parameters for processing a Responses API
 // stream.  Only streamEvent and isContinuation change per event.
 type responseStreamContext struct {
-	base  *streamingAdapterBase
+	base  *agentLoopProviderBase
 	tools *streamToolRegistry
 }
 
 type responsesTurnAdapter struct {
-	streamingAdapterBase
+	agentLoopProviderBase
 	params      responses.ResponseNewParams
 	initialized bool
+	hasFollowUp bool
 	rsc         *responseStreamContext
 }
 
@@ -106,11 +107,12 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 	if stream == nil {
 		return nil, continuationParams, errors.New("continuation streaming not available")
 	}
+	a.hasFollowUp = false
 	state.clearContinuationState()
 	return stream, continuationParams, nil
 }
 
-func (a *responsesTurnAdapter) RunRound(
+func (a *responsesTurnAdapter) RunAgentTurn(
 	ctx context.Context,
 	evt *event.Event,
 	round int,
@@ -130,11 +132,11 @@ func (a *responsesTurnAdapter) RunRound(
 			return false, nil, &PreDeltaError{Err: err}
 		}
 	} else {
-		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 {
+		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 && !a.hasFollowUp {
 			return false, nil, nil
 		}
-		if round > maxStreamingToolRounds {
-			err = fmt.Errorf("max responses tool call rounds reached (%d)", maxStreamingToolRounds)
+		if round > maxAgentLoopToolTurns {
+			err = fmt.Errorf("max responses tool call rounds reached (%d)", maxAgentLoopToolTurns)
 			a.log.Warn().Err(err).Int("pending_outputs", len(state.pendingFunctionOutputs)).Msg("Stopping responses continuation loop")
 			return false, nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, state, a.meta, "error", err)
 		}
@@ -155,7 +157,7 @@ func (a *responsesTurnAdapter) RunRound(
 
 	tools := newStreamToolRegistry()
 	a.rsc.tools = tools
-	done, cle, err := runStreamingStep(ctx, a.oc, a.portal, state, evt, stream,
+	done, cle, err := runAgentLoopStreamStep(ctx, a.oc, a.portal, state, evt, stream,
 		func(streamEvent responses.ResponseStreamEventUnion) bool { return streamEvent.Type != "error" },
 		func(streamEvent responses.ResponseStreamEventUnion) (bool, *ContextLengthError, error) {
 			done, cle, evtErr := a.oc.processResponseStreamEvent(ctx, a.rsc, streamEvent, round > 0)
@@ -177,15 +179,27 @@ func (a *responsesTurnAdapter) RunRound(
 			return a.oc.handleResponsesStreamErr(ctx, a.portal, state, a.meta, stepErr, round == 0)
 		},
 	)
-	if cle != nil || err != nil || done {
+	if cle != nil || err != nil {
 		return false, cle, err
 	}
+	if done {
+		return hasPendingAgentLoopContinuation(state), nil, nil
+	}
 
-	return hasPendingStreamingContinuation(state), nil, nil
+	return hasPendingAgentLoopContinuation(state), nil, nil
 }
 
-func (a *responsesTurnAdapter) Finalize(ctx context.Context) {
+func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 	a.oc.finalizeResponsesStream(ctx, a.log, a.portal, a.state, a.meta)
+}
+
+func (a *responsesTurnAdapter) ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion) {
+	a.agentLoopProviderBase.ContinueAgentLoop(messages)
+	if len(messages) == 0 {
+		return
+	}
+	a.state.baseInput = append(a.state.baseInput, a.oc.convertToResponsesInput(messages, a.meta)...)
+	a.hasFollowUp = true
 }
 
 // processResponseStreamEvent handles a single Responses API stream event.
@@ -283,6 +297,10 @@ func (oc *AIClient) processResponseStreamEvent(
 
 	case "response.function_call_arguments.done":
 		actions.functionToolInputDone(streamEvent.ItemID, streamEvent.Name, streamEvent.Arguments)
+		if steeringPrompts := oc.getSteeringMessages(state.roomID); len(steeringPrompts) > 0 {
+			state.addPendingSteeringPrompts(steeringPrompts)
+			return true, nil, nil
+		}
 
 	case "response.file_search_call.searching", "response.file_search_call.in_progress":
 		actions.emitProviderToolLifecycle(streamEvent.ItemID, "file_search", ToolTypeProvider, true, "")
@@ -448,10 +466,8 @@ func (oc *AIClient) handleProviderToolCompleted(
 	lifecycle.succeed(ctx, tool, true, output, output, nil)
 }
 
-// streamingResponse handles streaming using the Responses API
-// This is the preferred streaming method as it supports reasoning tokens
-// Returns (success, contextLengthError)
-func (oc *AIClient) streamingResponse(
+// runResponsesAgentLoop handles the Responses API provider adapter under the canonical agent loop.
+func (oc *AIClient) runResponsesAgentLoop(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
@@ -465,10 +481,10 @@ func (oc *AIClient) streamingResponse(
 	log := zerolog.Ctx(ctx).With().
 		Str("portal_id", portalID).
 		Logger()
-	return oc.runStreamingTurn(ctx, log, evt, portal, meta, messages, func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) streamingTurnAdapter {
-		base := newStreamingAdapterBase(oc, log, portal, meta, prep, pruned)
+	return oc.runAgentLoop(ctx, log, evt, portal, meta, messages, func(prep streamingRunPrep, pruned []openai.ChatCompletionMessageParamUnion) agentLoopProvider {
+		base := newAgentLoopProviderBase(oc, log, portal, meta, prep, pruned)
 		return &responsesTurnAdapter{
-			streamingAdapterBase: base,
+			agentLoopProviderBase: base,
 			rsc: &responseStreamContext{
 				base:  &base,
 				tools: newStreamToolRegistry(),

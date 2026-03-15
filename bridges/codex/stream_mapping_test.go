@@ -174,6 +174,45 @@ func TestCodex_Mapping_TurnDiffUpdated_EmitsToolOutput(t *testing.T) {
 	}
 }
 
+func TestCodex_Mapping_ModelRerouted_UpdatesCurrentModel(t *testing.T) {
+	cc := &CodexClient{
+		activeTurns: make(map[string]*codexActiveTurn),
+	}
+
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: id.RoomID("!room:example.com")}}
+	state := newHookableStreamingState("turn_1")
+	state.currentModel = "gpt-5.1-codex"
+	attachTestTurn(state, portal)
+	threadID := "thr_1"
+	turnID := "turn_1_server"
+	cc.activeTurns[codexTurnKey(threadID, turnID)] = &codexActiveTurn{
+		portal:   portal,
+		state:    state,
+		threadID: threadID,
+		turnID:   turnID,
+		model:    state.currentModel,
+	}
+
+	raw, _ := json.Marshal(map[string]any{
+		"threadId":  threadID,
+		"turnId":    turnID,
+		"fromModel": "gpt-5.1-codex",
+		"toModel":   "gpt-5-mini",
+		"reason":    "safety",
+	})
+	cc.handleNotif(context.Background(), portal, nil, state, "gpt-5.1-codex", threadID, turnID, codexNotif{
+		Method: "model/rerouted",
+		Params: raw,
+	})
+
+	if state.currentModel != "gpt-5-mini" {
+		t.Fatalf("expected current model to be updated, got %q", state.currentModel)
+	}
+	if active := cc.activeTurns[codexTurnKey(threadID, turnID)]; active == nil || active.model != "gpt-5-mini" {
+		t.Fatalf("expected active turn model to be updated, got %#v", active)
+	}
+}
+
 func TestCodex_Mapping_ContextCompaction_EmitsToolParts(t *testing.T) {
 	cc := &CodexClient{}
 

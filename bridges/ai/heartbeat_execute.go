@@ -218,7 +218,7 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		sendPortal = deliveryPortal
 	}
 	go func() {
-		oc.streamingResponseWithRetry(runCtx, nil, sendPortal, promptMeta, promptContext)
+		oc.runAgentLoopWithRetry(runCtx, nil, sendPortal, promptMeta, promptContext)
 		close(done)
 	}()
 

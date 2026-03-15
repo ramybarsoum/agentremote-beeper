@@ -23,7 +23,6 @@ type streamingState struct {
 	completionTokens int64
 	reasoningTokens  int64
 	totalTokens      int64
-	currentModel     string
 	accumulated      strings.Builder
 	reasoning        strings.Builder
 	toolCalls        []ToolCallMetadata

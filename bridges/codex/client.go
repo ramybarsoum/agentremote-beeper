@@ -1352,7 +1352,9 @@ func (cc *CodexClient) ensureRPC(ctx context.Context) error {
 	initCtx, cancelInit := context.WithTimeout(ctx, 45*time.Second)
 	defer cancelInit()
 	ci := cc.connector.Config.Codex.ClientInfo
-	_, err = rpc.Initialize(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, false)
+	_, err = rpc.InitializeWithOptions(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, codexrpc.InitializeOptions{
+		ExperimentalAPI: strings.EqualFold(strings.TrimSpace(meta.CodexAuthMode), "chatgptAuthTokens"),
+	})
 	if err != nil {
 		_ = rpc.Close()
 		cc.rpc = nil
@@ -1635,9 +1637,10 @@ func (cc *CodexClient) buildSandboxPolicy(cwd string) map[string]any {
 
 func (cc *CodexClient) buildThreadSessionParams(cwd string) map[string]any {
 	return map[string]any{
-		"approvalPolicy": "untrusted",
-		"cwd":            cwd,
-		"sandbox":        cc.buildSandboxPolicy(cwd),
+		"approvalPolicy":         "untrusted",
+		"cwd":                    cwd,
+		"sandbox":                cc.buildSandboxPolicy(cwd),
+		"persistExtendedHistory": true,
 	}
 }
 
@@ -1712,10 +1715,12 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	callCtx, cancelCall := context.WithTimeout(ctx, 60*time.Second)
 	defer cancelCall()
 	err := cc.rpc.Call(callCtx, "thread/start", map[string]any{
-		"model":          model,
-		"cwd":            meta.CodexCwd,
-		"approvalPolicy": "untrusted",
-		"sandbox":        cc.buildSandboxPolicy(meta.CodexCwd),
+		"model":                  model,
+		"cwd":                    meta.CodexCwd,
+		"approvalPolicy":         "untrusted",
+		"sandbox":                cc.buildSandboxPolicy(meta.CodexCwd),
+		"experimentalRawEvents":  false,
+		"persistExtendedHistory": true,
 	}, &resp)
 	if err != nil {
 		return err
@@ -1730,6 +1735,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	cc.loadedMu.Lock()
 	cc.loadedThreads[meta.CodexThreadID] = true
 	cc.loadedMu.Unlock()
+	cc.restoreRecoveredActiveTurns(portal, meta, resp.Thread, resp.Model)
 	return nil
 }
 
@@ -1757,11 +1763,11 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 	callCtx, cancelCall := context.WithTimeout(ctx, 60*time.Second)
 	defer cancelCall()
 	err := cc.rpc.Call(callCtx, "thread/resume", map[string]any{
-		"threadId":       threadID,
-		"model":          cc.connector.Config.Codex.DefaultModel,
-		"cwd":            meta.CodexCwd,
-		"approvalPolicy": "untrusted",
-		"sandbox":        cc.buildSandboxPolicy(meta.CodexCwd),
+		"threadId":               threadID,
+		"model":                  cc.connector.Config.Codex.DefaultModel,
+		"cwd":                    meta.CodexCwd,
+		"approvalPolicy":         "untrusted",
+		"sandbox":                cc.buildSandboxPolicy(meta.CodexCwd),
 		"persistExtendedHistory": true,
 	}, &resp)
 	if err != nil {
@@ -2184,16 +2190,66 @@ func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) 
 	return decision, true
 }
 
+type codexApprovalRequestParams struct {
+	ThreadID   string `json:"threadId"`
+	TurnID     string `json:"turnId"`
+	ItemID     string `json:"itemId"`
+	ApprovalID string `json:"approvalId"`
+}
+
+type codexApprovalBehavior struct {
+	AllowSession         bool
+	RequestedPermissions map[string]any
+}
+
+func codexApprovalID(req codexrpc.Request, explicit string) string {
+	if id := strings.TrimSpace(explicit); id != "" {
+		return id
+	}
+	return strings.Trim(strings.TrimSpace(string(req.ID)), "\"")
+}
+
+func codexApprovalResponseValue(approved, always bool, reason string, allowSession bool) string {
+	if approved {
+		if allowSession && always {
+			return "acceptForSession"
+		}
+		return "accept"
+	}
+	switch strings.TrimSpace(reason) {
+	case agentremote.ApprovalReasonCancelled, agentremote.ApprovalReasonTimeout, agentremote.ApprovalReasonExpired, agentremote.ApprovalReasonDeliveryError:
+		return "cancel"
+	default:
+		return "decline"
+	}
+}
+
+func codexSessionApprovalDetails(details []agentremote.ApprovalDetail) []agentremote.ApprovalDetail {
+	return append(details, agentremote.ApprovalDetail{
+		Label: "Session approval",
+		Value: "Choosing Always allow grants permission for this Codex session only.",
+	})
+}
+
+func codexAppendPermissionDetails(details []agentremote.ApprovalDetail, permissions map[string]any) []agentremote.ApprovalDetail {
+	if network, ok := permissions["network"].(map[string]any); ok {
+		details = agentremote.AppendDetailsFromMap(details, "Network", network, 4)
+	}
+	if fileSystem, ok := permissions["fileSystem"].(map[string]any); ok {
+		details = agentremote.AppendDetailsFromMap(details, "File system", fileSystem, 4)
+	}
+	if macos, ok := permissions["macos"].(map[string]any); ok {
+		details = agentremote.AppendDetailsFromMap(details, "macOS", macos, 4)
+	}
+	return details
+}
+
 func (cc *CodexClient) handleApprovalRequest(
 	ctx context.Context, req codexrpc.Request,
 	defaultToolName string,
-	extractInput func(json.RawMessage) (map[string]any, agentremote.ApprovalPromptPresentation),
+	extractInput func(json.RawMessage) (map[string]any, agentremote.ApprovalPromptPresentation, codexApprovalBehavior),
 ) (any, *codexrpc.RPCError) {
-	var params struct {
-		ThreadID string `json:"threadId"`
-		TurnID   string `json:"turnId"`
-		ItemID   string `json:"itemId"`
-	}
+	var params codexApprovalRequestParams
 	_ = json.Unmarshal(req.Params, &params)
 
 	cc.activeMu.Lock()
@@ -2208,16 +2264,20 @@ func (cc *CodexClient) handleApprovalRequest(
 		toolCallID = defaultToolName
 	}
 	toolName := defaultToolName
-	approvalID := strings.Trim(strings.TrimSpace(string(req.ID)), "\"")
+	approvalID := codexApprovalID(req, params.ApprovalID)
 
-	inputMap, presentation := extractInput(req.Params)
-	if active.state != nil && active.state.turn != nil {
-		active.state.turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, inputMap, bridgesdk.ToolInputOptions{
+	inputMap, presentation, behavior := extractInput(req.Params)
+	turn := (*bridgesdk.Turn)(nil)
+	if active.state != nil {
+		turn = active.state.turn
+	}
+	if turn != nil {
+		turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, inputMap, bridgesdk.ToolInputOptions{
 			ToolName:         toolName,
 			ProviderExecuted: true,
 		})
 	}
-	handle := cc.requestSDKApproval(ctx, active.portal, active.state, active.state.turn, bridgesdk.ApprovalRequest{
+	handle := cc.requestSDKApproval(ctx, active.portal, active.state, turn, bridgesdk.ApprovalRequest{
 		ApprovalID:   approvalID,
 		ToolCallID:   toolCallID,
 		ToolName:     toolName,
@@ -2230,59 +2290,157 @@ func (cc *CodexClient) handleApprovalRequest(
 			_ = cc.approvalFlow.Resolve(handle.ID(), agentremote.ApprovalDecisionPayload{
 				ApprovalID: handle.ID(),
 				Approved:   true,
-				Reason:     "auto-approved",
+				Reason:     agentremote.ApprovalReasonAutoApproved,
 			})
 		}
 	}
 
 	decision, err := handle.Wait(ctx)
 	if err != nil {
-		return map[string]any{"decision": "decline"}, nil
+		return map[string]any{"decision": "cancel"}, nil
 	}
-	if decision.Approved {
-		return map[string]any{"decision": "accept"}, nil
-	}
-	return map[string]any{"decision": "decline"}, nil
+	return map[string]any{"decision": codexApprovalResponseValue(decision.Approved, decision.Always, decision.Reason, behavior.AllowSession)}, nil
 }
 
 func (cc *CodexClient) handleCommandApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {
-	return cc.handleApprovalRequest(ctx, req, "commandExecution", func(raw json.RawMessage) (map[string]any, agentremote.ApprovalPromptPresentation) {
+	return cc.handleApprovalRequest(ctx, req, "commandExecution", func(raw json.RawMessage) (map[string]any, agentremote.ApprovalPromptPresentation, codexApprovalBehavior) {
 		var p struct {
-			Command *string `json:"command"`
-			Cwd     *string `json:"cwd"`
-			Reason  *string `json:"reason"`
+			Command               *string        `json:"command"`
+			Cwd                   *string        `json:"cwd"`
+			Reason                *string        `json:"reason"`
+			CommandActions        []any          `json:"commandActions"`
+			NetworkApproval       map[string]any `json:"networkApprovalContext"`
+			AdditionalPermissions map[string]any `json:"additionalPermissions"`
+			SkillMetadata         map[string]any `json:"skillMetadata"`
+			AvailableDecisions    []any          `json:"availableDecisions"`
 		}
 		_ = json.Unmarshal(raw, &p)
 		input := map[string]any{}
-		details := make([]agentremote.ApprovalDetail, 0, 3)
+		details := make([]agentremote.ApprovalDetail, 0, 8)
 		input, details = agentremote.AddOptionalDetail(input, details, "command", "Command", p.Command)
 		input, details = agentremote.AddOptionalDetail(input, details, "cwd", "Working directory", p.Cwd)
 		input, details = agentremote.AddOptionalDetail(input, details, "reason", "Reason", p.Reason)
+		if len(p.CommandActions) > 0 {
+			input["commandActions"] = p.CommandActions
+			details = append(details, agentremote.ApprovalDetail{
+				Label: "Command actions",
+				Value: agentremote.ValueSummary(p.CommandActions),
+			})
+		}
+		if len(p.NetworkApproval) > 0 {
+			input["networkApprovalContext"] = p.NetworkApproval
+			details = agentremote.AppendDetailsFromMap(details, "Network", p.NetworkApproval, 4)
+		}
+		if len(p.AdditionalPermissions) > 0 {
+			input["additionalPermissions"] = p.AdditionalPermissions
+			details = codexAppendPermissionDetails(details, p.AdditionalPermissions)
+		}
+		if len(p.SkillMetadata) > 0 {
+			input["skillMetadata"] = p.SkillMetadata
+			details = agentremote.AppendDetailsFromMap(details, "Skill", p.SkillMetadata, 2)
+		}
+		details = codexSessionApprovalDetails(details)
 		return input, agentremote.ApprovalPromptPresentation{
 			Title:       "Codex command execution",
 			Details:     details,
-			AllowAlways: false,
-		}
+			AllowAlways: true,
+		}, codexApprovalBehavior{AllowSession: true}
 	})
 }
 
 func (cc *CodexClient) handleFileChangeApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {
-	return cc.handleApprovalRequest(ctx, req, "fileChange", func(raw json.RawMessage) (map[string]any, agentremote.ApprovalPromptPresentation) {
+	return cc.handleApprovalRequest(ctx, req, "fileChange", func(raw json.RawMessage) (map[string]any, agentremote.ApprovalPromptPresentation, codexApprovalBehavior) {
 		var p struct {
 			Reason    *string `json:"reason"`
 			GrantRoot *string `json:"grantRoot"`
 		}
 		_ = json.Unmarshal(raw, &p)
 		input := map[string]any{}
-		details := make([]agentremote.ApprovalDetail, 0, 2)
+		details := make([]agentremote.ApprovalDetail, 0, 3)
 		input, details = agentremote.AddOptionalDetail(input, details, "grantRoot", "Grant root", p.GrantRoot)
 		input, details = agentremote.AddOptionalDetail(input, details, "reason", "Reason", p.Reason)
+		details = codexSessionApprovalDetails(details)
 		return input, agentremote.ApprovalPromptPresentation{
 			Title:       "Codex file change",
 			Details:     details,
-			AllowAlways: false,
-		}
+			AllowAlways: true,
+		}, codexApprovalBehavior{AllowSession: true}
 	})
+}
+
+func (cc *CodexClient) handlePermissionsApprovalRequest(ctx context.Context, req codexrpc.Request) (any, *codexrpc.RPCError) {
+	var params struct {
+		codexApprovalRequestParams
+		Reason      *string        `json:"reason"`
+		Permissions map[string]any `json:"permissions"`
+	}
+	_ = json.Unmarshal(req.Params, &params)
+
+	cc.activeMu.Lock()
+	active := cc.activeTurns[codexTurnKey(params.ThreadID, params.TurnID)]
+	cc.activeMu.Unlock()
+	if active == nil || params.ThreadID != active.threadID || params.TurnID != active.turnID {
+		return map[string]any{"permissions": map[string]any{}, "scope": "turn"}, nil
+	}
+
+	toolCallID := strings.TrimSpace(params.ItemID)
+	if toolCallID == "" {
+		toolCallID = "permissions"
+	}
+	approvalID := codexApprovalID(req, params.ApprovalID)
+	input := map[string]any{}
+	details := make([]agentremote.ApprovalDetail, 0, 6)
+	input, details = agentremote.AddOptionalDetail(input, details, "reason", "Reason", params.Reason)
+	if len(params.Permissions) > 0 {
+		input["permissions"] = params.Permissions
+		details = codexAppendPermissionDetails(details, params.Permissions)
+	}
+	details = codexSessionApprovalDetails(details)
+	turn := (*bridgesdk.Turn)(nil)
+	if active.state != nil {
+		turn = active.state.turn
+	}
+	if turn != nil {
+		turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, input, bridgesdk.ToolInputOptions{
+			ToolName:         "permissions",
+			ProviderExecuted: true,
+		})
+	}
+	handle := cc.requestSDKApproval(ctx, active.portal, active.state, turn, bridgesdk.ApprovalRequest{
+		ApprovalID: approvalID,
+		ToolCallID: toolCallID,
+		ToolName:   "permissions",
+		TTL:        10 * time.Minute,
+		Presentation: &agentremote.ApprovalPromptPresentation{
+			Title:       "Codex permissions request",
+			Details:     details,
+			AllowAlways: true,
+		},
+	})
+	if active.meta != nil {
+		if lvl, _ := stringutil.NormalizeElevatedLevel(active.meta.ElevatedLevel); lvl == "full" {
+			_ = cc.approvalFlow.Resolve(handle.ID(), agentremote.ApprovalDecisionPayload{
+				ApprovalID: handle.ID(),
+				Approved:   true,
+				Reason:     agentremote.ApprovalReasonAutoApproved,
+			})
+		}
+	}
+	decision, err := handle.Wait(ctx)
+	if err != nil || !decision.Approved {
+		return map[string]any{
+			"permissions": map[string]any{},
+			"scope":       "turn",
+		}, nil
+	}
+	scope := "turn"
+	if decision.Always {
+		scope = "session"
+	}
+	return map[string]any{
+		"permissions": params.Permissions,
+		"scope":       scope,
+	}, nil
 }
 
 func (cc *CodexClient) sendSystemNoticeOnce(ctx context.Context, portal *bridgev2.Portal, state *streamingState, key string, message string) {
