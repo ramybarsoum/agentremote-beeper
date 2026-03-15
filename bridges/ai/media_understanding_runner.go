@@ -963,7 +963,7 @@ func (oc *AIClient) resolveOpenRouterMediaConfig(
 	if pdfEngine == "" {
 		pdfEngine = "mistral-ocr"
 	}
-	if oc.UserLogin != nil && oc.UserLogin.User.MXID != "" {
+	if oc.UserLogin != nil && oc.UserLogin.User != nil && oc.UserLogin.User.MXID != "" {
 		userID = oc.UserLogin.User.MXID.String()
 	}
 	return

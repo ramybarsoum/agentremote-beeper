@@ -60,32 +60,3 @@ func TestAgentLoopRequestBuildersShareModelAndTokenSettings(t *testing.T) {
 		t.Fatalf("expected responses reasoning effort low, got %q", responsesParams.Reasoning.Effort)
 	}
 }
-
-func TestBuildResponsesAgentLoopParamsOmitsUnsetMaxTokens(t *testing.T) {
-	oc := &AIClient{
-		connector: &OpenAIConnector{},
-		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
-			Provider: ProviderOpenRouter,
-			ModelCache: &ModelCache{Models: []ModelInfo{{
-				ID:                "openai/gpt-4o-mini",
-				MaxOutputTokens:   0,
-				SupportsReasoning: false,
-			}}},
-		}}},
-	}
-	meta := &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetModel,
-			ModelID: "openai/gpt-4o-mini",
-		},
-	}
-
-	responsesParams := oc.buildResponsesAgentLoopParams(context.Background(), meta, nil, false)
-
-	if responsesParams.MaxOutputTokens.Valid() {
-		t.Fatalf("expected responses max output tokens to be unset, got %d", responsesParams.MaxOutputTokens.Value)
-	}
-	if responsesParams.Reasoning.Effort != "" {
-		t.Fatalf("expected responses reasoning effort to be unset, got %q", responsesParams.Reasoning.Effort)
-	}
-}

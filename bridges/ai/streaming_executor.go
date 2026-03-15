@@ -99,6 +99,7 @@ func executeAgentLoopRounds(
 	for round := 0; ; round++ {
 		continueLoop, cle, err := provider.RunAgentTurn(ctx, evt, round)
 		if cle != nil || err != nil {
+			finalizeAgentLoopExit(ctx, provider, true)
 			return false, cle, err
 		}
 		if continueLoop {
@@ -111,7 +112,26 @@ func executeAgentLoopRounds(
 			continue
 		}
 
-		provider.FinalizeAgentLoop(ctx)
+		finalizeAgentLoopExit(ctx, provider, false)
 		return true, nil, nil
 	}
+}
+
+func finalizeAgentLoopExit(ctx context.Context, provider agentLoopProvider, errorExit bool) {
+	if provider == nil {
+		return
+	}
+	if errorExit {
+		switch p := provider.(type) {
+		case *chatCompletionsTurnAdapter:
+			if p != nil && p.state != nil && p.state.completedAtMs != 0 {
+				return
+			}
+		case *responsesTurnAdapter:
+			if p != nil && p.state != nil && p.state.completedAtMs != 0 {
+				return
+			}
+		}
+	}
+	provider.FinalizeAgentLoop(ctx)
 }

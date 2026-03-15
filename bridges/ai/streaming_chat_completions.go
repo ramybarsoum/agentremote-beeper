@@ -174,6 +174,9 @@ func (a *chatCompletionsTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 	state := a.state
 	portal := a.portal
 	meta := a.meta
+	if state == nil || state.completedAtMs != 0 {
+		return
+	}
 
 	oc.completeStreamingSuccess(ctx, a.log, portal, state, meta)
 

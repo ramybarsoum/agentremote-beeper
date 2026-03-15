@@ -80,7 +80,7 @@ func TestExecuteAgentLoopRoundsFinalizesOnTerminalTurn(t *testing.T) {
 	}
 }
 
-func TestExecuteAgentLoopRoundsStopsOnErrorWithoutFinalize(t *testing.T) {
+func TestExecuteAgentLoopRoundsStopsOnErrorWithFinalize(t *testing.T) {
 	expectedErr := errors.New("boom")
 	provider := &fakeAgentLoopProvider{
 		results: []fakeAgentLoopResult{
@@ -98,12 +98,12 @@ func TestExecuteAgentLoopRoundsStopsOnErrorWithoutFinalize(t *testing.T) {
 	if !errors.Is(err, expectedErr) {
 		t.Fatalf("expected err=%v, got %v", expectedErr, err)
 	}
-	if provider.finalizeCalls != 0 {
-		t.Fatalf("expected finalize to be skipped on error, got %d", provider.finalizeCalls)
+	if provider.finalizeCalls != 1 {
+		t.Fatalf("expected finalize on error, got %d", provider.finalizeCalls)
 	}
 }
 
-func TestExecuteAgentLoopRoundsStopsOnContextLengthWithoutFinalize(t *testing.T) {
+func TestExecuteAgentLoopRoundsStopsOnContextLengthWithFinalize(t *testing.T) {
 	expectedCLE := &ContextLengthError{RequestedTokens: 2000, ModelMaxTokens: 1000}
 	provider := &fakeAgentLoopProvider{
 		results: []fakeAgentLoopResult{
@@ -121,8 +121,8 @@ func TestExecuteAgentLoopRoundsStopsOnContextLengthWithoutFinalize(t *testing.T)
 	if err != nil {
 		t.Fatalf("expected no generic error, got %v", err)
 	}
-	if provider.finalizeCalls != 0 {
-		t.Fatalf("expected finalize to be skipped on context-length error, got %d", provider.finalizeCalls)
+	if provider.finalizeCalls != 1 {
+		t.Fatalf("expected finalize on context-length error, got %d", provider.finalizeCalls)
 	}
 }
 
