@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -195,25 +196,35 @@ func (c *sdkClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	sdkMsg := convertMatrixMessage(msg)
 	conv := c.conv(runCtx, msg.Portal)
 	session := c.getSession()
+	var source *SourceRef
+	if msg.Event != nil {
+		source = UserMessageSource(msg.Event.ID.String())
+	}
+	agent, _ := conv.resolveDefaultAgent(runCtx)
+	turn := conv.StartTurn(runCtx, agent, source)
 	roomID := string(msg.Portal.ID)
 	if c.turnManager != nil {
 		roomID = c.turnManager.ResolveKey(roomID)
 	}
 	run := func(turnCtx context.Context) error {
-		var source *SourceRef
-		if msg.Event != nil {
-			source = UserMessageSource(msg.Event.ID.String())
-		}
-		agent, _ := conv.resolveDefaultAgent(turnCtx)
-		turn := conv.StartTurn(turnCtx, agent, source)
 		return c.config().OnMessage(session, conv, sdkMsg, turn)
 	}
 	go func() {
+		var err error
 		if c.turnManager == nil {
-			_ = run(runCtx)
+			err = run(runCtx)
 		} else {
-			_ = c.turnManager.Run(runCtx, roomID, run)
+			err = c.turnManager.Run(runCtx, roomID, run)
 		}
+		if err == nil {
+			return
+		}
+		c.userLogin.Log.Error().
+			Err(err).
+			Str("portal_id", roomID).
+			Str("login_id", string(c.userLogin.ID)).
+			Msg("SDK matrix message handler failed")
+		turn.EndWithError(fmt.Sprintf("Request failed: %v", err))
 	}()
 	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }

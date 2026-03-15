@@ -914,6 +914,7 @@ func (oc *AIClient) applyAgentChatInfo(chatInfo *bridgev2.ChatInfo, agentID, age
 	humanID := humanUserID(oc.UserLogin.ID)
 	humanMember := members.MemberMap[humanID]
 	humanMember.EventSender = bridgev2.EventSender{
+		Sender:      humanID,
 		IsFromMe:    true,
 		SenderLogin: oc.UserLogin.ID,
 	}

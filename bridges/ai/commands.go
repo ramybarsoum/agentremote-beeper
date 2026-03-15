@@ -2,14 +2,13 @@ package ai
 
 import (
 	"context"
-	"errors"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/bridges/ai/commandregistry"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 // HelpSectionAI is the help section for AI-related commands.
@@ -21,17 +20,21 @@ var HelpSectionAI = commands.HelpSection{
 func resolveLoginForCommand(
 	ctx context.Context,
 	portal *bridgev2.Portal,
+	user *bridgev2.User,
 	defaultLogin *bridgev2.UserLogin,
-	getByID func(context.Context, networkid.UserLoginID) (*bridgev2.UserLogin, error),
+	br *bridgev2.Bridge,
 ) *bridgev2.UserLogin {
-	if portal == nil || portal.Portal == nil || portal.Receiver == "" || getByID == nil {
-		return defaultLogin
+	ce := &commands.Event{
+		Ctx:    ctx,
+		Portal: portal,
+		User:   user,
+		Bridge: br,
 	}
-	login, err := getByID(ctx, portal.Receiver)
-	if err == nil && login != nil {
-		return login
+	login, err := bridgesdk.ResolveCommandLogin(ctx, ce, defaultLogin)
+	if err != nil {
+		return nil
 	}
-	return defaultLogin
+	return login
 }
 
 func getAIClient(ce *commands.Event) *AIClient {
@@ -48,12 +51,7 @@ func getAIClient(ce *commands.Event) *AIClient {
 		br = ce.User.Bridge
 	}
 
-	login := resolveLoginForCommand(ce.Ctx, ce.Portal, defaultLogin, func(ctx context.Context, id networkid.UserLoginID) (*bridgev2.UserLogin, error) {
-		if br == nil {
-			return nil, errors.New("missing bridge")
-		}
-		return br.GetExistingUserLoginByID(ctx, id)
-	})
+	login := resolveLoginForCommand(ce.Ctx, ce.Portal, ce.User, defaultLogin, br)
 	if login == nil {
 		return nil
 	}

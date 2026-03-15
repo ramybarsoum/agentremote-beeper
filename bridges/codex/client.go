@@ -1529,16 +1529,19 @@ func (cc *CodexClient) ensureDefaultCodexChat(ctx context.Context) error {
 	portal.OtherUserID = codexGhostID
 	portal.Name = meta.Title
 	portal.NameSet = true
-	if err := portal.Save(ctx); err != nil {
+	info := cc.composeCodexChatInfo(meta.Title, false)
+	created, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+		Login:             cc.UserLogin,
+		Portal:            portal,
+		ChatInfo:          info,
+		SaveBeforeCreate:  true,
+		AIRoomKind:        agentremote.AIRoomKindAgent,
+		ForceCapabilities: true,
+	})
+	if err != nil {
 		return err
 	}
-
-	if portal.MXID == "" {
-		info := cc.composeCodexChatInfo(meta.Title, false)
-		if err := portal.CreateMatrixRoom(ctx, cc.UserLogin, info); err != nil {
-			return err
-		}
-		agentremote.SendAIRoomInfo(ctx, portal, agentremote.AIRoomKindAgent)
+	if created {
 		cc.sendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 		cc.sendSystemNotice(ctx, portal, "What directory should Codex work in? Send an absolute path or `~/...`.")
 		meta.AwaitingCwdSetup = true

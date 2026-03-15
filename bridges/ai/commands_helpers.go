@@ -9,8 +9,14 @@ func requireClientMeta(ce *commands.Event) (*AIClient, *PortalMetadata, bool) {
 	client := getAIClient(ce)
 	meta := getPortalMeta(ce)
 	if client == nil || meta == nil {
-		markCommandFailure(ce, "Couldn't load AI settings. Try again.", event.MessageStatusGenericError)
-		ce.Reply("Couldn't load AI settings. Try again.")
+		message := "Couldn't load AI settings. Try again."
+		reason := event.MessageStatusGenericError
+		if ce != nil && ce.Portal != nil {
+			message = "You're not logged in in this portal."
+			reason = event.MessageStatusNoPermission
+		}
+		markCommandFailure(ce, message, reason)
+		ce.Reply("%s", message)
 		return nil, nil, false
 	}
 	return client, meta, true

@@ -111,6 +111,7 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 	members := bridgev2.ChatMemberMap{
 		p.HumanUserID: {
 			EventSender: bridgev2.EventSender{
+				Sender:      p.HumanUserID,
 				IsFromMe:    true,
 				SenderLogin: p.LoginID,
 			},

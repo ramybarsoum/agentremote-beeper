@@ -7,8 +7,6 @@ import (
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-
-	"github.com/beeper/agentremote"
 )
 
 // LoginHandle wraps a UserLogin and provides convenience methods for creating
@@ -63,13 +61,24 @@ func (l *LoginHandle) EnsureConversation(ctx context.Context, spec ConversationS
 	if err := conv.saveState(ctx, state); err != nil {
 		return nil, err
 	}
-	if portal.MXID == "" {
-		info := &bridgev2.ChatInfo{Name: ptr.NonZero(portal.Name)}
-		if err := portal.CreateMatrixRoom(ctx, l.login, info); err != nil {
-			return nil, err
-		}
+	info := &bridgev2.ChatInfo{Name: ptr.NonZero(portal.Name)}
+	_, err = EnsurePortalLifecycle(ctx, PortalLifecycleOptions{
+		Login:             l.login,
+		Portal:            portal,
+		ChatInfo:          info,
+		SaveBeforeCreate:  true,
+		AIRoomKind:        conv.aiRoomKind(),
+		ForceCapabilities: true,
+		RefreshExtra: func(ctx context.Context, portal *bridgev2.Portal) {
+			if l.runtime == nil || l.runtime.config() == nil || len(l.runtime.config().Commands) == 0 {
+				return
+			}
+			BroadcastCommandDescriptions(ctx, portal, l.login.Bridge.Bot, l.runtime.config().Commands)
+		},
+	})
+	if err != nil {
+		return nil, err
 	}
-	agentremote.SendAIRoomInfo(ctx, portal, conv.aiRoomKind())
 	return conv, nil
 }
 

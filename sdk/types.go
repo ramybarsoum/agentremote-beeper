@@ -288,9 +288,6 @@ type Config struct {
 	// Backfill — use bridgev2 types directly.
 	FetchMessages func(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) // nil = no backfill
 
-	// Import turns for backfill (optional, session-aware)
-	ImportTurns func(session any, conv *Conversation, params BackfillParams) ([]*ImportedTurn, error)
-
 	// Advanced
 	ProtocolID     string                    // default: "sdk-<Name>"
 	Port           int                       // default: 29400

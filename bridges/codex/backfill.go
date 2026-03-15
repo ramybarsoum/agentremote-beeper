@@ -21,6 +21,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/backfillutil"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 const codexThreadListPageSize = 100
@@ -218,25 +219,24 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	portal.OtherUserID = codexGhostID
 
 	info := cc.composeCodexChatInfo(title, true)
-	if portal.MXID == "" {
-		portal.Name = title
-		portal.NameSet = true
-		if err := portal.Save(ctx); err != nil {
-			return nil, false, err
-		}
-		if err := portal.CreateMatrixRoom(ctx, cc.UserLogin, info); err != nil {
-			return nil, false, err
-		}
-		agentremote.SendAIRoomInfo(ctx, portal, agentremote.AIRoomKindAgent)
+	portal.Name = title
+	portal.NameSet = true
+	created, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+		Login:             cc.UserLogin,
+		Portal:            portal,
+		ChatInfo:          info,
+		SaveBeforeCreate:  true,
+		AIRoomKind:        agentremote.AIRoomKindAgent,
+		ForceCapabilities: true,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if created {
 		if meta.AwaitingCwdSetup {
 			cc.sendSystemNotice(ctx, portal, "This imported conversation needs a working directory. Send an absolute path or `~/...`.")
 		}
 	} else {
-		if err := portal.Save(ctx); err != nil {
-			return nil, false, err
-		}
-		portal.UpdateInfo(ctx, info, cc.UserLogin, nil, time.Time{})
-		agentremote.SendAIRoomInfo(ctx, portal, agentremote.AIRoomKindAgent)
 		cc.UserLogin.Bridge.WakeupBackfillQueue()
 	}
 

@@ -3,6 +3,7 @@ package ai
 import (
 	"testing"
 
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -80,5 +81,36 @@ func TestCanonicalPromptMessagesFallsBackWhenTurnDataProjectionIsEmpty(t *testin
 	}
 	if got := messages[0].Text(); got != "fallback" {
 		t.Fatalf("expected fallback text, got %q", got)
+	}
+}
+
+func TestTurnDataFromStreamingStatePrefersVisibleText(t *testing.T) {
+	state := testStreamingState("turn-visible")
+	state.accumulated.WriteString("[[reply_to_current]] hidden")
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "start", "messageId": "turn-visible"})
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-start", "id": "text-visible"})
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-visible", "delta": "Visible reply"})
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-visible"})
+
+	td := turnDataFromStreamingState(state, streamui.SnapshotCanonicalUIMessage(state.turn.UIState()))
+	if len(td.Parts) == 0 || td.Parts[0].Text != "Visible reply" {
+		t.Fatalf("expected visible turn text in first part, got %#v", td.Parts)
+	}
+}
+
+func TestAssistantPromptMessagesFromStatePrefersVisibleText(t *testing.T) {
+	state := testStreamingState("turn-prompt-visible")
+	state.accumulated.WriteString("[[reply_to_current]] hidden")
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "start", "messageId": "turn-prompt-visible"})
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-start", "id": "text-prompt-visible"})
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-prompt-visible", "delta": "Visible prompt text"})
+	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-prompt-visible"})
+
+	messages := assistantPromptMessagesFromState(state)
+	if len(messages) != 1 {
+		t.Fatalf("expected one assistant prompt message, got %d", len(messages))
+	}
+	if got := messages[0].Text(); got != "Visible prompt text" {
+		t.Fatalf("expected visible prompt text, got %q", got)
 	}
 }

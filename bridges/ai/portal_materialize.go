@@ -6,7 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 type portalRoomMaterializeOptions struct {
@@ -27,22 +27,24 @@ func (oc *AIClient) materializePortalRoom(
 	if oc == nil || oc.UserLogin == nil {
 		return fmt.Errorf("AIClient not initialized: missing UserLogin")
 	}
-	if opts.SaveBefore {
-		if err := portal.Save(ctx); err != nil {
-			return fmt.Errorf("failed to save portal: %w", err)
-		}
-	}
-	if err := portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
-		if opts.CleanupOnCreateError != "" {
-			cleanupPortal(ctx, oc, portal, opts.CleanupOnCreateError)
-		}
+	_, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+		Login:            oc.UserLogin,
+		Portal:           portal,
+		ChatInfo:         chatInfo,
+		SaveBeforeCreate: opts.SaveBefore,
+		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
+			if opts.CleanupOnCreateError != "" {
+				cleanupPortal(ctx, oc, portal, opts.CleanupOnCreateError)
+			}
+		},
+		AIRoomKind:        integrationPortalAIKind(portalMeta(portal)),
+		ForceCapabilities: true,
+		RefreshExtra: func(ctx context.Context, portal *bridgev2.Portal) {
+			oc.BroadcastCommandDescriptions(ctx, portal)
+		},
+	})
+	if err != nil {
 		return err
-	}
-	if !agentremote.SendAIRoomInfo(ctx, portal, integrationPortalAIKind(portalMeta(portal))) {
-		if opts.CleanupOnCreateError != "" {
-			cleanupPortal(ctx, oc, portal, opts.CleanupOnCreateError)
-		}
-		return fmt.Errorf("failed to send AI room info")
 	}
 	if opts.SendWelcome {
 		oc.sendWelcomeMessage(ctx, portal)

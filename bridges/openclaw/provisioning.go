@@ -16,6 +16,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 const openClawAgentCatalogTTL = 30 * time.Second
@@ -318,11 +319,16 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 		member.UserInfo = info
 		chatInfo.Members.MemberMap[openClawGhostUserID(agentID)] = member
 	}
-	if portal.MXID == "" {
-		if err := portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
-			return nil, fmt.Errorf("failed to create openclaw dm portal room: %w", err)
-		}
-		agentremote.SendAIRoomInfo(ctx, portal, agentremote.AIRoomKindAgent)
+	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+		Login:             oc.UserLogin,
+		Portal:            portal,
+		ChatInfo:          chatInfo,
+		SaveBeforeCreate:  true,
+		AIRoomKind:        agentremote.AIRoomKindAgent,
+		ForceCapabilities: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
 	}
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,

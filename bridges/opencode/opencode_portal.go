@@ -12,6 +12,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/opencode/api"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func (b *Bridge) ensureOpenCodeSessionPortal(ctx context.Context, inst *openCodeInstance, session api.Session) error {
@@ -63,32 +64,29 @@ func (b *Bridge) ensureOpenCodeSessionPortalWithRoom(ctx context.Context, inst *
 	}
 	meta.Title = title
 
-	previousName := portal.Name
 	portal.RoomType = database.RoomTypeDM
 	portal.OtherUserID = OpenCodeUserID(inst.cfg.ID)
 	portal.Name = title
 	portal.NameSet = true
 	b.host.SetPortalMeta(portal, meta)
 
-	if err := b.host.SavePortal(ctx, portal); err != nil {
-		return err
-	}
-
-	if portal.MXID == "" {
-		if !createRoom {
-			return nil
-		}
-		chatInfo := b.composeOpenCodeChatInfo(title, inst.cfg.ID)
-		if err := portal.CreateMatrixRoom(ctx, login, chatInfo); err != nil {
-			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
-			return err
-		}
-		agentremote.SendAIRoomInfo(ctx, portal, agentremote.AIRoomKindAgent)
+	chatInfo := b.composeOpenCodeChatInfo(title, inst.cfg.ID)
+	if !createRoom && portal.MXID == "" {
 		return nil
 	}
-
-	if portal.MXID != "" && previousName != title {
-		_ = b.host.SetRoomName(ctx, portal, title)
+	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+		Login:            login,
+		Portal:           portal,
+		ChatInfo:         chatInfo,
+		SaveBeforeCreate: true,
+		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
+			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+		},
+		AIRoomKind:        agentremote.AIRoomKindAgent,
+		ForceCapabilities: true,
+	})
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -226,16 +224,21 @@ func (b *Bridge) createManagedLauncherChat(ctx context.Context, login *bridgev2.
 	portal.NameSet = true
 	b.host.SetPortalMeta(portal, meta)
 
-	if err := b.host.SavePortal(ctx, portal); err != nil {
-		return nil, err
-	}
-
 	chatInfo := b.composeOpenCodeChatInfo(displayTitle, instanceID)
-	if err := portal.CreateMatrixRoom(ctx, login, chatInfo); err != nil {
-		b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+	_, err = bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+		Login:            login,
+		Portal:           portal,
+		ChatInfo:         chatInfo,
+		SaveBeforeCreate: true,
+		CleanupOnCreateError: func(ctx context.Context, portal *bridgev2.Portal) {
+			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+		},
+		AIRoomKind:        agentremote.AIRoomKindAgent,
+		ForceCapabilities: true,
+	})
+	if err != nil {
 		return nil, err
 	}
-	agentremote.SendAIRoomInfo(ctx, portal, agentremote.AIRoomKindAgent)
 
 	b.host.SendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 	b.host.SendSystemNotice(ctx, portal, "What directory should OpenCode work in? Send an absolute path or `~/...`, or send an empty message to use the managed default path.")
@@ -265,10 +268,21 @@ func (b *Bridge) ReIDPortalToSession(ctx context.Context, portal *bridgev2.Porta
 	}
 	switch result {
 	case bridgev2.ReIDResultSourceReIDd, bridgev2.ReIDResultTargetDeletedAndSourceReIDd, bridgev2.ReIDResultNoOp:
+		var refreshed *bridgev2.Portal
 		if updated != nil {
-			return updated, nil
+			refreshed = updated
+		} else {
+			refreshed = b.findOpenCodePortal(ctx, instanceID, sessionID)
 		}
-		return b.findOpenCodePortal(ctx, instanceID, sessionID), nil
+		if refreshed != nil {
+			bridgesdk.RefreshPortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+				Login:             login,
+				Portal:            refreshed,
+				AIRoomKind:        agentremote.AIRoomKindAgent,
+				ForceCapabilities: true,
+			})
+		}
+		return refreshed, nil
 	default:
 		return nil, fmt.Errorf("unexpected portal re-id result: %v", result)
 	}
