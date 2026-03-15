@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/agentremote"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	bridgesdk "github.com/beeper/agentremote/sdk"
 )
@@ -34,9 +35,6 @@ func (oc *AIClient) startStreamingMCPApproval(
 		return nil, fmt.Errorf("failed to register MCP approval request")
 	}
 	if needsPrompt {
-		if handle == nil {
-			return nil, fmt.Errorf("failed to deliver MCP approval prompt")
-		}
 		return handle, nil
 	}
 	if err := oc.resolveToolApproval(params.ApprovalID, true, agentremote.ApprovalReasonAutoApproved); err != nil {

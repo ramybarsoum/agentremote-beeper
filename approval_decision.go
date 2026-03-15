@@ -9,6 +9,7 @@ import (
 const (
 	ApprovalReasonAllowOnce     = "allow_once"
 	ApprovalReasonAllowAlways   = "allow_always"
+	ApprovalReasonAutoApproved  = "auto_approved"
 	ApprovalReasonDeny          = "deny"
 	ApprovalReasonTimeout       = "timeout"
 	ApprovalReasonExpired       = "expired"

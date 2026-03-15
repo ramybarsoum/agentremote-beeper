@@ -20,7 +20,6 @@ type Runtime struct {
 	Bridge    *bridgev2.Bridge
 	Login     *bridgev2.UserLogin
 	AgentID   string
-	Turns     *TurnManager
 	Approvals *ApprovalFlow[map[string]any]
 	Stores    *store.Scope
 }
