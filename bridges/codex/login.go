@@ -335,6 +335,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 		},
 	})
 	if err != nil {
+		procCancel()
 		return nil, err
 	}
 	cl.setRPC(rpc)
