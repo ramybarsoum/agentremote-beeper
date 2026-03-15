@@ -2,9 +2,7 @@ package ai
 
 import (
 	"context"
-	"strings"
 	"testing"
-	"time"
 )
 
 func TestBuildMatrixInboundBody_SimpleModeBypassesEnvelopeAndSenderMeta(t *testing.T) {

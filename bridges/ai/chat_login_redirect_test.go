@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 )

@@ -11,22 +11,6 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/citations"
 )
 
-func (oc *AIClient) handleResponseOutputTextDelta(
-	ctx context.Context,
-	log zerolog.Logger,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	meta *PortalMetadata,
-	typingSignals *TypingSignaler,
-	isHeartbeat bool,
-	delta string,
-	errText string,
-	logMessage string,
-) error {
-	_, err := oc.processStreamingTextDelta(ctx, log, portal, state, meta, typingSignals, isHeartbeat, delta, errText, logMessage)
-	return err
-}
-
 func (oc *AIClient) emitVisibleTextDelta(
 	ctx context.Context,
 	log zerolog.Logger,
