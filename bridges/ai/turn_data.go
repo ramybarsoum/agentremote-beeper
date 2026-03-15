@@ -9,7 +9,7 @@ import (
 )
 
 func canonicalTurnData(meta *MessageMetadata) (sdk.TurnData, bool) {
-	if meta == nil || meta.CanonicalTurnSchema != sdk.CanonicalTurnDataSchemaV1 || len(meta.CanonicalTurnData) == 0 {
+	if meta == nil || len(meta.CanonicalTurnData) == 0 {
 		return sdk.TurnData{}, false
 	}
 	return sdk.DecodeTurnData(meta.CanonicalTurnData)

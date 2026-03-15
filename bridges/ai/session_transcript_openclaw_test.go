@@ -105,8 +105,7 @@ func TestBuildOpenClawSessionMessagesFromCanonical(t *testing.T) {
 		Timestamp: time.UnixMilli(1730000000000),
 		Metadata: &MessageMetadata{
 			BaseMessageMetadata: agentremote.BaseMessageMetadata{
-				Role:                "assistant",
-				CanonicalTurnSchema: sdk.CanonicalTurnDataSchemaV1,
+				Role: "assistant",
 				CanonicalTurnData: sdk.TurnData{
 					Role: "assistant",
 					Parts: []sdk.TurnPart{

@@ -81,10 +81,8 @@ func setCanonicalTurnDataFromPromptMessages(meta *MessageMetadata, messages []Pr
 		return
 	}
 	if turnData, ok := sdk.TurnDataFromUserPromptMessages(messages); ok {
-		meta.CanonicalTurnSchema = sdk.CanonicalTurnDataSchemaV1
 		meta.CanonicalTurnData = turnData.ToMap()
 	} else {
-		meta.CanonicalTurnSchema = ""
 		meta.CanonicalTurnData = nil
 	}
 }

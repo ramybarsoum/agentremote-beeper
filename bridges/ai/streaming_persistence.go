@@ -44,28 +44,25 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 		}
 	}
 	modelID := oc.effectiveModel(meta)
-	canonicalTurnSchema := ""
 	canonicalTurnData := map[string]any(nil)
 	if len(snapshot.TurnData.ToMap()) > 0 {
-		canonicalTurnSchema = sdk.CanonicalTurnDataSchemaV1
 		canonicalTurnData = snapshot.TurnData.ToMap()
 	}
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
-			Body:                snapshot.Body,
-			FinishReason:        state.finishReason,
-			TurnID:              turnID,
-			AgentID:             state.agentID,
-			ToolCalls:           snapshot.ToolCalls,
-			StartedAtMs:         state.startedAtMs,
-			CompletedAtMs:       state.completedAtMs,
-			GeneratedFiles:      snapshot.GeneratedFiles,
-			ThinkingContent:     snapshot.ThinkingContent,
-			PromptTokens:        state.promptTokens,
-			CompletionTokens:    state.completionTokens,
-			ReasoningTokens:     state.reasoningTokens,
-			CanonicalTurnSchema: canonicalTurnSchema,
-			CanonicalTurnData:   canonicalTurnData,
+			Body:              snapshot.Body,
+			FinishReason:      state.finishReason,
+			TurnID:            turnID,
+			AgentID:           state.agentID,
+			ToolCalls:         snapshot.ToolCalls,
+			StartedAtMs:       state.startedAtMs,
+			CompletedAtMs:     state.completedAtMs,
+			GeneratedFiles:    snapshot.GeneratedFiles,
+			ThinkingContent:   snapshot.ThinkingContent,
+			PromptTokens:      state.promptTokens,
+			CompletionTokens:  state.completionTokens,
+			ReasoningTokens:   state.reasoningTokens,
+			CanonicalTurnData: canonicalTurnData,
 		}),
 		AssistantMessageMetadata: agentremote.AssistantMessageMetadata{
 			CompletionID:       state.responseID,

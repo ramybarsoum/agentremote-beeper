@@ -9,7 +9,6 @@ import (
 
 func TestPromptMessagesFromMetadataPrefersTurnData(t *testing.T) {
 	meta := &MessageMetadata{}
-	meta.CanonicalTurnSchema = sdk.CanonicalTurnDataSchemaV1
 	meta.CanonicalTurnData = sdk.TurnData{
 		ID:   "turn-1",
 		Role: "assistant",
@@ -41,9 +40,6 @@ func TestSetCanonicalTurnDataFromPromptMessagesStoresTurnDataForUser(t *testing.
 		}},
 	}})
 
-	if meta.CanonicalTurnSchema != sdk.CanonicalTurnDataSchemaV1 {
-		t.Fatalf("expected turn data schema, got %q", meta.CanonicalTurnSchema)
-	}
 	td, ok := canonicalTurnData(meta)
 	if !ok {
 		t.Fatalf("expected canonical turn data")

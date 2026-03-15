@@ -4,8 +4,6 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2/database"
-
-	"github.com/beeper/agentremote/sdk"
 )
 
 func ensureCanonicalUserMessage(msg *database.Message) {
@@ -16,7 +14,7 @@ func ensureCanonicalUserMessage(msg *database.Message) {
 	if !ok || meta == nil || strings.TrimSpace(meta.Role) != "user" {
 		return
 	}
-	if len(meta.CanonicalTurnData) > 0 && meta.CanonicalTurnSchema == sdk.CanonicalTurnDataSchemaV1 {
+	if len(meta.CanonicalTurnData) > 0 {
 		return
 	}
 

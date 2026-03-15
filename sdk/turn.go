@@ -524,17 +524,16 @@ func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadat
 		agentID = t.agent.ID
 	}
 	runtimeMeta := agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
-		Body:                snapshot.Body,
-		FinishReason:        finishReason,
-		TurnID:              t.turnID,
-		AgentID:             agentID,
-		StartedAtMs:         t.startedAtMs,
-		CompletedAtMs:       time.Now().UnixMilli(),
-		CanonicalTurnSchema: CanonicalTurnDataSchemaV1,
-		CanonicalTurnData:   snapshot.TurnData.ToMap(),
-		ThinkingContent:     snapshot.ThinkingContent,
-		ToolCalls:           snapshot.ToolCalls,
-		GeneratedFiles:      snapshot.GeneratedFiles,
+		Body:              snapshot.Body,
+		FinishReason:      finishReason,
+		TurnID:            t.turnID,
+		AgentID:           agentID,
+		StartedAtMs:       t.startedAtMs,
+		CompletedAtMs:     time.Now().UnixMilli(),
+		CanonicalTurnData: snapshot.TurnData.ToMap(),
+		ThinkingContent:   snapshot.ThinkingContent,
+		ToolCalls:         snapshot.ToolCalls,
+		GeneratedFiles:    snapshot.GeneratedFiles,
 	})
 	merged := supportedBaseMetadataFromMap(t.metadata)
 	merged.CopyFromBase(&runtimeMeta)

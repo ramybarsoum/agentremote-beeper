@@ -3,12 +3,13 @@ package ai
 import (
 	"context"
 
-	"github.com/beeper/agentremote/pkg/agents"
-	"github.com/beeper/agentremote/pkg/agents/tools"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
+
+	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 type agentLoopRequestSettings struct {

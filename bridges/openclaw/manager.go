@@ -749,14 +749,13 @@ func buildOpenClawHistoryMessageMetadata(message map[string]any, meta *PortalMet
 	}, "openclaw")
 	metadata := &MessageMetadata{
 		BaseMessageMetadata: agentremote.BaseMessageMetadata{
-			Role:                role,
-			Body:                snapshot.Body,
-			AgentID:             agentID,
-			CanonicalTurnSchema: bridgesdk.CanonicalTurnDataSchemaV1,
-			CanonicalTurnData:   snapshot.TurnData.ToMap(),
-			ThinkingContent:     snapshot.ThinkingContent,
-			ToolCalls:           snapshot.ToolCalls,
-			GeneratedFiles:      snapshot.GeneratedFiles,
+			Role:              role,
+			Body:              snapshot.Body,
+			AgentID:           agentID,
+			CanonicalTurnData: snapshot.TurnData.ToMap(),
+			ThinkingContent:   snapshot.ThinkingContent,
+			ToolCalls:         snapshot.ToolCalls,
+			GeneratedFiles:    snapshot.GeneratedFiles,
 		},
 		SessionID:   meta.OpenClawSessionID,
 		SessionKey:  meta.OpenClawSessionKey,

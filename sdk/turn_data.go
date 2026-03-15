@@ -6,8 +6,6 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
-const CanonicalTurnDataSchemaV1 = "ai-sdk-turn-data-v1"
-
 // TurnData is the SDK-owned semantic turn record used as the canonical source
 // of truth for persistence. PromptContext and UIMessage are derived views.
 type TurnData struct {
