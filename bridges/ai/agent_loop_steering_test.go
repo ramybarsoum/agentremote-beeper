@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
@@ -53,50 +52,20 @@ func TestGetSteeringMessages_FiltersAndDrainsQueue(t *testing.T) {
 	}
 }
 
-func TestBuildChatAgentLoopContinuationMessages_OrdersAssistantToolResultsAndSteering(t *testing.T) {
-	roomID := id.RoomID("!room:example.com")
-	oc := &AIClient{
-		connector: &OpenAIConnector{},
-		activeRoomRuns: map[id.RoomID]*roomRunState{
-			roomID: {
-				steerQueue: []pendingQueueItem{
-					{
-						pending: pendingMessage{Type: pendingTypeText, MessageBody: "steer now"},
-					},
-				},
-			},
-		},
+func TestBuildSteeringUserMessages(t *testing.T) {
+	got := buildSteeringUserMessages([]string{"first", " ", "second"})
+	if len(got) != 2 {
+		t.Fatalf("expected 2 steering user messages, got %d", len(got))
 	}
-	state := &streamingState{
-		roomID: roomID,
-		pendingFunctionOutputs: []functionCallOutput{{
-			callID: "call_1",
-			output: "tool output",
-		}},
+	if got[0].OfUser == nil || got[0].OfUser.Content.OfString.Value != "first" {
+		t.Fatalf("unexpected first steering user message: %#v", got[0])
 	}
-
-	got := oc.buildChatAgentLoopContinuationMessages(
-		state,
-		[]openai.ChatCompletionMessageParamUnion{openai.UserMessage("before")},
-		openai.ChatCompletionAssistantMessageParam{},
-		[]string{"steer now"},
-	)
-
-	if len(got) != 4 {
-		t.Fatalf("expected 4 messages, got %d", len(got))
-	}
-	if got[1].OfAssistant == nil {
-		t.Fatalf("expected assistant continuation message at index 1")
-	}
-	if got[2].OfTool == nil || got[2].OfTool.ToolCallID != "call_1" {
-		t.Fatalf("expected tool result message at index 2, got %#v", got[2])
-	}
-	if got[3].OfUser == nil || got[3].OfUser.Content.OfString.Value != "steer now" {
-		t.Fatalf("expected steering user message at index 3, got %#v", got[3])
+	if got[1].OfUser == nil || got[1].OfUser.Content.OfString.Value != "second" {
+		t.Fatalf("unexpected second steering user message: %#v", got[1])
 	}
 }
 
-func TestTakeAgentLoopFollowUpPrompts_ConsumesSingleQueuedTextMessage(t *testing.T) {
+func TestGetFollowUpMessages_ConsumesSingleQueuedTextMessage(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
 		pendingQueues: map[id.RoomID]*pendingQueue{
@@ -109,19 +78,64 @@ func TestTakeAgentLoopFollowUpPrompts_ConsumesSingleQueuedTextMessage(t *testing
 		},
 	}
 
-	prompts, items := oc.takeAgentLoopFollowUpPrompts(roomID)
-	if len(prompts) != 1 || prompts[0] != "follow up" {
-		t.Fatalf("unexpected follow-up prompts: %#v", prompts)
-	}
-	if len(items) != 1 || items[0].pending.MessageBody != "follow up" {
-		t.Fatalf("unexpected consumed follow-up items: %#v", items)
+	messages := oc.getFollowUpMessages(roomID)
+	if len(messages) != 1 || messages[0].OfUser == nil || messages[0].OfUser.Content.OfString.Value != "follow up" {
+		t.Fatalf("unexpected follow-up messages: %#v", messages)
 	}
 	if snapshot := oc.getQueueSnapshot(roomID); snapshot != nil {
 		t.Fatalf("expected queue to be drained, got %#v", snapshot.items)
 	}
 }
 
-func TestTakeAgentLoopFollowUpPrompts_LeavesNonTextQueueItemsForBacklogProcessing(t *testing.T) {
+func TestGetFollowUpMessages_CollectsQueuedTextMessages(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	oc := &AIClient{
+		pendingQueues: map[id.RoomID]*pendingQueue{
+			roomID: {
+				mode: airuntime.QueueModeCollect,
+				items: []pendingQueueItem{
+					{pending: pendingMessage{Type: pendingTypeText, MessageBody: "first"}},
+					{pending: pendingMessage{Type: pendingTypeText, MessageBody: "second"}},
+				},
+			},
+		},
+	}
+
+	messages := oc.getFollowUpMessages(roomID)
+	if len(messages) != 1 || messages[0].OfUser == nil {
+		t.Fatalf("expected one combined follow-up message, got %#v", messages)
+	}
+	if messages[0].OfUser.Content.OfString.Value != "[Queued messages while agent was busy]\n\n---\nQueued #1\nfirst\n\n---\nQueued #2\nsecond" {
+		t.Fatalf("unexpected combined follow-up prompt: %q", messages[0].OfUser.Content.OfString.Value)
+	}
+}
+
+func TestGetFollowUpMessages_UsesSyntheticSummaryPrompt(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	oc := &AIClient{
+		pendingQueues: map[id.RoomID]*pendingQueue{
+			roomID: {
+				mode:         airuntime.QueueModeFollowup,
+				dropPolicy:   airuntime.QueueDropSummarize,
+				droppedCount: 2,
+				summaryLines: []string{"older one", "older two"},
+				items: []pendingQueueItem{
+					{pending: pendingMessage{Type: pendingTypeText, MessageBody: "latest"}},
+				},
+			},
+		},
+	}
+
+	messages := oc.getFollowUpMessages(roomID)
+	if len(messages) != 1 || messages[0].OfUser == nil {
+		t.Fatalf("expected one synthetic follow-up message, got %#v", messages)
+	}
+	if messages[0].OfUser.Content.OfString.Value != "[Queue overflow] Dropped 2 messages due to cap.\nSummary:\n- older one\n- older two" {
+		t.Fatalf("unexpected synthetic follow-up prompt: %q", messages[0].OfUser.Content.OfString.Value)
+	}
+}
+
+func TestGetFollowUpMessages_LeavesNonTextQueueItemsForBacklogProcessing(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
 		pendingQueues: map[id.RoomID]*pendingQueue{
@@ -134,9 +148,9 @@ func TestTakeAgentLoopFollowUpPrompts_LeavesNonTextQueueItemsForBacklogProcessin
 		},
 	}
 
-	prompts, items := oc.takeAgentLoopFollowUpPrompts(roomID)
-	if len(prompts) != 0 || len(items) != 0 {
-		t.Fatalf("expected non-text follow-up to stay queued, got prompts=%#v items=%#v", prompts, items)
+	messages := oc.getFollowUpMessages(roomID)
+	if len(messages) != 0 {
+		t.Fatalf("expected non-text follow-up to stay queued, got %#v", messages)
 	}
 	if snapshot := oc.getQueueSnapshot(roomID); snapshot == nil || len(snapshot.items) != 1 {
 		t.Fatalf("expected non-text queue item to remain queued, got %#v", snapshot)

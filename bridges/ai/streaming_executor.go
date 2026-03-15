@@ -52,6 +52,20 @@ func newAgentLoopProviderBase(
 	}
 }
 
+func (a *agentLoopProviderBase) GetFollowUpMessages(context.Context) []openai.ChatCompletionMessageParamUnion {
+	if a == nil || a.oc == nil || a.state == nil {
+		return nil
+	}
+	return a.oc.getFollowUpMessages(a.state.roomID)
+}
+
+func (a *agentLoopProviderBase) ContinueAgentLoop(messages []openai.ChatCompletionMessageParamUnion) {
+	if a == nil || len(messages) == 0 {
+		return
+	}
+	a.messages = append(a.messages, messages...)
+}
+
 func (oc *AIClient) runAgentLoop(
 	ctx context.Context,
 	log zerolog.Logger,

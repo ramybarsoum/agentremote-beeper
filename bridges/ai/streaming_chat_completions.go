@@ -136,7 +136,11 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 		if content := strings.TrimSpace(roundContent.String()); content != "" {
 			assistantMsg.Content.OfString = param.NewOpt(content)
 		}
-		currentMessages = oc.buildChatAgentLoopContinuationMessages(state, currentMessages, assistantMsg, steeringPrompts)
+		currentMessages = append(currentMessages, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistantMsg})
+		for _, output := range state.pendingFunctionOutputs {
+			currentMessages = append(currentMessages, openai.ToolMessage(output.output, output.callID))
+		}
+		currentMessages = append(currentMessages, buildSteeringUserMessages(steeringPrompts)...)
 		if round >= maxAgentLoopToolTurns {
 			log.Warn().Int("rounds", round+1).Msg("Max tool call rounds reached; stopping chat completions continuation")
 			currentMessages = append(currentMessages, openai.AssistantMessage("Continuation stopped after reaching the maximum number of streaming tool rounds."))

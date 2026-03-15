@@ -3,9 +3,6 @@ package ai
 import (
 	"context"
 
-	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/responses"
-
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
 )
@@ -52,27 +49,4 @@ func (oc *AIClient) selectedStreamingToolDescriptors(
 
 	descriptors = append(descriptors, toolDescriptorsFromBossTools(oc.filterEnabledTools(meta, tools.SessionTools()), &oc.log)...)
 	return descriptors
-}
-
-func (oc *AIClient) selectedResponsesStreamingTools(
-	ctx context.Context,
-	meta *PortalMetadata,
-	allowResolvedBossAgent bool,
-) []responses.ToolUnionParam {
-	descriptors := oc.selectedStreamingToolDescriptors(ctx, meta, allowResolvedBossAgent)
-	if len(descriptors) == 0 {
-		return nil
-	}
-	return dedupeToolParams(descriptorsToResponsesTools(descriptors, resolveToolStrictMode(oc.isOpenRouterProvider())))
-}
-
-func (oc *AIClient) selectedChatStreamingTools(
-	ctx context.Context,
-	meta *PortalMetadata,
-) []openai.ChatCompletionToolUnionParam {
-	descriptors := oc.selectedStreamingToolDescriptors(ctx, meta, false)
-	if len(descriptors) == 0 {
-		return nil
-	}
-	return dedupeChatToolParams(descriptorsToChatTools(descriptors, resolveToolStrictMode(oc.isOpenRouterProvider())))
 }

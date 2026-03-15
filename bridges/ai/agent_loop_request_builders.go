@@ -33,13 +33,14 @@ func (oc *AIClient) buildChatCompletionsAgentLoopParams(
 	messages []openai.ChatCompletionMessageParamUnion,
 ) openai.ChatCompletionNewParams {
 	settings := oc.buildAgentLoopRequestSettings(meta)
+	descriptors := oc.selectedStreamingToolDescriptors(ctx, meta, false)
 	params := openai.ChatCompletionNewParams{
 		Model:    settings.model,
 		Messages: messages,
 		StreamOptions: openai.ChatCompletionStreamOptionsParam{
 			IncludeUsage: param.NewOpt(true),
 		},
-		Tools: oc.selectedChatStreamingTools(ctx, meta),
+		Tools: dedupeChatToolParams(descriptorsToChatTools(descriptors, resolveToolStrictMode(oc.isOpenRouterProvider()))),
 	}
 	if settings.maxTokens > 0 {
 		params.MaxCompletionTokens = openai.Int(int64(settings.maxTokens))
@@ -57,13 +58,14 @@ func (oc *AIClient) buildResponsesAgentLoopParams(
 	allowResolvedBossAgent bool,
 ) responses.ResponseNewParams {
 	settings := oc.buildAgentLoopRequestSettings(meta)
+	descriptors := oc.selectedStreamingToolDescriptors(ctx, meta, allowResolvedBossAgent)
 	params := responses.ResponseNewParams{
 		Model:           shared.ResponsesModel(settings.model),
 		MaxOutputTokens: openai.Int(int64(settings.maxTokens)),
 		Input: responses.ResponseNewParamsInputUnion{
 			OfInputItemList: input,
 		},
-		Tools: oc.selectedResponsesStreamingTools(ctx, meta, allowResolvedBossAgent),
+		Tools: dedupeToolParams(descriptorsToResponsesTools(descriptors, resolveToolStrictMode(oc.isOpenRouterProvider()))),
 	}
 	if settings.systemPrompt != "" {
 		params.Instructions = openai.String(settings.systemPrompt)

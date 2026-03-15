@@ -768,68 +768,35 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			return
 		}
 
-		var item pendingQueueItem
+		item, prompt, ok := preparePendingQueueDispatchCandidate(candidate)
+		if !ok {
+			oc.releaseRoom(roomID)
+			return
+		}
+
 		var promptContext PromptContext
 		var err error
 
-		if candidate.collect {
-			items := candidate.items
-			ackIDs := make([]id.EventID, 0, len(items))
-			for idx := range items {
-				if items[idx].pending.Event != nil {
-					if len(items[idx].pending.AckEventIDs) > 0 {
-						ackIDs = append(ackIDs, items[idx].pending.AckEventIDs...)
-					} else {
-						ackIDs = append(ackIDs, items[idx].pending.Event.ID)
-					}
-				}
-				if items[idx].prompt == "" {
-					items[idx].prompt = items[idx].pending.MessageBody
-				}
-			}
-			item = items[len(items)-1]
-			if len(ackIDs) > 0 {
-				item.pending.AckEventIDs = ackIDs
-			}
-			combined := buildCollectPrompt("[Queued messages while agent was busy]", items, candidate.summaryPrompt)
-			metaSnapshot := clonePortalMetadata(item.pending.Meta)
-			promptCtx := ctx
-			if item.pending.InboundContext != nil {
-				promptCtx = withInboundContext(promptCtx, *item.pending.InboundContext)
-			}
-			promptContext, err = oc.buildContextWithLinkContext(promptCtx, item.pending.Portal, metaSnapshot, combined, nil, "")
-		} else {
-			if candidate.summaryPrompt != "" && candidate.synthetic {
-				item = candidate.items[0]
-				item.pending.Event = nil
-				item.pending.MessageBody = candidate.summaryPrompt
-				item.backlogAfter = false
-				item.allowDuplicate = false
-			} else {
-				item = candidate.items[0]
-			}
-
-			metaSnapshot := clonePortalMetadata(item.pending.Meta)
-			var eventID id.EventID
-			if item.pending.Event != nil {
-				eventID = item.pending.Event.ID
-			}
-			promptCtx := ctx
-			if item.pending.InboundContext != nil {
-				promptCtx = withInboundContext(promptCtx, *item.pending.InboundContext)
-			}
-			switch item.pending.Type {
-			case pendingTypeText:
-				promptContext, err = oc.buildContextWithLinkContext(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.rawEventContent, eventID)
-			case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
-				promptContext, err = oc.buildContextWithMedia(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
-			case pendingTypeRegenerate:
-				promptContext, err = oc.buildContextForRegenerate(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.SourceEventID)
-			case pendingTypeEditRegenerate:
-				promptContext, err = oc.buildContextUpToMessage(promptCtx, item.pending.Portal, metaSnapshot, item.pending.TargetMsgID, item.pending.MessageBody)
-			default:
-				err = fmt.Errorf("unknown pending message type: %s", item.pending.Type)
-			}
+		metaSnapshot := clonePortalMetadata(item.pending.Meta)
+		var eventID id.EventID
+		if item.pending.Event != nil {
+			eventID = item.pending.Event.ID
+		}
+		promptCtx := ctx
+		if item.pending.InboundContext != nil {
+			promptCtx = withInboundContext(promptCtx, *item.pending.InboundContext)
+		}
+		switch item.pending.Type {
+		case pendingTypeText:
+			promptContext, err = oc.buildContextWithLinkContext(promptCtx, item.pending.Portal, metaSnapshot, prompt, item.rawEventContent, eventID)
+		case pendingTypeImage, pendingTypePDF, pendingTypeAudio, pendingTypeVideo:
+			promptContext, err = oc.buildContextWithMedia(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.MediaURL, item.pending.MimeType, item.pending.EncryptedFile, item.pending.Type, eventID)
+		case pendingTypeRegenerate:
+			promptContext, err = oc.buildContextForRegenerate(promptCtx, item.pending.Portal, metaSnapshot, item.pending.MessageBody, item.pending.SourceEventID)
+		case pendingTypeEditRegenerate:
+			promptContext, err = oc.buildContextUpToMessage(promptCtx, item.pending.Portal, metaSnapshot, item.pending.TargetMsgID, item.pending.MessageBody)
+		default:
+			err = fmt.Errorf("unknown pending message type: %s", item.pending.Type)
 		}
 
 		if err != nil {

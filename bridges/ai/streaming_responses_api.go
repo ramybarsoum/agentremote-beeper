@@ -38,7 +38,11 @@ func (a *responsesTurnAdapter) TrackRoomRunStreaming() bool {
 
 func (a *responsesTurnAdapter) startInitialRound(ctx context.Context) (*ssestream.Stream[responses.ResponseStreamEventUnion], error) {
 	if !a.initialized {
-		a.params = a.oc.buildResponsesAPIParams(ctx, a.portal, a.meta, a.messages)
+		input := a.oc.convertToResponsesInput(a.messages, a.meta)
+		a.params = a.oc.buildResponsesAgentLoopParams(ctx, a.meta, input, false)
+		if len(a.params.Tools) > 0 {
+			zerolog.Ctx(ctx).Debug().Int("count", len(a.params.Tools)).Msg("Added streaming turn tools")
+		}
 		if a.oc.isOpenRouterProvider() {
 			ctx = WithPDFEngine(ctx, a.oc.effectivePDFEngine(a.meta))
 		}

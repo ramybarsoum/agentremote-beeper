@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openai/openai-go/v3"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
@@ -251,6 +252,65 @@ func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly
 	}
 	items := oc.popQueueItems(roomID, 1)
 	return &pendingQueueDispatchCandidate{items: items}, snapshot
+}
+
+func preparePendingQueueDispatchCandidate(candidate *pendingQueueDispatchCandidate) (pendingQueueItem, string, bool) {
+	if candidate == nil || len(candidate.items) == 0 {
+		return pendingQueueItem{}, "", false
+	}
+	if candidate.collect {
+		items := candidate.items
+		ackIDs := make([]id.EventID, 0, len(items))
+		for idx := range items {
+			if items[idx].pending.Event != nil {
+				if len(items[idx].pending.AckEventIDs) > 0 {
+					ackIDs = append(ackIDs, items[idx].pending.AckEventIDs...)
+				} else {
+					ackIDs = append(ackIDs, items[idx].pending.Event.ID)
+				}
+			}
+			if items[idx].prompt == "" {
+				items[idx].prompt = items[idx].pending.MessageBody
+			}
+		}
+		item := items[len(items)-1]
+		if len(ackIDs) > 0 {
+			item.pending.AckEventIDs = ackIDs
+		}
+		return item, buildCollectPrompt("[Queued messages while agent was busy]", items, candidate.summaryPrompt), true
+	}
+
+	item := candidate.items[0]
+	if candidate.summaryPrompt != "" && candidate.synthetic {
+		item.pending.Event = nil
+		item.pending.MessageBody = candidate.summaryPrompt
+		item.backlogAfter = false
+		item.allowDuplicate = false
+		return item, candidate.summaryPrompt, true
+	}
+	return item, strings.TrimSpace(item.pending.MessageBody), true
+}
+
+func (oc *AIClient) getFollowUpMessages(roomID id.RoomID) []openai.ChatCompletionMessageParamUnion {
+	if oc == nil || roomID == "" {
+		return nil
+	}
+	candidate, snapshot := oc.takePendingQueueDispatchCandidate(roomID, true)
+	if snapshot == nil {
+		return nil
+	}
+	behavior := airuntime.ResolveQueueBehavior(snapshot.mode)
+	if !behavior.Followup || candidate == nil || len(candidate.items) == 0 {
+		return nil
+	}
+	for _, item := range candidate.items {
+		oc.registerRoomRunPendingItem(roomID, item)
+	}
+	_, prompt, ok := preparePendingQueueDispatchCandidate(candidate)
+	if !ok {
+		return nil
+	}
+	return buildSteeringUserMessages([]string{prompt})
 }
 
 func (oc *AIClient) markQueueDraining(roomID id.RoomID) bool {
