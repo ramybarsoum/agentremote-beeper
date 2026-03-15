@@ -13,6 +13,7 @@ import (
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/bridges/opencode/api"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 // Host provides the minimal surface area the OpenCode bridge needs
@@ -37,6 +38,8 @@ type Host interface {
 	HumanUserID(loginID networkid.UserLoginID) networkid.UserID
 	RoomCapabilitiesEventType() event.Type
 	RoomSettingsEventType() event.Type
+	ensureStreamWriter(ctx context.Context, portal *bridgev2.Portal, turnID, agentID string) (*openCodeStreamState, *bridgesdk.Writer)
+	applyStreamMessageMetadata(state *openCodeStreamState, metadata map[string]any)
 }
 
 // PortalMeta is the OpenCode-specific view of portal metadata.

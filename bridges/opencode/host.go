@@ -28,13 +28,7 @@ func (oc *OpenCodeClient) Log() *zerolog.Logger {
 }
 
 func (oc *OpenCodeClient) BackgroundContext(ctx context.Context) context.Context {
-	if ctx != nil {
-		return ctx
-	}
-	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.BackgroundCtx != nil {
-		return oc.UserLogin.Bridge.BackgroundCtx
-	}
-	return context.Background()
+	return oc.ClientBase.BackgroundContext(ctx)
 }
 
 func (oc *OpenCodeClient) SendSystemNotice(ctx context.Context, portal *bridgev2.Portal, msg string) {

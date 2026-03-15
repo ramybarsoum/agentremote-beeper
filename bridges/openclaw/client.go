@@ -156,11 +156,7 @@ func (oc *OpenClawClient) Connect(ctx context.Context) {
 
 func (oc *OpenClawClient) Disconnect() {
 	oc.BeginStreamShutdown()
-	oc.connectMu.Lock()
-	cancel := oc.connectCancel
-	oc.connectCancel = nil
-	oc.connectSeq++
-	oc.connectMu.Unlock()
+	cancel := oc.detachConnectCancel()
 	if cancel != nil {
 		cancel()
 	}
@@ -171,27 +167,40 @@ func (oc *OpenClawClient) Disconnect() {
 		}
 	}
 	oc.SetLoggedIn(false)
-	oc.abortActiveTurns()
+	abortTurns(oc.drainStreamTurns(), "disconnect")
 	oc.CloseAllSessions()
-	oc.StreamMu.Lock()
-	oc.streamStates = make(map[string]*openClawStreamState)
-	oc.StreamMu.Unlock()
 	if oc.UserLogin != nil {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateTransientDisconnect, Message: "Disconnected"})
 	}
 }
 
-func (oc *OpenClawClient) abortActiveTurns() {
+func (oc *OpenClawClient) detachConnectCancel() context.CancelFunc {
+	oc.connectMu.Lock()
+	defer oc.connectMu.Unlock()
+	cancel := oc.connectCancel
+	oc.connectCancel = nil
+	oc.connectSeq++
+	return cancel
+}
+
+func (oc *OpenClawClient) drainStreamTurns() []*bridgesdk.Turn {
 	oc.StreamMu.Lock()
-	turns := make([]*bridgesdk.Turn, 0, len(oc.streamStates))
+	defer oc.StreamMu.Unlock()
+	activeTurns := make([]*bridgesdk.Turn, 0, len(oc.streamStates))
 	for _, state := range oc.streamStates {
 		if state != nil && state.turn != nil {
-			turns = append(turns, state.turn)
+			activeTurns = append(activeTurns, state.turn)
 		}
 	}
-	oc.StreamMu.Unlock()
+	oc.streamStates = make(map[string]*openClawStreamState)
+	return activeTurns
+}
+
+func abortTurns(turns []*bridgesdk.Turn, reason string) {
 	for _, turn := range turns {
-		turn.Abort("disconnect")
+		if turn != nil {
+			turn.Abort(reason)
+		}
 	}
 }
 

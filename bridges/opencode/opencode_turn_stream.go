@@ -27,9 +27,8 @@ func (m *OpenCodeManager) ensureTurnStarted(ctx context.Context, inst *openCodeI
 	}
 	_, writer := m.mustStreamWriter(ctx, portal, sessionID, messageID)
 	if len(metadata) > 0 {
-		client := m.bridge.host.(*OpenCodeClient)
 		streamState, _ := m.mustStreamWriter(ctx, portal, sessionID, messageID)
-		client.applyStreamMessageMetadata(streamState, metadata)
+		m.bridge.host.applyStreamMessageMetadata(streamState, metadata)
 		writer.MessageMetadata(ctx, metadata)
 	} else {
 		writer.MessageMetadata(ctx, nil)
@@ -102,15 +101,13 @@ func (m *OpenCodeManager) emitTurnFinish(ctx context.Context, inst *openCodeInst
 func (m *OpenCodeManager) applyTurnMetadata(ctx context.Context, portal *bridgev2.Portal, sessionID, messageID string, metadata map[string]any) {
 	state, writer := m.mustStreamWriter(ctx, portal, sessionID, messageID)
 	if len(metadata) > 0 {
-		stateClient := m.bridge.host.(*OpenCodeClient)
-		stateClient.applyStreamMessageMetadata(state, metadata)
+		m.bridge.host.applyStreamMessageMetadata(state, metadata)
 	}
 	writer.MessageMetadata(ctx, metadata)
 }
 
 func (m *OpenCodeManager) mustStreamWriter(ctx context.Context, portal *bridgev2.Portal, sessionID, messageID string) (*openCodeStreamState, *bridgesdk.Writer) {
-	client := m.bridge.host.(*OpenCodeClient)
 	turnID := opencodeMessageStreamTurnID(sessionID, messageID)
-	state, writer := client.ensureStreamWriter(ctx, portal, turnID, m.bridge.portalAgentID(portal))
+	state, writer := m.bridge.host.ensureStreamWriter(ctx, portal, turnID, m.bridge.portalAgentID(portal))
 	return state, writer
 }

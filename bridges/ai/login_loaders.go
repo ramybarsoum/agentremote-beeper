@@ -4,117 +4,125 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
-func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *UserLoginMetadata) error {
-	key := strings.TrimSpace(oc.resolveProviderAPIKey(meta))
-	if key == "" {
-		oc.clientsMu.Lock()
-		if existingAPI := oc.clients[login.ID]; existingAPI != nil {
-			if existing, ok := existingAPI.(*AIClient); ok && existing != nil {
-				existing.Disconnect()
-			}
-			delete(oc.clients, login.ID)
-		}
-		oc.clientsMu.Unlock()
-		login.Client = newBrokenLoginClient(login, "No API key available for this login. Sign in again or remove this account.")
+const (
+	noAPIKeyLoginError   = "No API key available for this login. Sign in again or remove this account."
+	initLoginClientError = "Couldn't initialize this login. Remove and re-add the account."
+)
+
+func reuseAIClient(login *bridgev2.UserLogin, client *AIClient, bootstrap bool) {
+	if login == nil || client == nil {
+		return
+	}
+	client.UserLogin = login
+	login.Client = client
+	if bootstrap {
+		client.scheduleBootstrap()
+	}
+}
+
+func aiClientNeedsRebuild(existing *AIClient, key string, meta *UserLoginMetadata) bool {
+	if existing == nil {
+		return true
+	}
+	existingMeta := loginMetadata(existing.UserLogin)
+	existingProvider := ""
+	existingBaseURL := ""
+	if existingMeta != nil {
+		existingProvider = strings.TrimSpace(existingMeta.Provider)
+		existingBaseURL = stringutil.NormalizeBaseURL(existingMeta.BaseURL)
+	}
+	targetProvider := ""
+	targetBaseURL := ""
+	if meta != nil {
+		targetProvider = strings.TrimSpace(meta.Provider)
+		targetBaseURL = stringutil.NormalizeBaseURL(meta.BaseURL)
+	}
+	return existing.apiKey != key ||
+		!strings.EqualFold(existingProvider, targetProvider) ||
+		existingBaseURL != targetBaseURL
+}
+
+func (oc *OpenAIConnector) lookupCachedAIClient(loginID networkid.UserLoginID) (bridgev2.NetworkAPI, *AIClient) {
+	oc.clientsMu.Lock()
+	defer oc.clientsMu.Unlock()
+	cachedAPI := oc.clients[loginID]
+	cached, _ := cachedAPI.(*AIClient)
+	return cachedAPI, cached
+}
+
+func (oc *OpenAIConnector) evictCachedClient(loginID networkid.UserLoginID, expected bridgev2.NetworkAPI) {
+	oc.clientsMu.Lock()
+	defer oc.clientsMu.Unlock()
+	cachedAPI := oc.clients[loginID]
+	if expected != nil && cachedAPI != expected {
+		return
+	}
+	if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
+		cached.Disconnect()
+	}
+	delete(oc.clients, loginID)
+}
+
+func (oc *OpenAIConnector) publishOrReuseClient(login *bridgev2.UserLogin, created *AIClient, replace *AIClient) *AIClient {
+	if login == nil || created == nil {
 		return nil
 	}
 	oc.clientsMu.Lock()
-	if existingAPI := oc.clients[login.ID]; existingAPI != nil {
-		existing, ok := existingAPI.(*AIClient)
-		if !ok || existing == nil {
-			// Type mismatch: rebuild.
-			delete(oc.clients, login.ID)
-			oc.clientsMu.Unlock()
-			client, err := newAIClient(login, oc, key)
-			if err != nil {
-				login.Client = newBrokenLoginClient(login, "Couldn't initialize this login. Remove and re-add the account.")
-				return nil
-			}
-			oc.clientsMu.Lock()
-			if cachedAPI := oc.clients[login.ID]; cachedAPI != nil {
-				if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
-					client.Disconnect()
-					cached.UserLogin = login
-					login.Client = cached
-					oc.clientsMu.Unlock()
-					cached.scheduleBootstrap()
-					return nil
-				}
-			}
-			oc.clients[login.ID] = client
-			oc.clientsMu.Unlock()
-			login.Client = client
-			client.scheduleBootstrap()
-			return nil
-		}
+	defer oc.clientsMu.Unlock()
+	if cached, ok := oc.clients[login.ID].(*AIClient); ok && cached != nil && cached != replace {
+		created.Disconnect()
+		reuseAIClient(login, cached, false)
+		return cached
+	}
+	if replace != nil && replace != created {
+		replace.Disconnect()
+	}
+	oc.clients[login.ID] = created
+	reuseAIClient(login, created, false)
+	return created
+}
 
-		existingMeta := loginMetadata(existing.UserLogin)
-		existingProvider := strings.TrimSpace(existingMeta.Provider)
-		existingBaseURL := stringutil.NormalizeBaseURL(existingMeta.BaseURL)
-		needsRebuild := existing.apiKey != key ||
-			!strings.EqualFold(existingProvider, strings.TrimSpace(meta.Provider)) ||
-			existingBaseURL != stringutil.NormalizeBaseURL(meta.BaseURL)
-		if needsRebuild {
-			oc.clientsMu.Unlock()
-			client, err := newAIClient(login, oc, key)
-			if err != nil {
-				// Keep the existing client if it's already in process; allow the login to stay cached/deletable.
-				oc.clientsMu.Lock()
-				existing.UserLogin = login
-				login.Client = existing
-				oc.clientsMu.Unlock()
-				return nil
-			}
-			oc.clientsMu.Lock()
-			if cachedAPI := oc.clients[login.ID]; cachedAPI != nil {
-				if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
-					client.Disconnect()
-					cached.UserLogin = login
-					login.Client = cached
-					oc.clientsMu.Unlock()
-					cached.scheduleBootstrap()
-					return nil
-				}
-			}
-			existing.Disconnect()
-			oc.clients[login.ID] = client
-			oc.clientsMu.Unlock()
-			login.Client = client
-			client.scheduleBootstrap()
-			return nil
-		}
-		// Keep using one client instance per login ID when provider settings have not changed.
-		existing.UserLogin = login
-		login.Client = existing
-		oc.clientsMu.Unlock()
-		existing.scheduleBootstrap()
+func (oc *OpenAIConnector) loadAIUserLogin(login *bridgev2.UserLogin, meta *UserLoginMetadata) error {
+	if login == nil {
 		return nil
 	}
-	oc.clientsMu.Unlock()
+	key := strings.TrimSpace(oc.resolveProviderAPIKey(meta))
+	cachedAPI, existing := oc.lookupCachedAIClient(login.ID)
+	if key == "" {
+		oc.evictCachedClient(login.ID, nil)
+		login.Client = newBrokenLoginClient(login, noAPIKeyLoginError)
+		return nil
+	}
+
+	if existing != nil && !aiClientNeedsRebuild(existing, key, meta) {
+		reuseAIClient(login, existing, true)
+		return nil
+	}
+
+	if cachedAPI != nil && existing == nil {
+		oc.evictCachedClient(login.ID, cachedAPI)
+		cachedAPI = nil
+	}
 
 	client, err := newAIClient(login, oc, key)
 	if err != nil {
-		login.Client = newBrokenLoginClient(login, "Couldn't initialize this login. Remove and re-add the account.")
-		return nil
-	}
-	oc.clientsMu.Lock()
-	if cachedAPI := oc.clients[login.ID]; cachedAPI != nil {
-		if cached, ok := cachedAPI.(*AIClient); ok && cached != nil {
-			client.Disconnect()
-			cached.UserLogin = login
-			login.Client = cached
-			oc.clientsMu.Unlock()
-			cached.scheduleBootstrap()
+		// Keep the existing client if rebuilding failed.
+		if existing != nil {
+			reuseAIClient(login, existing, false)
 			return nil
 		}
+		login.Client = newBrokenLoginClient(login, initLoginClientError)
+		return nil
 	}
-	oc.clients[login.ID] = client
-	oc.clientsMu.Unlock()
-	login.Client = client
-	client.scheduleBootstrap()
+
+	chosen := oc.publishOrReuseClient(login, client, existing)
+	if chosen != nil {
+		chosen.scheduleBootstrap()
+	}
 	return nil
 }

@@ -8,7 +8,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// sendViaPortal sends a pre-built message through bridgev2's QueueRemoteEvent pipeline.
 func (cc *CodexClient) sendViaPortal(
 	portal *bridgev2.Portal,
 	converted *bridgev2.ConvertedMessage,
@@ -19,20 +18,16 @@ func (cc *CodexClient) sendViaPortal(
 	return cc.ClientBase.SendViaPortalWithOptions(portal, cc.senderForPortal(), msgID, timestamp, streamOrder, converted)
 }
 
-// senderForPortal returns the EventSender for the Codex ghost.
 func (cc *CodexClient) senderForPortal() bridgev2.EventSender {
-	sender := bridgev2.EventSender{Sender: codexGhostID}
-	if cc != nil && cc.UserLogin != nil {
-		sender.SenderLogin = cc.UserLogin.ID
+	if cc == nil || cc.UserLogin == nil {
+		return bridgev2.EventSender{Sender: codexGhostID}
 	}
-	return sender
+	return bridgev2.EventSender{Sender: codexGhostID, SenderLogin: cc.UserLogin.ID}
 }
 
 func (cc *CodexClient) senderForHuman() bridgev2.EventSender {
-	sender := bridgev2.EventSender{IsFromMe: true}
-	if cc != nil && cc.UserLogin != nil {
-		sender.Sender = cc.HumanUserID()
-		sender.SenderLogin = cc.UserLogin.ID
+	if cc == nil || cc.UserLogin == nil {
+		return bridgev2.EventSender{IsFromMe: true}
 	}
-	return sender
+	return bridgev2.EventSender{Sender: cc.HumanUserID(), SenderLogin: cc.UserLogin.ID, IsFromMe: true}
 }

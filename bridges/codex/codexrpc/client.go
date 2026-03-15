@@ -28,7 +28,8 @@ type ClientInfo struct {
 }
 
 type InitializeCapabilities struct {
-	ExperimentalAPI bool `json:"experimentalApi,omitempty"`
+	ExperimentalAPI          bool     `json:"experimentalApi,omitempty"`
+	OptOutNotificationMethods []string `json:"optOutNotificationMethods,omitempty"`
 }
 
 type initializeParamsWire struct {
@@ -228,12 +229,26 @@ func (c *Client) HandleRequest(method string, fn func(ctx context.Context, req R
 	c.reqMu.Unlock()
 }
 
+type InitializeOptions struct {
+	ExperimentalAPI          bool
+	OptOutNotificationMethods []string
+}
+
 func (c *Client) Initialize(ctx context.Context, info ClientInfo, experimental bool) (string, error) {
+	return c.InitializeWithOptions(ctx, info, InitializeOptions{ExperimentalAPI: experimental})
+}
+
+func (c *Client) InitializeWithOptions(ctx context.Context, info ClientInfo, opts InitializeOptions) (string, error) {
 	params := initializeParamsWire{
 		ClientInfo: info,
 	}
-	if experimental {
-		params.Capabilities = &InitializeCapabilities{ExperimentalAPI: true}
+	if opts.ExperimentalAPI || len(opts.OptOutNotificationMethods) > 0 {
+		params.Capabilities = &InitializeCapabilities{
+			ExperimentalAPI: opts.ExperimentalAPI,
+		}
+		if len(opts.OptOutNotificationMethods) > 0 {
+			params.Capabilities.OptOutNotificationMethods = slices.Clone(opts.OptOutNotificationMethods)
+		}
 	}
 	var result struct {
 		UserAgent string `json:"userAgent"`

@@ -17,6 +17,8 @@ type UserLoginMetadata struct {
 	CodexCommand      string `json:"codex_command,omitempty"`
 	CodexAuthMode     string `json:"codex_auth_mode,omitempty"`
 	CodexAccountEmail string `json:"codex_account_email,omitempty"`
+	ChatGPTAccountID  string `json:"chatgpt_account_id,omitempty"`
+	ChatGPTPlanType   string `json:"chatgpt_plan_type,omitempty"`
 	ChatsSynced       bool   `json:"chats_synced,omitempty"`
 }
 

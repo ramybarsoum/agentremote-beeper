@@ -2,8 +2,10 @@ package openclaw
 
 import (
 	"testing"
+	"time"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func TestComputeVisibleDeltaTracksPrefixOnly(t *testing.T) {
@@ -106,5 +108,83 @@ func TestBuildStreamDBMetadataIncludesToolCalls(t *testing.T) {
 	}
 	if meta.GeneratedFiles[0].URL != "mxc://example.org/out" || meta.GeneratedFiles[0].MimeType != "image/png" {
 		t.Fatalf("unexpected generated files: %#v", meta.GeneratedFiles)
+	}
+}
+
+func TestApplyStreamPartStateLockedUpdatesLifecycleFields(t *testing.T) {
+	oc := &OpenClawClient{}
+	state := &openClawStreamState{}
+
+	oc.applyStreamPartStateLocked(state, map[string]any{
+		"type":      "text-delta",
+		"delta":     "hello",
+		"timestamp": float64(time.Now().UnixMilli()),
+	})
+	if got := state.visible.String(); got != "hello" {
+		t.Fatalf("expected visible text to accumulate delta, got %q", got)
+	}
+	if got := state.accumulated.String(); got != "hello" {
+		t.Fatalf("expected accumulated text to include delta, got %q", got)
+	}
+	if state.startedAtMs == 0 || state.firstTokenAtMs == 0 {
+		t.Fatalf("expected lifecycle timestamps to be tracked, got started=%d first_token=%d", state.startedAtMs, state.firstTokenAtMs)
+	}
+
+	oc.applyStreamPartStateLocked(state, map[string]any{
+		"type":      "error",
+		"errorText": "boom",
+	})
+	if state.errorText != "boom" {
+		t.Fatalf("expected error text to be captured, got %q", state.errorText)
+	}
+}
+
+func TestPopStreamTurnFinalizesAndRemovesState(t *testing.T) {
+	turn := new(bridgesdk.Turn)
+	oc := &OpenClawClient{
+		streamStates: map[string]*openClawStreamState{
+			"turn-1": {
+				turnID: "turn-1",
+				turn:   turn,
+			},
+		},
+	}
+
+	state, gotTurn := oc.popStreamTurn("turn-1", "stop")
+	if gotTurn != turn {
+		t.Fatal("expected popStreamTurn to return tracked turn pointer")
+	}
+	if state == nil {
+		t.Fatal("expected stream state to be returned")
+	}
+	if state.finishReason != "stop" {
+		t.Fatalf("expected finish reason to be set from fallback, got %q", state.finishReason)
+	}
+	if state.completedAtMs == 0 {
+		t.Fatal("expected completed timestamp to be set")
+	}
+	if _, ok := oc.streamStates["turn-1"]; ok {
+		t.Fatal("expected turn state to be removed after pop")
+	}
+}
+
+func TestDrainStreamTurnsResetsMapAndReturnsActiveTurns(t *testing.T) {
+	active := new(bridgesdk.Turn)
+	oc := &OpenClawClient{
+		streamStates: map[string]*openClawStreamState{
+			"turn-active": {turnID: "turn-active", turn: active},
+			"turn-empty":  {turnID: "turn-empty"},
+		},
+	}
+
+	turns := oc.drainStreamTurns()
+	if len(turns) != 1 {
+		t.Fatalf("expected exactly 1 active turn, got %d", len(turns))
+	}
+	if turns[0] != active {
+		t.Fatal("expected returned turn pointer to match active state")
+	}
+	if len(oc.streamStates) != 0 {
+		t.Fatalf("expected stream state map to be reset, got %d entries", len(oc.streamStates))
 	}
 }

@@ -44,10 +44,6 @@ const (
 	hostAuthRemoteName             = "Codex (host auth)"
 )
 
-type codexAuthStatusResponse struct {
-	AuthMethod string `json:"authMethod"`
-}
-
 type hostAuthProbe struct {
 	AuthMode     string
 	AccountEmail string
@@ -135,34 +131,23 @@ func (cc *CodexConnector) probeHostAuth(ctx context.Context) (*hostAuthProbe, er
 		return nil, err
 	}
 
-	var authStatus codexAuthStatusResponse
-	statusCtx, statusCancel := context.WithTimeout(probeCtx, 10*time.Second)
-	err = rpc.Call(statusCtx, "getAuthStatus", map[string]any{
-		"includeToken": false,
-		"refreshToken": false,
-	}, &authStatus)
-	statusCancel()
+	var resp struct {
+		Account            *codexAccountInfo `json:"account"`
+		RequiresOpenaiAuth bool              `json:"requiresOpenaiAuth"`
+	}
+	readCtx, readCancel := context.WithTimeout(probeCtx, 10*time.Second)
+	err = rpc.Call(readCtx, "account/read", map[string]any{"refreshToken": false}, &resp)
+	readCancel()
 	if err != nil {
 		return nil, err
 	}
-	authMethod := strings.TrimSpace(authStatus.AuthMethod)
-	if authMethod == "" {
+	if resp.Account == nil {
 		return nil, nil
 	}
 
-	var resp struct {
-		Account *codexAccountInfo `json:"account"`
-	}
-	readCtx, readCancel := context.WithTimeout(probeCtx, 10*time.Second)
-	_ = rpc.Call(readCtx, "account/read", map[string]any{"refreshToken": false}, &resp)
-	readCancel()
-
-	probe := &hostAuthProbe{AuthMode: authMethod}
-	if resp.Account != nil {
-		if v := strings.TrimSpace(resp.Account.Type); v != "" {
-			probe.AuthMode = v
-		}
-		probe.AccountEmail = strings.TrimSpace(resp.Account.Email)
+	probe := &hostAuthProbe{
+		AuthMode:     strings.TrimSpace(resp.Account.Type),
+		AccountEmail: strings.TrimSpace(resp.Account.Email),
 	}
 	return probe, nil
 }

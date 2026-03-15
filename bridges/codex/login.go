@@ -45,6 +45,9 @@ type CodexLogin struct {
 	loginDoneCh chan codexLoginDone
 
 	startCh chan error
+
+	chatgptAccountID string
+	chatgptPlanType  string
 }
 
 type codexLoginDone struct {
@@ -120,15 +123,21 @@ func (cl *CodexLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 				Fields: []bridgev2.LoginInputDataField{
 					{
 						Type:        bridgev2.LoginInputFieldTypeToken,
-						ID:          "id_token",
-						Name:        "ChatGPT ID token",
-						Description: "Paste the ChatGPT idToken JWT.",
-					},
-					{
-						Type:        bridgev2.LoginInputFieldTypeToken,
 						ID:          "access_token",
 						Name:        "ChatGPT access token",
 						Description: "Paste the ChatGPT accessToken JWT.",
+					},
+					{
+						Type:        bridgev2.LoginInputFieldTypeText,
+						ID:          "chatgpt_account_id",
+						Name:        "ChatGPT account ID",
+						Description: "Paste the ChatGPT workspace/account identifier.",
+					},
+					{
+						Type:        bridgev2.LoginInputFieldTypeText,
+						ID:          "chatgpt_plan_type",
+						Name:        "ChatGPT plan type",
+						Description: "Optional. Leave blank to let Codex infer it.",
 					},
 				},
 			},
@@ -139,13 +148,7 @@ func (cl *CodexLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 }
 
 func (cl *CodexLogin) Cancel() {
-	cl.mu.Lock()
-	defer cl.mu.Unlock()
-	if cl.cancel != nil {
-		cl.cancel()
-		cl.cancel = nil
-	}
-	cl.closeRPCLocked()
+	cl.cancelLoginAttempt(true)
 }
 
 func (cl *CodexLogin) getRPC() *codexrpc.Client {
@@ -225,15 +228,24 @@ func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]stri
 		})
 	case FlowCodexChatGPTExternalTokens:
 		cl.setAuthMode("chatgptAuthTokens")
-		idToken := strings.TrimSpace(input["id_token"])
 		accessToken := strings.TrimSpace(input["access_token"])
-		if idToken == "" || accessToken == "" {
-			return nil, errors.New("id_token and access_token are required")
+		accountID := strings.TrimSpace(input["chatgpt_account_id"])
+		planType := strings.TrimSpace(input["chatgpt_plan_type"])
+		if accessToken == "" || accountID == "" {
+			return nil, errors.New("access_token and chatgpt_account_id are required")
 		}
-		return cl.spawnAndStartLogin(ctx, log, "chatgptAuthTokens", map[string]string{
-			"idToken":     idToken,
-			"accessToken": accessToken,
-		})
+		credentials := map[string]string{
+			"accessToken":      accessToken,
+			"chatgptAccountId": accountID,
+		}
+		if planType != "" {
+			credentials["chatgptPlanType"] = planType
+		}
+		cl.mu.Lock()
+		cl.chatgptAccountID = accountID
+		cl.chatgptPlanType = planType
+		cl.mu.Unlock()
+		return cl.spawnAndStartLogin(ctx, log, "chatgptAuthTokens", credentials)
 	case FlowCodexChatGPT:
 		// Browser login starts during Start(); user input is not needed.
 		return &bridgev2.LoginStep{
@@ -258,6 +270,43 @@ func (cl *CodexLogin) backgroundProcessContext() context.Context {
 	return context.Background()
 }
 
+func (cl *CodexLogin) initializeExperimental(mode string) bool {
+	return strings.TrimSpace(mode) == "chatgptAuthTokens"
+}
+
+func (cl *CodexLogin) cancelLoginAttempt(removeHome bool) {
+	cl.mu.Lock()
+	rpc := cl.rpc
+	cl.rpc = nil
+	cancel := cl.cancel
+	cl.cancel = nil
+	loginID := cl.loginID
+	authMode := cl.authMode
+	codexHome := cl.codexHome
+	if removeHome {
+		cl.codexHome = ""
+		cl.chatgptAccountID = ""
+		cl.chatgptPlanType = ""
+	}
+	cl.mu.Unlock()
+
+	if rpc != nil && strings.TrimSpace(loginID) != "" && strings.TrimSpace(authMode) == "chatgpt" {
+		callCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		var out struct{}
+		_ = rpc.Call(callCtx, "account/login/cancel", map[string]any{"loginId": loginID}, &out)
+		stop()
+	}
+	if cancel != nil {
+		cancel()
+	}
+	if rpc != nil {
+		_ = rpc.Close()
+	}
+	if removeHome && strings.TrimSpace(codexHome) != "" {
+		_ = os.RemoveAll(codexHome)
+	}
+}
+
 // spawnAndStartLogin creates an isolated CODEX_HOME, spawns an app-server, and starts auth.
 func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logger, mode string, credentials map[string]string) (*bridgev2.LoginStep, error) {
 	homeBase := cl.resolveCodexHomeBaseDir()
@@ -276,7 +325,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 	// IMPORTANT: Do not bind the Codex app-server process lifetime to the HTTP request context.
 	// The provisioning API cancels r.Context() after the response is written; using it would kill
 	// the child process and cause the login to hang forever in Wait().
-	procCtx := cl.backgroundProcessContext()
+	procCtx, procCancel := context.WithCancel(cl.backgroundProcessContext())
 	rpc, err := codexrpc.StartProcess(procCtx, codexrpc.ProcessConfig{
 		Command:      cmd,
 		Args:         launch.Args,
@@ -301,6 +350,10 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 	cl.instanceID = instanceID
 	cl.loginID = ""
 	cl.authURL = ""
+	if mode != "chatgptAuthTokens" {
+		cl.chatgptAccountID = ""
+		cl.chatgptPlanType = ""
+	}
 	if mode == "apiKey" || mode == "chatgptAuthTokens" {
 		cl.waitUntil = time.Now().Add(5 * time.Minute)
 	} else {
@@ -310,26 +363,20 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 	cl.loginDoneCh = make(chan codexLoginDone, 1)
 	cl.startCh = make(chan error, 1)
 
-	// Create a cancellable context for the background goroutine so Cancel() can stop it.
-	bgCtx, bgCancel := context.WithCancel(procCtx)
 	cl.mu.Lock()
-	cl.cancel = bgCancel
+	cl.cancel = procCancel
 	cl.mu.Unlock()
 
 	// Make SubmitUserInput return quickly: initialize + login/start can be slow and can freeze provisioning.
 	go func() {
-		defer bgCancel() // ensure context is cancelled when goroutine exits
-
 		// Initialize first (some Codex builds won't accept login/start before initialize).
-		initCtx, cancelInit := context.WithTimeout(bgCtx, 45*time.Second)
+		initCtx, cancelInit := context.WithTimeout(procCtx, 45*time.Second)
 		ci := cl.Connector.Config.Codex.ClientInfo
-		_, initErr := rpc.Initialize(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, false)
+		_, initErr := rpc.Initialize(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, cl.initializeExperimental(mode))
 		cancelInit()
 		if initErr != nil {
 			log.Warn().Err(initErr).Msg("Codex initialize failed")
-			cl.mu.Lock()
-			cl.closeRPCLocked()
-			cl.mu.Unlock()
+			cl.cancelLoginAttempt(true)
 			cl.signalStart(initErr)
 			return
 		}
@@ -377,11 +424,12 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 			for k, v := range credentials {
 				loginParams[k] = strings.TrimSpace(v)
 			}
-			startCtx, cancel := context.WithTimeout(bgCtx, 60*time.Second)
+			startCtx, cancel := context.WithTimeout(procCtx, 60*time.Second)
 			startErr := rpc.Call(startCtx, "account/login/start", loginParams, &struct{}{})
 			cancel()
 			if startErr != nil {
 				log.Warn().Err(startErr).Str("mode", mode).Msg("Codex login start failed")
+				cl.cancelLoginAttempt(true)
 			}
 			cl.signalStart(startErr)
 			return
@@ -392,11 +440,12 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 			LoginID string `json:"loginId"`
 			AuthURL string `json:"authUrl"`
 		}
-		startCtx, cancel := context.WithTimeout(bgCtx, 60*time.Second)
+		startCtx, cancel := context.WithTimeout(procCtx, 60*time.Second)
 		startErr := rpc.Call(startCtx, "account/login/start", map[string]any{"type": "chatgpt"}, &loginResp)
 		cancel()
 		if startErr != nil {
 			log.Warn().Err(startErr).Msg("Codex chatgpt login start failed")
+			cl.cancelLoginAttempt(true)
 			cl.signalStart(startErr)
 			return
 		}
@@ -404,6 +453,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 		authURL := strings.TrimSpace(loginResp.AuthURL)
 		cl.setLoginSession(loginID, authURL)
 		if authURL == "" || loginID == "" {
+			cl.cancelLoginAttempt(true)
 			cl.signalStart(errors.New("codex returned empty authUrl/loginId"))
 			return
 		}
@@ -479,6 +529,7 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 					done.errText = "login failed"
 				}
 				log.Warn().Str("login_id", loginID).Str("error", done.errText).Msg("Codex login failed")
+				cl.cancelLoginAttempt(true)
 				return nil, fmt.Errorf("%s", done.errText)
 			}
 			log.Info().Str("login_id", loginID).Msg("Codex login completed (notification)")
@@ -517,6 +568,7 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			return cl.buildStillWaitingStep("Keep this screen open."), nil
 		case <-deadline.C:
 			log.Warn().Str("login_id", cl.getLoginID()).Msg("Codex login timed out")
+			cl.cancelLoginAttempt(true)
 			return nil, errors.New("timed out waiting for Codex login to complete")
 		case <-ctx.Done():
 			// Most callers will have their own HTTP/gRPC deadlines. Returning the same waiting
@@ -604,6 +656,8 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 		CodexAuthSource:   CodexAuthSourceManaged,
 		CodexAuthMode:     cl.getAuthMode(),
 		CodexAccountEmail: accountEmail,
+		ChatGPTAccountID:  strings.TrimSpace(cl.chatgptAccountID),
+		ChatGPTPlanType:   strings.TrimSpace(cl.chatgptPlanType),
 	}
 
 	login, step, err := agentremote.CreateAndCompleteLogin(
@@ -617,13 +671,11 @@ func (cl *CodexLogin) finishLogin(ctx context.Context) (*bridgev2.LoginStep, err
 		cl.Connector.LoadUserLogin,
 	)
 	if err != nil {
+		cl.cancelLoginAttempt(true)
 		return nil, fmt.Errorf("failed to create login: %w", err)
 	}
 	log.Info().Str("user_login_id", string(login.ID)).Msg("Created new Codex login")
-
-	cl.mu.Lock()
-	cl.closeRPCLocked()
-	cl.mu.Unlock()
+	cl.cancelLoginAttempt(false)
 
 	return step, nil
 }

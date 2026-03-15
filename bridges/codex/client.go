@@ -196,6 +196,20 @@ func (cc *CodexClient) Connect(ctx context.Context) {
 			_ = cc.UserLogin.Save(cc.backgroundContext(ctx))
 		}
 	}
+	if resp.Account == nil {
+		state := status.StateBadCredentials
+		message := "Codex login is no longer authenticated."
+		if isHostAuthLogin(loginMetadata(cc.UserLogin)) {
+			state = status.StateTransientDisconnect
+			message = "Codex host authentication is unavailable."
+		}
+		cc.UserLogin.BridgeState.Send(status.BridgeState{
+			StateEvent: state,
+			Error:      AIAuthFailed,
+			Message:    message,
+		})
+		return
+	}
 
 	cc.UserLogin.BridgeState.Send(status.BridgeState{
 		StateEvent: status.StateConnected,
@@ -568,6 +582,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 	state := newStreamingState(sourceEvent.ID)
 
 	model := cc.connector.Config.Codex.DefaultModel
+	state.currentModel = model
 	threadID := strings.TrimSpace(meta.CodexThreadID)
 	cwd := strings.TrimSpace(meta.CodexCwd)
 	conv := bridgesdk.NewConversation(ctx, cc.UserLogin, portal, cc.senderForPortal(), cc.connector.sdkConfig, cc)
@@ -585,13 +600,13 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, met
 		return cc.requestSDKApproval(callCtx, portal, state, sdkTurn, req)
 	})
 	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(sdkTurn *bridgesdk.Turn, finishReason string) any {
-		return cc.buildSDKFinalMetadata(sdkTurn, state, model, finishReason)
+		return cc.buildSDKFinalMetadata(sdkTurn, state, codexStateModel(state, model), finishReason)
 	}))
 	state.turn = turn
 	state.turnID = turn.ID()
 	state.agentID = string(codexGhostID)
 	state.initialEventID = sourceEvent.ID
-	turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, model, false, ""))
+	turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, codexStateModel(state, model), false, ""))
 	turn.Writer().StepStart(ctx)
 
 	approvalPolicy := "untrusted"
@@ -697,11 +712,11 @@ done:
 		})
 	}
 	if completedErr != "" {
-		state.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, model, true, finishStatus))
+		state.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, codexStateModel(state, model), true, finishStatus))
 		state.turn.EndWithError(completedErr)
 		return
 	}
-	state.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, model, true, finishStatus))
+	state.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, codexStateModel(state, model), true, finishStatus))
 	state.turn.End(finishStatus)
 }
 
@@ -721,6 +736,15 @@ func (cc *CodexClient) appendCodexToolOutput(state *streamingState, toolCallID, 
 	return b.String()
 }
 
+func codexStateModel(state *streamingState, fallback string) string {
+	if state != nil {
+		if model := strings.TrimSpace(state.currentModel); model != "" {
+			return model
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
 // codexNotifFields holds the common fields present in most Codex notifications.
 type codexNotifFields struct {
 	Delta  string `json:"delta"`
@@ -737,8 +761,15 @@ func parseNotifFields(params json.RawMessage, threadID, turnID string) (codexNot
 	return f, f.Thread == threadID && f.Turn == turnID
 }
 
+var codexSimpleOutputDeltaMethods = map[string]string{
+	"item/commandExecution/outputDelta": "commandExecution",
+	"item/fileChange/outputDelta":       "fileChange",
+	"item/collabToolCall/outputDelta":   "collabToolCall",
+	"item/plan/delta":                   "plan",
+}
+
 func (cc *CodexClient) handleSimpleOutputDelta(
-	ctx context.Context, portal *bridgev2.Portal, state *streamingState,
+	ctx context.Context, state *streamingState,
 	params json.RawMessage, threadID, turnID, defaultToolName string,
 ) {
 	f, ok := parseNotifFields(params, threadID, turnID)
@@ -751,6 +782,10 @@ func (cc *CodexClient) handleSimpleOutputDelta(
 	}
 	buf := cc.appendCodexToolOutput(state, toolCallID, f.Delta)
 	if state.turn != nil {
+		state.turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, map[string]any{}, bridgesdk.ToolInputOptions{
+			ToolName:         defaultToolName,
+			ProviderExecuted: true,
+		})
 		state.turn.Writer().Tools().Output(ctx, toolCallID, buf, bridgesdk.ToolOutputOptions{
 			ProviderExecuted: true,
 			Streaming:        true,
@@ -759,6 +794,20 @@ func (cc *CodexClient) handleSimpleOutputDelta(
 }
 
 func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, state *streamingState, model, threadID, turnID string, evt codexNotif) {
+	if defaultToolName, ok := codexSimpleOutputDeltaMethods[evt.Method]; ok {
+		cc.handleSimpleOutputDelta(ctx, state, evt.Params, threadID, turnID, defaultToolName)
+		return
+	}
+	parseFields := func() (codexNotifFields, bool) {
+		return parseNotifFields(evt.Params, threadID, turnID)
+	}
+	appendReasoningDelta := func(delta string) {
+		state.recordFirstToken()
+		state.reasoning.WriteString(delta)
+		if state.turn != nil {
+			state.turn.Writer().ReasoningDelta(ctx, delta)
+		}
+	}
 	switch evt.Method {
 	case "error":
 		var p struct {
@@ -773,9 +822,8 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 			}
 			cc.sendSystemNoticeOnce(ctx, portal, state, "turn:error", "Codex error: "+strings.TrimSpace(p.Error.Message))
 		}
-
 	case "item/agentMessage/delta":
-		f, ok := parseNotifFields(evt.Params, threadID, turnID)
+		f, ok := parseFields()
 		if !ok {
 			return
 		}
@@ -784,21 +832,15 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		if state.turn != nil {
 			state.turn.Writer().TextDelta(ctx, f.Delta)
 		}
-
 	case "item/reasoning/summaryTextDelta":
-		f, ok := parseNotifFields(evt.Params, threadID, turnID)
+		f, ok := parseFields()
 		if !ok {
 			return
 		}
 		state.codexReasoningSummarySeen = true
-		state.recordFirstToken()
-		state.reasoning.WriteString(f.Delta)
-		if state.turn != nil {
-			state.turn.Writer().ReasoningDelta(ctx, f.Delta)
-		}
-
+		appendReasoningDelta(f.Delta)
 	case "item/reasoning/summaryPartAdded":
-		if _, ok := parseNotifFields(evt.Params, threadID, turnID); !ok {
+		if _, ok := parseFields(); !ok {
 			return
 		}
 		state.codexReasoningSummarySeen = true
@@ -808,30 +850,15 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 				state.turn.Writer().ReasoningDelta(ctx, "\n")
 			}
 		}
-
 	case "item/reasoning/textDelta":
-		f, ok := parseNotifFields(evt.Params, threadID, turnID)
-		if !ok {
+		f, ok := parseFields()
+		if !ok || state.codexReasoningSummarySeen {
+			// Prefer summary deltas when present to avoid duplicate reasoning output.
 			return
 		}
-		// Prefer summary deltas when present to avoid duplicate reasoning output.
-		if state.codexReasoningSummarySeen {
-			return
-		}
-		state.recordFirstToken()
-		state.reasoning.WriteString(f.Delta)
-		if state.turn != nil {
-			state.turn.Writer().ReasoningDelta(ctx, f.Delta)
-		}
-
-	case "item/commandExecution/outputDelta":
-		cc.handleSimpleOutputDelta(ctx, portal, state, evt.Params, threadID, turnID, "commandExecution")
-
-	case "item/fileChange/outputDelta":
-		cc.handleSimpleOutputDelta(ctx, portal, state, evt.Params, threadID, turnID, "fileChange")
-
+		appendReasoningDelta(f.Delta)
 	case "item/mcpToolCall/outputDelta":
-		f, ok := parseNotifFields(evt.Params, threadID, turnID)
+		f, ok := parseFields()
 		if !ok {
 			return
 		}
@@ -849,17 +876,39 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		}
 		buf := cc.appendCodexToolOutput(state, toolCallID, f.Delta)
 		if state.turn != nil {
+			state.turn.Writer().Tools().EnsureInputStart(ctx, toolCallID, map[string]any{"tool": toolName}, bridgesdk.ToolInputOptions{
+				ToolName:         toolName,
+				ProviderExecuted: true,
+			})
 			state.turn.Writer().Tools().Output(ctx, toolCallID, buf, bridgesdk.ToolOutputOptions{
 				ProviderExecuted: true,
 				Streaming:        true,
 			})
 		}
-
-	case "item/collabToolCall/outputDelta":
-		cc.handleSimpleOutputDelta(ctx, portal, state, evt.Params, threadID, turnID, "collabToolCall")
-
+	case "model/rerouted":
+		f, ok := parseFields()
+		if !ok {
+			return
+		}
+		var p struct {
+			ToModel string `json:"toModel"`
+		}
+		_ = json.Unmarshal(evt.Params, &p)
+		nextModel := strings.TrimSpace(p.ToModel)
+		if nextModel == "" {
+			return
+		}
+		state.currentModel = nextModel
+		if state.turn != nil {
+			state.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, nextModel, true, ""))
+		}
+		cc.activeMu.Lock()
+		if active := cc.activeTurns[codexTurnKey(f.Thread, f.Turn)]; active != nil {
+			active.model = nextModel
+		}
+		cc.activeMu.Unlock()
 	case "turn/diff/updated":
-		if _, ok := parseNotifFields(evt.Params, threadID, turnID); !ok {
+		if _, ok := parseFields(); !ok {
 			return
 		}
 		var diffPayload struct {
@@ -878,12 +927,8 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 				Streaming:        true,
 			})
 		}
-
-	case "item/plan/delta":
-		cc.handleSimpleOutputDelta(ctx, portal, state, evt.Params, threadID, turnID, "plan")
-
 	case "turn/plan/updated":
-		if _, ok := parseNotifFields(evt.Params, threadID, turnID); !ok {
+		if _, ok := parseFields(); !ok {
 			return
 		}
 		var p struct {
@@ -910,9 +955,8 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 			})
 		}
 		cc.sendSystemNoticeOnce(ctx, portal, state, "turn:plan_updated", "Codex updated the plan.")
-
 	case "thread/tokenUsage/updated":
-		if _, ok := parseNotifFields(evt.Params, threadID, turnID); !ok {
+		if _, ok := parseFields(); !ok {
 			return
 		}
 		var p struct {
@@ -932,11 +976,10 @@ func (cc *CodexClient) handleNotif(ctx context.Context, portal *bridgev2.Portal,
 		state.reasoningTokens = p.TokenUsage.Total.ReasoningOutputTokens
 		state.totalTokens = p.TokenUsage.Total.TotalTokens
 		if state.turn != nil {
-			state.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, model, true, ""))
+			state.turn.Writer().MessageMetadata(ctx, cc.buildUIMessageMetadata(state, codexStateModel(state, model), true, ""))
 		}
-
 	case "item/started", "item/completed":
-		if _, ok := parseNotifFields(evt.Params, threadID, turnID); !ok {
+		if _, ok := parseFields(); !ok {
 			return
 		}
 		var p struct {
@@ -1120,7 +1163,8 @@ func (cc *CodexClient) handleItemCompleted(ctx context.Context, portal *bridgev2
 	case "commandExecution", "fileChange", "mcpToolCall":
 		var it map[string]any
 		_ = json.Unmarshal(raw, &it)
-		statusVal := strings.TrimSpace(itemStringField(it, "status"))
+		statusVal, _ := it["status"].(string)
+		statusVal = strings.TrimSpace(statusVal)
 		errText := extractItemErrorMessage(it)
 		switch statusVal {
 		case "declined":
@@ -1191,11 +1235,6 @@ type providerJSONToolOutputOptions struct {
 	collectArtifacts        bool
 	collectCitations        bool
 	appendBeforeSideEffects bool
-}
-
-func itemStringField(it map[string]any, key string) string {
-	v, _ := it[key].(string)
-	return v
 }
 
 func extractItemErrorMessage(it map[string]any) string {
@@ -1335,6 +1374,7 @@ func (cc *CodexClient) ensureRPC(ctx context.Context) error {
 	// Approval requests.
 	rpc.HandleRequest("item/commandExecution/requestApproval", cc.handleCommandApprovalRequest)
 	rpc.HandleRequest("item/fileChange/requestApproval", cc.handleFileChangeApprovalRequest)
+	rpc.HandleRequest("item/permissions/requestApproval", cc.handlePermissionsApprovalRequest)
 
 	return nil
 }
@@ -1405,6 +1445,13 @@ func (cc *CodexClient) dispatchNotifications() {
 				Msg("Codex terminal notification")
 		}
 		key := codexTurnKey(threadID, turnID)
+		if evt.Method == "turn/completed" {
+			cc.activeMu.Lock()
+			if active := cc.activeTurns[key]; active != nil && (active.state == nil || active.state.turn == nil) {
+				delete(cc.activeTurns, key)
+			}
+			cc.activeMu.Unlock()
+		}
 
 		cc.subMu.Lock()
 		ch := cc.turnSubs[key]
@@ -1586,6 +1633,58 @@ func (cc *CodexClient) buildSandboxPolicy(cwd string) map[string]any {
 	}
 }
 
+func (cc *CodexClient) buildThreadSessionParams(cwd string) map[string]any {
+	return map[string]any{
+		"approvalPolicy": "untrusted",
+		"cwd":            cwd,
+		"sandbox":        cc.buildSandboxPolicy(cwd),
+	}
+}
+
+func newRecoveredStreamingState(turnID, model string) *streamingState {
+	return &streamingState{
+		turnID:                 strings.TrimSpace(turnID),
+		currentModel:           strings.TrimSpace(model),
+		startedAtMs:            time.Now().UnixMilli(),
+		firstToken:             true,
+		codexTimelineNotices:   make(map[string]bool),
+		codexToolOutputBuffers: make(map[string]*strings.Builder),
+	}
+}
+
+func (cc *CodexClient) restoreRecoveredActiveTurns(portal *bridgev2.Portal, meta *PortalMetadata, thread codexThread, model string) {
+	if cc == nil || portal == nil || meta == nil {
+		return
+	}
+	threadID := strings.TrimSpace(thread.ID)
+	if threadID == "" {
+		return
+	}
+	cc.activeMu.Lock()
+	defer cc.activeMu.Unlock()
+	for _, turn := range thread.Turns {
+		if !strings.EqualFold(strings.TrimSpace(turn.Status), "inProgress") {
+			continue
+		}
+		turnID := strings.TrimSpace(turn.ID)
+		if turnID == "" {
+			continue
+		}
+		key := codexTurnKey(threadID, turnID)
+		if _, exists := cc.activeTurns[key]; exists {
+			continue
+		}
+		cc.activeTurns[key] = &codexActiveTurn{
+			portal:   portal,
+			meta:     meta,
+			state:    newRecoveredStreamingState(turnID, model),
+			threadID: threadID,
+			turnID:   turnID,
+			model:    strings.TrimSpace(model),
+		}
+	}
+}
+
 func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) error {
 	if meta == nil || portal == nil {
 		return errors.New("missing portal/meta")
@@ -1607,9 +1706,8 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	}
 	model := cc.connector.Config.Codex.DefaultModel
 	var resp struct {
-		Thread struct {
-			ID string `json:"id"`
-		} `json:"thread"`
+		Thread codexThread `json:"thread"`
+		Model  string      `json:"model"`
 	}
 	callCtx, cancelCall := context.WithTimeout(ctx, 60*time.Second)
 	defer cancelCall()
@@ -1617,7 +1715,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 		"model":          model,
 		"cwd":            meta.CodexCwd,
 		"approvalPolicy": "untrusted",
-		"sandboxPolicy":  cc.buildSandboxPolicy(meta.CodexCwd),
+		"sandbox":        cc.buildSandboxPolicy(meta.CodexCwd),
 	}, &resp)
 	if err != nil {
 		return err
@@ -1653,9 +1751,8 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 		return err
 	}
 	var resp struct {
-		Thread struct {
-			ID string `json:"id"`
-		} `json:"thread"`
+		Thread codexThread `json:"thread"`
+		Model  string      `json:"model"`
 	}
 	callCtx, cancelCall := context.WithTimeout(ctx, 60*time.Second)
 	defer cancelCall()
@@ -1664,7 +1761,8 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 		"model":          cc.connector.Config.Codex.DefaultModel,
 		"cwd":            meta.CodexCwd,
 		"approvalPolicy": "untrusted",
-		"sandboxPolicy":  cc.buildSandboxPolicy(meta.CodexCwd),
+		"sandbox":        cc.buildSandboxPolicy(meta.CodexCwd),
+		"persistExtendedHistory": true,
 	}, &resp)
 	if err != nil {
 		// If the stored thread can't be resumed (missing/corrupt), fall back to a fresh thread.
@@ -1677,6 +1775,7 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 	cc.loadedMu.Lock()
 	cc.loadedThreads[threadID] = true
 	cc.loadedMu.Unlock()
+	cc.restoreRecoveredActiveTurns(portal, meta, resp.Thread, resp.Model)
 	return nil
 }
 
@@ -1846,6 +1945,9 @@ func (cc *CodexClient) processPendingCodex(roomID id.RoomID) {
 // Streaming helpers (Codex -> Matrix AI SDK chunk mapping)
 
 func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model string, includeUsage bool, finishReason string) map[string]any {
+	if state != nil && strings.TrimSpace(state.currentModel) != "" {
+		model = state.currentModel
+	}
 	return msgconv.BuildUIMessageMetadata(msgconv.UIMessageMetadataParams{
 		TurnID:           state.turnID,
 		AgentID:          state.agentID,
@@ -1863,6 +1965,9 @@ func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model strin
 }
 
 func buildMessageMetadata(state *streamingState, turnID string, model string, finishReason string, canonicalUIMessage map[string]any) *MessageMetadata {
+	if state != nil && strings.TrimSpace(state.currentModel) != "" {
+		model = state.currentModel
+	}
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
 			Body:               state.accumulated.String(),
@@ -1910,8 +2015,6 @@ type pendingToolApprovalDataCodex struct {
 
 type codexSDKApprovalHandle struct {
 	client     *CodexClient
-	portal     *bridgev2.Portal
-	state      *streamingState
 	turn       *bridgesdk.Turn
 	approvalID string
 	toolCallID string
@@ -1938,34 +2041,30 @@ func (h *codexSDKApprovalHandle) Wait(ctx context.Context) (bridgesdk.ToolApprov
 	decision, ok := h.client.waitToolApproval(ctx, h.approvalID)
 	reason := strings.TrimSpace(decision.Reason)
 	if reason == "" {
-		reason = agentremote.ApprovalReasonTimeout
-		if ctx != nil && ctx.Err() != nil {
-			reason = agentremote.ApprovalReasonCancelled
-		}
+		reason = approvalTimeoutOrCancelReason(ctx)
 	}
+	approved := ok && decision.Approved
 	if h.turn != nil {
-		h.turn.Approvals().Respond(h.turn.Context(), h.approvalID, h.toolCallID, ok && decision.Approved, reason)
-		if !(ok && decision.Approved) {
+		h.turn.Approvals().Respond(h.turn.Context(), h.approvalID, h.toolCallID, approved, reason)
+		if !approved {
 			h.turn.Writer().Tools().Denied(h.turn.Context(), h.toolCallID)
 		}
 	}
 	return bridgesdk.ToolApprovalResponse{
-		Approved: ok && decision.Approved,
+		Approved: approved,
 		Always:   decision.Always,
 		Reason:   reason,
 	}, nil
 }
 
-func (cc *CodexClient) requestSDKApproval(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	turn *bridgesdk.Turn,
-	req bridgesdk.ApprovalRequest,
-) bridgesdk.ApprovalHandle {
-	if cc == nil || portal == nil {
-		return &codexSDKApprovalHandle{toolCallID: req.ToolCallID}
+func approvalTimeoutOrCancelReason(ctx context.Context) string {
+	if ctx != nil && ctx.Err() != nil {
+		return agentremote.ApprovalReasonCancelled
 	}
+	return agentremote.ApprovalReasonTimeout
+}
+
+func normalizeSDKApprovalRequest(req bridgesdk.ApprovalRequest) (string, time.Duration, agentremote.ApprovalPromptPresentation) {
 	approvalID := strings.TrimSpace(req.ApprovalID)
 	if approvalID == "" {
 		approvalID = fmt.Sprintf("codex-%d", time.Now().UnixNano())
@@ -1981,46 +2080,73 @@ func (cc *CodexClient) requestSDKApproval(
 	if req.Presentation != nil {
 		presentation = *req.Presentation
 	}
+	return approvalID, ttl, presentation
+}
+
+func (cc *CodexClient) sendSDKApprovalPrompt(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	turn *bridgesdk.Turn,
+	approvalID string,
+	ttl time.Duration,
+	presentation agentremote.ApprovalPromptPresentation,
+	toolCallID string,
+	toolName string,
+) {
+	if cc == nil || cc.approvalFlow == nil || cc.UserLogin == nil || portal == nil {
+		return
+	}
+	params := agentremote.ApprovalPromptMessageParams{
+		ApprovalID:   approvalID,
+		ToolCallID:   toolCallID,
+		ToolName:     toolName,
+		Presentation: presentation,
+	}
+	if turn != nil {
+		params.TurnID = turn.ID()
+		params.ExpiresAt = time.Now().Add(ttl)
+		cc.approvalFlow.SendPrompt(turn.Context(), portal, agentremote.SendPromptParams{
+			ApprovalPromptMessageParams: params,
+			RoomID:                      portal.MXID,
+			OwnerMXID:                   cc.UserLogin.UserMXID,
+		})
+		return
+	}
+	if state == nil {
+		return
+	}
+	params.TurnID = state.turnID
+	params.ReplyToEventID = state.initialEventID
+	params.ExpiresAt = agentremote.ComputeApprovalExpiry(int(ttl / time.Second))
+	cc.approvalFlow.SendPrompt(ctx, portal, agentremote.SendPromptParams{
+		ApprovalPromptMessageParams: params,
+		RoomID:                      portal.MXID,
+		OwnerMXID:                   cc.UserLogin.UserMXID,
+	})
+}
+
+func (cc *CodexClient) requestSDKApproval(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	turn *bridgesdk.Turn,
+	req bridgesdk.ApprovalRequest,
+) bridgesdk.ApprovalHandle {
+	if cc == nil || portal == nil {
+		return &codexSDKApprovalHandle{toolCallID: req.ToolCallID}
+	}
+	approvalID, ttl, presentation := normalizeSDKApprovalRequest(req)
 	cc.setApprovalStateTracking(state, approvalID, req.ToolCallID, req.ToolName)
 	cc.registerToolApproval(portal.MXID, approvalID, req.ToolCallID, req.ToolName, presentation, ttl)
 	if turn != nil {
 		turn.Approvals().EmitRequest(turn.Context(), approvalID, req.ToolCallID)
-		cc.approvalFlow.SendPrompt(turn.Context(), portal, agentremote.SendPromptParams{
-			ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
-				ApprovalID:   approvalID,
-				ToolCallID:   req.ToolCallID,
-				ToolName:     req.ToolName,
-				TurnID:       turn.ID(),
-				Presentation: presentation,
-				ExpiresAt:    time.Now().Add(ttl),
-			},
-			RoomID:    portal.MXID,
-			OwnerMXID: cc.UserLogin.UserMXID,
-		})
-	} else {
-		if state != nil && state.turn != nil {
-			state.turn.Approvals().EmitRequest(ctx, approvalID, req.ToolCallID)
-		}
-		if state != nil {
-			cc.approvalFlow.SendPrompt(ctx, portal, agentremote.SendPromptParams{
-				ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
-					ApprovalID:     approvalID,
-					ToolCallID:     req.ToolCallID,
-					ToolName:       req.ToolName,
-					TurnID:         state.turnID,
-					Presentation:   presentation,
-					ReplyToEventID: state.initialEventID,
-					ExpiresAt:      agentremote.ComputeApprovalExpiry(int(ttl / time.Second)),
-				},
-				RoomID:    portal.MXID,
-				OwnerMXID: cc.UserLogin.UserMXID,
-			})
-		}
+	} else if state != nil && state.turn != nil {
+		state.turn.Approvals().EmitRequest(ctx, approvalID, req.ToolCallID)
 	}
+	cc.sendSDKApprovalPrompt(ctx, portal, state, turn, approvalID, ttl, presentation, req.ToolCallID, req.ToolName)
 	return &codexSDKApprovalHandle{
 		client:     cc,
-		portal:     portal,
-		state:      state,
 		turn:       turn,
 		approvalID: approvalID,
 		toolCallID: req.ToolCallID,
@@ -2047,13 +2173,9 @@ func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) 
 	approvalID = strings.TrimSpace(approvalID)
 	decision, ok := cc.approvalFlow.Wait(ctx, approvalID)
 	if !ok {
-		reason := agentremote.ApprovalReasonTimeout
-		if ctx.Err() != nil {
-			reason = agentremote.ApprovalReasonCancelled
-		}
 		decision = agentremote.ApprovalDecisionPayload{
 			ApprovalID: approvalID,
-			Reason:     reason,
+			Reason:     approvalTimeoutOrCancelReason(ctx),
 		}
 		cc.approvalFlow.FinishResolved(approvalID, decision)
 		return decision, false
