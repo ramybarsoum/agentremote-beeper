@@ -27,7 +27,7 @@ func (oc *AIClient) materializePortalRoom(
 	if oc == nil || oc.UserLogin == nil {
 		return fmt.Errorf("AIClient not initialized: missing UserLogin")
 	}
-	_, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
+	created, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
 		Login:            oc.UserLogin,
 		Portal:           portal,
 		ChatInfo:         chatInfo,
@@ -46,7 +46,7 @@ func (oc *AIClient) materializePortalRoom(
 	if err != nil {
 		return err
 	}
-	if opts.SendWelcome {
+	if created && opts.SendWelcome {
 		oc.sendWelcomeMessage(ctx, portal)
 	}
 	return nil

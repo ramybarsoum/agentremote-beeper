@@ -7,6 +7,7 @@ import (
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
 	"github.com/beeper/agentremote/pkg/aidb"
@@ -14,7 +15,9 @@ import (
 )
 
 func NewAIConnector() *OpenAIConnector {
-	oc := &OpenAIConnector{}
+	oc := &OpenAIConnector{
+		clients: make(map[networkid.UserLoginID]bridgev2.NetworkAPI),
+	}
 	oc.sdkConfig = bridgesdk.NewStandardConnectorConfig(bridgesdk.StandardConnectorConfigParams{
 		Name:          "ai",
 		Description:   "A Matrix↔AI bridge built on mautrix-go bridgev2.",

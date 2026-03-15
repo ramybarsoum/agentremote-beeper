@@ -718,7 +718,7 @@ func (oc *AIClient) describeImageWithEntry(
 	modelIDForAPI := oc.modelIDForAPI(ResolveAlias(modelID))
 	var resp *GenerateResponse
 	if entryProvider == "openrouter" && normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider) != "openrouter" {
-		resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt)
+		resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt, capCfg, entry)
 	} else {
 		resp, err = oc.provider.Generate(ctx, GenerateParams{
 			Model:               modelIDForAPI,
@@ -868,7 +868,7 @@ func (oc *AIClient) describeVideoWithEntry(
 		var resp *GenerateResponse
 		currentProvider := normalizeMediaProviderID(loginMetadata(oc.UserLogin).Provider)
 		if currentProvider != "" && currentProvider != providerID {
-			resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt)
+			resp, err = oc.generateWithOpenRouter(ctx, modelIDForAPI, ctxPrompt, capCfg, entry)
 		} else {
 			resp, err = oc.provider.Generate(ctx, GenerateParams{
 				Model:               modelIDForAPI,
@@ -916,23 +916,12 @@ func (oc *AIClient) generateWithOpenRouter(
 	ctx context.Context,
 	modelID string,
 	promptContext PromptContext,
+	capCfg *MediaUnderstandingConfig,
+	entry MediaUnderstandingModelConfig,
 ) (*GenerateResponse, error) {
-	if oc == nil || oc.connector == nil {
-		return nil, errors.New("missing connector")
-	}
-	apiKey := strings.TrimSpace(oc.resolveMediaProviderAPIKey("openrouter", "", ""))
-	if apiKey == "" {
-		return nil, errors.New("missing API key for openrouter")
-	}
-	baseURL := resolveOpenRouterMediaBaseURL(oc)
-	headers := openRouterHeaders()
-	pdfEngine := oc.connector.Config.Providers.OpenRouter.DefaultPDFEngine
-	if pdfEngine == "" {
-		pdfEngine = "mistral-ocr"
-	}
-	userID := ""
-	if oc.UserLogin != nil && oc.UserLogin.User.MXID != "" {
-		userID = oc.UserLogin.User.MXID.String()
+	apiKey, baseURL, headers, pdfEngine, userID, err := oc.resolveOpenRouterMediaConfig(capCfg, entry)
+	if err != nil {
+		return nil, err
 	}
 	provider, err := NewOpenAIProviderWithPDFPlugin(apiKey, baseURL, userID, pdfEngine, headers, oc.log)
 	if err != nil {
@@ -947,6 +936,37 @@ func (oc *AIClient) generateWithOpenRouter(
 		return provider.generateChatCompletions(ctx, params)
 	}
 	return provider.Generate(ctx, params)
+}
+
+func (oc *AIClient) resolveOpenRouterMediaConfig(
+	capCfg *MediaUnderstandingConfig,
+	entry MediaUnderstandingModelConfig,
+) (apiKey string, baseURL string, headers map[string]string, pdfEngine string, userID string, err error) {
+	if oc == nil || oc.connector == nil {
+		err = errors.New("missing connector")
+		return
+	}
+	headers = openRouterHeaders()
+	for key, value := range mergeMediaHeaders(capCfg, entry) {
+		headers[key] = value
+	}
+	apiKey = strings.TrimSpace(oc.resolveMediaProviderAPIKey("openrouter", entry.Profile, entry.PreferredProfile))
+	if apiKey == "" && !hasProviderAuthHeader("openrouter", headers) {
+		err = errors.New("missing API key for openrouter")
+		return
+	}
+	baseURL = strings.TrimSpace(resolveMediaBaseURL(capCfg, entry))
+	if baseURL == "" {
+		baseURL = resolveOpenRouterMediaBaseURL(oc)
+	}
+	pdfEngine = oc.connector.Config.Providers.OpenRouter.DefaultPDFEngine
+	if pdfEngine == "" {
+		pdfEngine = "mistral-ocr"
+	}
+	if oc.UserLogin != nil && oc.UserLogin.User.MXID != "" {
+		userID = oc.UserLogin.User.MXID.String()
+	}
+	return
 }
 
 func resolveOpenRouterMediaBaseURL(oc *AIClient) string {

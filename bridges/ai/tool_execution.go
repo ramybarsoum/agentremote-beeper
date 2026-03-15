@@ -56,9 +56,13 @@ var toolDisplayTitle = streamui.ToolDisplayTitle
 // parseToolArgs normalizes and parses tool arguments JSON into a map.
 func parseToolArgs(argsJSON string) (string, map[string]any, error) {
 	argsJSON = normalizeToolArgsJSON(argsJSON)
-	var args map[string]any
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+	var parsed any
+	if err := json.Unmarshal([]byte(argsJSON), &parsed); err != nil {
 		return "", nil, fmt.Errorf("invalid tool arguments: %w", err)
+	}
+	args, ok := parsed.(map[string]any)
+	if !ok {
+		return argsJSON, nil, nil
 	}
 	return argsJSON, args, nil
 }
@@ -66,18 +70,36 @@ func parseToolArgs(argsJSON string) (string, map[string]any, error) {
 // executeBuiltinTool finds and executes a builtin tool by name.
 // For Builder rooms, this also handles boss agent tools. Session tools are handled for all rooms.
 func (oc *AIClient) executeBuiltinTool(ctx context.Context, portal *bridgev2.Portal, toolName string, argsJSON string) (string, error) {
+	toolName = strings.TrimSpace(toolName)
+	if toolpolicy.IsOwnerOnlyToolName(toolName) {
+		senderID := ""
+		if btc := GetBridgeToolContext(ctx); btc != nil {
+			senderID = btc.SenderID
+		}
+		var cfg *Config
+		if oc != nil && oc.connector != nil {
+			cfg = &oc.connector.Config
+		}
+		if !isOwnerAllowed(cfg, senderID) {
+			return "", errors.New("tool restricted to owner senders")
+		}
+	}
 	argsJSON, args, err := parseToolArgs(argsJSON)
 	if err != nil {
 		return "", err
+	}
+	execArgs := args
+	if execArgs == nil {
+		execArgs = parseToolInputPayload(argsJSON)
 	}
 	var meta *PortalMetadata
 	if portal != nil {
 		meta = portalMeta(portal)
 	}
-	if handled, result, err := oc.executeIntegratedTool(ctx, portal, meta, strings.TrimSpace(toolName), args, argsJSON); handled {
+	if handled, result, err := oc.executeIntegratedTool(ctx, portal, meta, toolName, args, argsJSON); handled {
 		return result, err
 	}
-	return oc.executeBuiltinToolDirect(ctx, portal, toolName, args)
+	return oc.executeBuiltinToolDirect(ctx, portal, toolName, execArgs)
 }
 
 func (oc *AIClient) executeBuiltinToolDirect(ctx context.Context, portal *bridgev2.Portal, toolName string, args map[string]any) (string, error) {

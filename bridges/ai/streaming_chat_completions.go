@@ -20,6 +20,22 @@ func (a *chatCompletionsTurnAdapter) TrackRoomRunStreaming() bool {
 	return false
 }
 
+func (a *chatCompletionsTurnAdapter) handleStreamStepError(
+	ctx context.Context,
+	params openai.ChatCompletionNewParams,
+	currentMessages []openai.ChatCompletionMessageParamUnion,
+	stepErr error,
+) (*ContextLengthError, error) {
+	if errors.Is(stepErr, context.Canceled) {
+		return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "cancelled", stepErr)
+	}
+	if cle := ParseContextLengthError(stepErr); cle != nil {
+		return cle, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "context-length", stepErr)
+	}
+	logChatCompletionsFailure(a.log, stepErr, params, a.meta, currentMessages, "stream_err")
+	return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "error", stepErr)
+}
+
 func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 	ctx context.Context,
 	evt *event.Event,
@@ -104,14 +120,7 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 			}
 			return false, nil, nil
 		}, func(stepErr error) (*ContextLengthError, error) {
-			if errors.Is(stepErr, context.Canceled) {
-				return nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "cancelled", stepErr)
-			}
-			if cle := ParseContextLengthError(stepErr); cle != nil {
-				return cle, nil
-			}
-			logChatCompletionsFailure(log, stepErr, params, meta, currentMessages, "stream_err")
-			return nil, oc.finishStreamingWithFailure(ctx, log, portal, state, meta, "error", stepErr)
+			return a.handleStreamStepError(ctx, params, currentMessages, stepErr)
 		})
 	if cle != nil || err != nil {
 		return false, cle, err

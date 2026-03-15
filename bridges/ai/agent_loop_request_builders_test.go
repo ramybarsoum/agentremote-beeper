@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/shared"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 )
@@ -54,5 +55,37 @@ func TestAgentLoopRequestBuildersShareModelAndTokenSettings(t *testing.T) {
 	}
 	if responsesParams.Instructions.Value != "system prompt" {
 		t.Fatalf("expected responses instructions to use shared system prompt, got %q", responsesParams.Instructions.Value)
+	}
+	if responsesParams.Reasoning.Effort != shared.ReasoningEffortLow {
+		t.Fatalf("expected responses reasoning effort low, got %q", responsesParams.Reasoning.Effort)
+	}
+}
+
+func TestBuildResponsesAgentLoopParamsOmitsUnsetMaxTokens(t *testing.T) {
+	oc := &AIClient{
+		connector: &OpenAIConnector{},
+		UserLogin: &bridgev2.UserLogin{UserLogin: &database.UserLogin{Metadata: &UserLoginMetadata{
+			Provider: ProviderOpenRouter,
+			ModelCache: &ModelCache{Models: []ModelInfo{{
+				ID:                "openai/gpt-4o-mini",
+				MaxOutputTokens:   0,
+				SupportsReasoning: false,
+			}}},
+		}}},
+	}
+	meta := &PortalMetadata{
+		ResolvedTarget: &ResolvedTarget{
+			Kind:    ResolvedTargetModel,
+			ModelID: "openai/gpt-4o-mini",
+		},
+	}
+
+	responsesParams := oc.buildResponsesAgentLoopParams(context.Background(), meta, nil, false)
+
+	if responsesParams.MaxOutputTokens.Valid() {
+		t.Fatalf("expected responses max output tokens to be unset, got %d", responsesParams.MaxOutputTokens.Value)
+	}
+	if responsesParams.Reasoning.Effort != "" {
+		t.Fatalf("expected responses reasoning effort to be unset, got %q", responsesParams.Reasoning.Effort)
 	}
 }

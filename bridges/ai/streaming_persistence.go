@@ -7,6 +7,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/sdk"
@@ -16,16 +18,24 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 	if state == nil {
 		return nil
 	}
-	if len(uiMessage) == 0 {
+	turn := state.turn
+	turnID := ""
+	if turn != nil {
+		turnID = turn.ID()
+	}
+	if len(uiMessage) == 0 && turn != nil {
 		uiMessage = oc.buildStreamUIMessage(state, meta, nil)
 	}
-	turnData := turnDataFromStreamingState(state, uiMessage)
+	turnData := sdk.TurnData{}
+	if turn != nil {
+		turnData = turnDataFromStreamingState(state, uiMessage)
+	}
 	modelID := oc.effectiveModel(meta)
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
 			Body:                    state.accumulated.String(),
 			FinishReason:            state.finishReason,
-			TurnID:                  state.turn.ID(),
+			TurnID:                  turnID,
 			AgentID:                 state.agentID,
 			ToolCalls:               state.toolCalls,
 			StartedAtMs:             state.startedAtMs,
@@ -76,15 +86,28 @@ func (oc *AIClient) saveAssistantMessage(
 	state *streamingState,
 	meta *PortalMetadata,
 ) {
-	uiMessage := oc.buildStreamUIMessage(state, meta, nil)
+	if state == nil {
+		return
+	}
+	uiMessage := map[string]any(nil)
+	if state.turn != nil {
+		uiMessage = oc.buildStreamUIMessage(state, meta, nil)
+	}
 	fullMeta := oc.buildStreamingMessageMetadata(state, meta, uiMessage)
+	turn := state.turn
+	networkMessageID := networkid.MessageID("")
+	initialEventID := id.EventID("")
+	if turn != nil {
+		networkMessageID = turn.NetworkMessageID()
+		initialEventID = turn.InitialEventID()
+	}
 
 	agentremote.UpsertAssistantMessage(ctx, agentremote.UpsertAssistantMessageParams{
 		Login:            oc.UserLogin,
 		Portal:           portal,
 		SenderID:         modelUserID(oc.effectiveModel(meta)),
-		NetworkMessageID: state.turn.NetworkMessageID(),
-		InitialEventID:   state.turn.InitialEventID(),
+		NetworkMessageID: networkMessageID,
+		InitialEventID:   initialEventID,
 		Metadata:         fullMeta,
 		Logger:           log,
 	})

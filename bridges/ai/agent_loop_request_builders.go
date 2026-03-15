@@ -106,19 +106,21 @@ func (oc *AIClient) buildResponsesAgentLoopParams(
 	settings := oc.buildAgentLoopRequestSettings(meta)
 	descriptors := oc.selectedStreamingToolDescriptors(ctx, meta, allowResolvedBossAgent)
 	params := responses.ResponseNewParams{
-		Model:           shared.ResponsesModel(settings.model),
-		MaxOutputTokens: openai.Int(int64(settings.maxTokens)),
+		Model: shared.ResponsesModel(settings.model),
 		Input: responses.ResponseNewParamsInputUnion{
 			OfInputItemList: input,
 		},
 		Tools: dedupeToolParams(descriptorsToResponsesTools(descriptors, resolveToolStrictMode(oc.isOpenRouterProvider()))),
 	}
+	if settings.maxTokens > 0 {
+		params.MaxOutputTokens = openai.Int(int64(settings.maxTokens))
+	}
 	if settings.systemPrompt != "" {
 		params.Instructions = openai.String(settings.systemPrompt)
 	}
-	if settings.reasoningEffort != "" {
+	if effort, ok := reasoningEffortMap[settings.reasoningEffort]; ok {
 		params.Reasoning = shared.ReasoningParam{
-			Effort: shared.ReasoningEffort(settings.reasoningEffort),
+			Effort: shared.ReasoningEffort(effort),
 		}
 	}
 	logToolParamDuplicates(&oc.log, params.Tools)

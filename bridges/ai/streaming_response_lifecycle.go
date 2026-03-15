@@ -21,7 +21,7 @@ func (oc *AIClient) handleResponseLifecycleEvent(
 	}
 
 	switch eventType {
-	case "response.created", "response.queued", "response.in_progress":
+	case "response.created", "response.queued", "response.in_progress", "response.completed":
 		// No additional state changes needed.
 	case "response.failed":
 		state.finishReason = "error"

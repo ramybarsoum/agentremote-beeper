@@ -35,10 +35,7 @@ func (oc *AIClient) createStreamingTurn(
 	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, sdkConfig, oc)
 	turn := conv.StartTurn(ctx, nil, &bridgesdk.SourceRef{EventID: string(sourceEventID), SenderID: senderID})
 	turn.SetSender(sender)
-	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(sdkTurn *bridgesdk.Turn, _ string) any {
-		if sdkTurn != nil {
-			state.turn = sdkTurn
-		}
+	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, _ string) any {
 		return oc.buildStreamingMessageMetadata(state, meta, nil)
 	}))
 	turn.Approvals().SetHandler(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
@@ -49,7 +46,7 @@ func (oc *AIClient) createStreamingTurn(
 		if !state.suppressSend {
 			oc.ensureGhostDisplayName(sendCtx, oc.effectiveModel(meta))
 		}
-		evtID, msgID := oc.sendInitialStreamMessage(sendCtx, portal, "...", state.turn.ID(), state.replyTarget)
+		evtID, msgID := oc.sendInitialStreamMessage(sendCtx, portal, "...", turn.ID(), state.replyTarget)
 		return evtID, msgID, nil
 	})
 
@@ -72,7 +69,7 @@ func (oc *AIClient) createStreamingTurn(
 			Login:            oc.UserLogin,
 			Portal:           portal,
 			Sender:           oc.senderForPortal(callCtx, portal),
-			NetworkMessageID: state.turn.NetworkMessageID(),
+			NetworkMessageID: turn.NetworkMessageID(),
 			SuppressSend:     state.suppressSend,
 			VisibleBody:      visibleStreamingText(state),
 			FallbackBody:     state.accumulated.String(),

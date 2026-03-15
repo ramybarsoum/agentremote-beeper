@@ -10,6 +10,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func newTestAIClient(owner id.UserID) *AIClient {
@@ -149,5 +150,68 @@ func TestToolApprovals_TimeoutAutoDeny(t *testing.T) {
 	_, _, ok := oc.waitToolApproval(context.Background(), approvalID)
 	if ok {
 		t.Fatalf("expected timeout (ok=false)")
+	}
+}
+
+func TestToolApprovals_WaitResolvedWithoutUserLogin(t *testing.T) {
+	oc := newTestAIClient(id.UserID("@owner:example.com"))
+	approvalID := "approval-without-login"
+	if _, created := oc.registerToolApproval(ToolApprovalParams{
+		ApprovalID: approvalID,
+		ToolCallID: "call-1",
+		ToolName:   "message",
+		TTL:        time.Second,
+	}); !created {
+		t.Fatalf("expected approval to be registered")
+	}
+	oc.UserLogin = nil
+	if err := oc.approvalFlow.Resolve(approvalID, agentremote.ApprovalDecisionPayload{
+		ApprovalID: approvalID,
+		Approved:   true,
+	}); err != nil {
+		t.Fatalf("resolve failed: %v", err)
+	}
+
+	resolution, _, ok := oc.waitToolApproval(context.Background(), approvalID)
+	if !ok {
+		t.Fatalf("expected resolved approval to be returned even without UserLogin")
+	}
+	if !approvalAllowed(resolution.Decision) {
+		t.Fatalf("expected approval decision, got %#v", resolution.Decision)
+	}
+}
+
+func TestToolApprovals_CancelDoesNotFinishResolved(t *testing.T) {
+	oc := newTestAIClient(id.UserID("@owner:example.com"))
+	approvalID := "approval-cancelled"
+	if _, created := oc.registerToolApproval(ToolApprovalParams{
+		ApprovalID: approvalID,
+		ToolCallID: "call-1",
+		ToolName:   "message",
+		TTL:        time.Second,
+	}); !created {
+		t.Fatalf("expected approval to be registered")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	resolution, _, ok := oc.waitToolApproval(ctx, approvalID)
+	if ok {
+		t.Fatalf("expected cancelled wait to return ok=false")
+	}
+	if resolution.Decision.Reason != agentremote.ApprovalReasonCancelled {
+		t.Fatalf("expected cancelled reason, got %#v", resolution.Decision)
+	}
+	if resolution.Decision.State != airuntime.ToolApprovalDenied {
+		t.Fatalf("expected denied state on cancellation, got %#v", resolution.Decision)
+	}
+}
+
+func TestIsBuiltinToolDeniedFailsClosedWithoutTurn(t *testing.T) {
+	oc := &AIClient{}
+	denied := oc.isBuiltinToolDenied(context.Background(), nil, &streamingState{}, &activeToolCall{callID: "call-1"}, "message", map[string]any{"action": "send"})
+	if !denied {
+		t.Fatal("expected builtin approval to fail closed when turn is missing")
 	}
 }

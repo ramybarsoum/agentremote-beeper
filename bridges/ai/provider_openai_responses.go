@@ -57,6 +57,10 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 
 // GenerateStream generates a streaming response from OpenAI using the Responses API.
 func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GenerateParams) (<-chan StreamEvent, error) {
+	if bridgesdk.HasUnsupportedResponsesPromptContext(params.Context.PromptContext) {
+		return nil, fmt.Errorf("responses API does not support prompt context block types required by this request")
+	}
+
 	events := make(chan StreamEvent, 100)
 
 	go func() {

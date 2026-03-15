@@ -313,7 +313,7 @@ func (oc *AIClient) resolveToolApproval(approvalID string, approved bool, reason
 }
 
 func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (toolApprovalResolution, *pendingToolApprovalData, bool) {
-	if oc == nil || oc.UserLogin == nil {
+	if oc == nil || oc.approvalFlow == nil {
 		return toolApprovalResolution{}, nil, false
 	}
 	approvalID = strings.TrimSpace(approvalID)
@@ -332,12 +332,12 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 	decision, ok := oc.approvalFlow.Wait(ctx, approvalID)
 	if !ok {
 		reason := approvalWaitReason(ctx)
-		oc.approvalFlow.FinishResolved(approvalID, agentremote.ApprovalDecisionPayload{
-			ApprovalID: approvalID,
-			Reason:     reason,
-		})
 		state := airuntime.ToolApprovalDenied
 		if reason == agentremote.ApprovalReasonTimeout {
+			oc.approvalFlow.FinishResolved(approvalID, agentremote.ApprovalDecisionPayload{
+				ApprovalID: approvalID,
+				Reason:     reason,
+			})
 			state = airuntime.ToolApprovalTimedOut
 		}
 		resolution := toolApprovalResolution{
@@ -405,7 +405,7 @@ func (oc *AIClient) isBuiltinToolDenied(
 	toolName string,
 	argsObj map[string]any,
 ) (denied bool) {
-	if state == nil || tool == nil {
+	if state == nil || state.turn == nil || tool == nil {
 		return true
 	}
 	required, action := oc.builtinToolApprovalRequirement(toolName, argsObj)

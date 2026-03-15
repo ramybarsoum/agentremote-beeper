@@ -6,6 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote"
 )
@@ -14,6 +15,9 @@ func TestNewAIConnectorUsesSDKConfig(t *testing.T) {
 	conn := NewAIConnector()
 	if conn.sdkConfig == nil {
 		t.Fatal("expected sdkConfig to be initialized")
+	}
+	if conn.clients == nil {
+		t.Fatal("expected client cache map to be initialized")
 	}
 	if conn.ConnectorBase == nil {
 		t.Fatal("expected ConnectorBase to be initialized")
@@ -34,6 +38,17 @@ func TestNewAIConnectorUsesSDKConfig(t *testing.T) {
 	}
 	if name.DefaultPort != 29345 {
 		t.Fatalf("unexpected default port %d", name.DefaultPort)
+	}
+}
+
+func TestNewAIConnectorInitializesClientCacheMap(t *testing.T) {
+	conn := NewAIConnector()
+
+	loginID := networkid.UserLoginID("login-1")
+	conn.clients[loginID] = nil
+
+	if _, ok := conn.clients[loginID]; !ok {
+		t.Fatal("expected write to initialized client cache map to succeed")
 	}
 }
 
