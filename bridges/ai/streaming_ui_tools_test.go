@@ -85,3 +85,63 @@ func TestStartStreamingMCPApprovalAutoApprovedEmitsApprovalRequest(t *testing.T)
 		t.Fatalf("expected auto-approved reason, got %q", resp.Reason)
 	}
 }
+
+func TestBuildStreamUIMessageIncludesPendingApprovalState(t *testing.T) {
+	oc := newTestAIClient("@owner:example.com")
+	state := newTestStreamingStateWithTurn()
+	state.turn.SetSuppressSend(true)
+	state.writer().Tools().EnsureInputStart(context.Background(), "tool-call-1", nil, bridgesdk.ToolInputOptions{
+		ToolName:         "mcp.read_file",
+		ProviderExecuted: true,
+		DisplayTitle:     "Read file",
+	})
+
+	handle, err := oc.startStreamingMCPApproval(context.Background(), nil, state, ToolApprovalParams{
+		ApprovalID:   "approval-1",
+		ToolCallID:   "tool-call-1",
+		ToolName:     "mcp.read_file",
+		ToolKind:     ToolApprovalKindMCP,
+		RuleToolName: "read_file",
+		ServerLabel:  "filesystem",
+		Presentation: agentremote.ApprovalPromptPresentation{Title: "Read file"},
+		TTL:          time.Minute,
+	}, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if handle == nil {
+		t.Fatal("expected approval handle")
+	}
+
+	ui := oc.buildStreamUIMessage(state, nil, nil)
+	if ui == nil {
+		t.Fatal("expected canonical UI message")
+	}
+
+	rawParts, ok := ui["parts"].([]any)
+	if !ok {
+		t.Fatalf("expected parts array, got %T", ui["parts"])
+	}
+
+	found := false
+	for _, rawPart := range rawParts {
+		part, ok := rawPart.(map[string]any)
+		if !ok {
+			continue
+		}
+		if part["type"] != "tool" || part["toolCallId"] != "tool-call-1" {
+			continue
+		}
+		if part["state"] != "approval-requested" {
+			t.Fatalf("expected pending approval state, got %#v", part["state"])
+		}
+		approval, _ := part["approval"].(map[string]any)
+		if approval["id"] != "approval-1" {
+			t.Fatalf("expected approval id in persisted UI message, got %#v", approval["id"])
+		}
+		found = true
+	}
+	if !found {
+		t.Fatal("expected persisted UI message to include the pending approval tool part")
+	}
+}

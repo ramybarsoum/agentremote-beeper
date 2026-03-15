@@ -34,35 +34,11 @@ func (oc *AIClient) dispatchCompletionInternal(
 }
 
 func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, err error) {
-	// Check for auth errors (401/403) - trigger reauth with StateBadCredentials
-	if IsAuthError(err) {
-		oc.SetLoggedIn(false)
-		oc.UserLogin.BridgeState.Send(status.BridgeState{
-			StateEvent: status.StateBadCredentials,
-			Error:      AIAuthFailed,
-			Message:    "Authentication failed. Sign in again.",
-			Info: map[string]any{
-				"error": err.Error(),
-			},
-		})
-	}
-
-	// Check for billing errors - send transient disconnect with billing message
-	if IsBillingError(err) {
-		oc.UserLogin.BridgeState.Send(status.BridgeState{
-			StateEvent: status.StateTransientDisconnect,
-			Error:      AIBillingError,
-			Message:    "There's a billing issue with the AI provider. Check your account or credits.",
-		})
-	}
-
-	// Check for rate limit or overloaded errors - send transient disconnect
-	if IsRateLimitError(err) || IsOverloadedError(err) {
-		oc.UserLogin.BridgeState.Send(status.BridgeState{
-			StateEvent: status.StateTransientDisconnect,
-			Error:      AIRateLimited,
-			Message:    "You're sending requests too quickly. Wait a moment, then try again.",
-		})
+	if bridgeState, shouldMarkLoggedOut, ok := bridgeStateForError(err); ok {
+		if shouldMarkLoggedOut {
+			oc.SetLoggedIn(false)
+		}
+		oc.UserLogin.BridgeState.Send(bridgeState)
 	}
 
 	if portal == nil || portal.Bridge == nil {
@@ -96,6 +72,52 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 
 	// Track consecutive failures for provider health monitoring
 	oc.recordProviderError(ctx)
+}
+
+func bridgeStateForError(err error) (status.BridgeState, bool, bool) {
+	if err == nil {
+		return status.BridgeState{}, false, false
+	}
+
+	if IsAuthError(err) {
+		return status.BridgeState{
+			StateEvent: status.StateBadCredentials,
+			Error:      AIAuthFailed,
+			Message:    "Authentication failed. Sign in again.",
+			Info: map[string]any{
+				"error": err.Error(),
+			},
+		}, true, true
+	}
+
+	if IsPermissionDeniedError(err) {
+		return status.BridgeState{
+			StateEvent: status.StateUnknownError,
+			Error:      AIProviderError,
+			Message:    FormatUserFacingError(err),
+			Info: map[string]any{
+				"error": err.Error(),
+			},
+		}, false, true
+	}
+
+	if IsBillingError(err) {
+		return status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      AIBillingError,
+			Message:    "There's a billing issue with the AI provider. Check your account or credits.",
+		}, false, true
+	}
+
+	if IsRateLimitError(err) || IsOverloadedError(err) {
+		return status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      AIRateLimited,
+			Message:    "You're sending requests too quickly. Wait a moment, then try again.",
+		}, false, true
+	}
+
+	return status.BridgeState{}, false, false
 }
 
 // recordProviderError increments the consecutive error counter and escalates to a

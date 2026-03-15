@@ -329,10 +329,20 @@ func TestIsAuthError_ModelNotFound403(t *testing.T) {
 	}
 }
 
-func TestIsAuthError_Any403(t *testing.T) {
-	err := testOpenAIError(403, "forbidden", "permission_error", "permission denied")
+func TestIsAuthError_Credential403(t *testing.T) {
+	err := testOpenAIError(403, "forbidden", "authentication_error", "invalid api key")
 	if !IsAuthError(err) {
-		t.Fatal("expected generic 403 to be classified as auth")
+		t.Fatal("expected credential-style 403 to be classified as auth")
+	}
+}
+
+func TestIsPermissionDeniedError_AccessDenied403(t *testing.T) {
+	err := testOpenAIError(403, "access_denied", "invalid_request_error", "This feature requires the bridge:ai feature flag")
+	if IsAuthError(err) {
+		t.Fatal("expected access_denied 403 to not be classified as auth")
+	}
+	if !IsPermissionDeniedError(err) {
+		t.Fatal("expected access_denied 403 to be classified as permission denied")
 	}
 }
 
@@ -340,6 +350,14 @@ func TestFormatUserFacingError_ModelNotFound403(t *testing.T) {
 	err := testOpenAIError(403, "model_not_found", "invalid_request_error", "This model is not available")
 	msg := FormatUserFacingError(err)
 	if msg != "That model isn't available. Choose a different model." {
+		t.Fatalf("unexpected message: %q", msg)
+	}
+}
+
+func TestFormatUserFacingError_AccessDenied403(t *testing.T) {
+	err := testOpenAIError(403, "access_denied", "invalid_request_error", "This feature requires the bridge:ai feature flag")
+	msg := FormatUserFacingError(err)
+	if msg != "This feature requires the bridge:ai feature flag" {
 		t.Fatalf("unexpected message: %q", msg)
 	}
 }

@@ -2,6 +2,7 @@ package turns
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -112,5 +113,62 @@ func TestStreamSessionDoesNothingWithoutEditTarget(t *testing.T) {
 	case <-called:
 		t.Fatal("did not expect stream send without an edit target")
 	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+func TestStreamSessionApprovalRequestPersistsCheckpointWithoutFallback(t *testing.T) {
+	t.Helper()
+
+	var fallback atomic.Bool
+	hookCalled := make(chan struct{}, 1)
+	debouncedForce := make(chan bool, 1)
+
+	session := NewStreamSession(StreamSessionParams{
+		TurnID:  "turn-4",
+		AgentID: "agent-1",
+		GetStreamTarget: func() StreamTarget {
+			return StreamTarget{NetworkMessageID: networkid.MessageID("msg-4")}
+		},
+		ResolveTargetEventID: func(context.Context, StreamTarget) (id.EventID, error) {
+			return id.EventID("$event-4"), nil
+		},
+		GetRoomID: func() id.RoomID {
+			return id.RoomID("!room:example.com")
+		},
+		NextSeq:             func() int { return 1 },
+		RuntimeFallbackFlag: &fallback,
+		SendDebouncedEdit: func(_ context.Context, force bool) error {
+			debouncedForce <- force
+			return nil
+		},
+		SendHook: func(_ string, _ int, _ map[string]any, _ string) bool {
+			hookCalled <- struct{}{}
+			return true
+		},
+	})
+
+	session.EmitPart(context.Background(), map[string]any{
+		"type":       "tool-approval-request",
+		"approvalId": "approval-1",
+		"toolCallId": "tool-call-1",
+	})
+
+	select {
+	case <-hookCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected approval request to be streamed")
+	}
+
+	select {
+	case force := <-debouncedForce:
+		if !force {
+			t.Fatal("expected approval checkpoint edit to be forced")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected approval request to trigger a persisted checkpoint edit")
+	}
+
+	if fallback.Load() {
+		t.Fatal("did not expect approval checkpoint edit to switch stream transport into fallback mode")
 	}
 }

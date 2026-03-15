@@ -52,3 +52,24 @@ func TestModelRedirectTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveModelIDFromManifestAcceptsRawModelID(t *testing.T) {
+	const modelID = "google/gemini-2.0-flash-lite-001"
+	if got := resolveModelIDFromManifest(modelID); got != modelID {
+		t.Fatalf("expected raw model ID %q to resolve, got %q", modelID, got)
+	}
+}
+
+func TestParseModelFromGhostIDAcceptsEscapedGhostID(t *testing.T) {
+	const ghostID = "model-google%2Fgemini-2.0-flash-lite-001"
+	const want = "google/gemini-2.0-flash-lite-001"
+	if got := parseModelFromGhostID(ghostID); got != want {
+		t.Fatalf("expected ghost ID %q to parse to %q, got %q", ghostID, want, got)
+	}
+}
+
+func TestParseModelFromGhostIDRejectsMalformedEscaping(t *testing.T) {
+	if got := parseModelFromGhostID("model-%ZZ"); got != "" {
+		t.Fatalf("expected malformed ghost ID to be rejected, got %q", got)
+	}
+}

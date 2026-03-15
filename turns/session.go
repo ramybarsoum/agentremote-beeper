@@ -146,6 +146,7 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 	partType, _ := part["type"].(string)
 	partType = strings.TrimSpace(partType)
 	debounceEligible, forceDebounced := debouncedPartMode(partType)
+	persistCheckpoint := shouldPersistDebouncedCheckpoint(partType)
 
 	turnID := strings.TrimSpace(s.params.TurnID)
 	if turnID == "" {
@@ -195,6 +196,9 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 
 	// Try hook first; if it handles the event we're done.
 	if s.params.SendHook != nil && s.params.SendHook(turnID, seq, content, txnID) {
+		if persistCheckpoint {
+			_ = s.sendDebounced(context.Background(), true)
+		}
 		return
 	}
 
@@ -209,6 +213,9 @@ func (s *StreamSession) EmitPart(ctx context.Context, part map[string]any) {
 	}
 	eventContent := &event.Content{Raw: content}
 	_ = s.sendEphemeralWithRetry(ephemeralSender, eventContent, txnID, partType)
+	if persistCheckpoint && !s.useDebouncedMode() {
+		_ = s.sendDebounced(context.Background(), true)
+	}
 }
 
 func (s *StreamSession) resolveTargetEventID(ctx context.Context, target StreamTarget) (id.EventID, error) {
@@ -400,6 +407,15 @@ func debouncedPartMode(partType string) (eligible bool, force bool) {
 		return true, true
 	default:
 		return false, false
+	}
+}
+
+func shouldPersistDebouncedCheckpoint(partType string) bool {
+	switch partType {
+	case "tool-approval-request":
+		return true
+	default:
+		return false
 	}
 }
 

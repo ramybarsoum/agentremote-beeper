@@ -2,10 +2,13 @@ package ai
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/openai/openai-go/v3"
 )
 
 // ProxyError represents a structured error from the hungryserv proxy
@@ -272,6 +275,43 @@ func collapseConsecutiveDuplicateBlocks(s string) string {
 	return strings.Join(deduped, "\n\n")
 }
 
+func extractStructuredErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var apiErr *openai.Error
+	if errors.As(err, &apiErr) && strings.TrimSpace(apiErr.Message) != "" {
+		return strings.TrimSpace(apiErr.Message)
+	}
+
+	raw := safeErrorString(err)
+	if raw == "" {
+		return ""
+	}
+	if startIdx := strings.Index(raw, "{"); startIdx >= 0 {
+		raw = raw[startIdx:]
+	}
+
+	var nested struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if jsonErr := json.Unmarshal([]byte(raw), &nested); jsonErr == nil && strings.TrimSpace(nested.Error.Message) != "" {
+		return strings.TrimSpace(nested.Error.Message)
+	}
+
+	var flat struct {
+		Message string `json:"message"`
+	}
+	if jsonErr := json.Unmarshal([]byte(raw), &flat); jsonErr == nil && strings.TrimSpace(flat.Message) != "" {
+		return strings.TrimSpace(flat.Message)
+	}
+
+	return ""
+}
+
 // FormatUserFacingError transforms an API error into a user-friendly message.
 // Returns a sanitized message suitable for display to end users.
 func FormatUserFacingError(err error) string {
@@ -294,6 +334,12 @@ func FormatUserFacingError(err error) string {
 
 	if IsTimeoutError(err) {
 		return "The request timed out. Try again."
+	}
+
+	if IsPermissionDeniedError(err) {
+		if msg := extractStructuredErrorMessage(err); msg != "" {
+			return msg
+		}
 	}
 
 	if IsAuthError(err) {

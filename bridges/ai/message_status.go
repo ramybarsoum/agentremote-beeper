@@ -9,6 +9,7 @@ import (
 func messageStatusForError(err error) event.MessageStatus {
 	switch {
 	case IsAuthError(err),
+		IsPermissionDeniedError(err),
 		IsBillingError(err),
 		IsModelNotFound(err),
 		ParseContextLengthError(err) != nil,
@@ -29,7 +30,7 @@ func messageStatusReasonForError(err error) event.MessageStatusReason {
 		return event.MessageStatusUnsupported
 	}
 	switch {
-	case IsAuthError(err), IsBillingError(err):
+	case IsAuthError(err), IsPermissionDeniedError(err), IsBillingError(err):
 		return event.MessageStatusNoPermission
 	case IsModelNotFound(err), ParseContextLengthError(err) != nil, IsImageError(err):
 		return event.MessageStatusUnsupported

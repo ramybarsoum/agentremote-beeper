@@ -118,6 +118,12 @@ func TestQueueFallbackToolCompactionDecisions(t *testing.T) {
 	if d := DecideFallback(assertErr("invalid_api_key")); d.Action != FallbackActionAbort {
 		t.Fatalf("expected auth fallback action abort, got %#v", d)
 	}
+	if cls := ClassifyFallbackError(assertErr(`403 Forbidden {"message":"This feature requires the bridge:ai feature flag","type":"invalid_request_error","code":"access_denied"}`)); cls != FailureClassProviderHard {
+		t.Fatalf("expected access_denied 403 to classify as provider hard failure, got %s", cls)
+	}
+	if d := DecideFallback(assertErr(`403 Forbidden {"message":"This feature requires the bridge:ai feature flag","type":"invalid_request_error","code":"access_denied"}`)); d.Action != FallbackActionFailover {
+		t.Fatalf("expected access_denied fallback action failover, got %#v", d)
+	}
 	if cls := ClassifyFallbackError(assertErr(`403 Forbidden {"message":"This model is not available","code":"model_not_found"}`)); cls != FailureClassProviderHard {
 		t.Fatalf("expected model_not_found 403 to classify as provider hard failure, got %s", cls)
 	}

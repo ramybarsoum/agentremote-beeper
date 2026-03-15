@@ -220,22 +220,61 @@ var authPatterns = []string{
 	"incorrect api key",
 	"invalid token",
 	"unauthorized",
-	"forbidden",
-	"access denied",
 	"token has expired",
 	"no credentials found",
 	"no api key found",
 	"re-authenticate",
 	"oauth token refresh failed",
+	"authentication failed",
+	"authentication_error",
+}
+
+var permissionDeniedPatterns = []string{
+	"access_denied",
+	"feature flag",
+	"subscription",
+	"requires the",
+	"permission_error",
+}
+
+var permissionFallbackPatterns = []string{
+	"forbidden",
+	"access denied",
 	"insufficient permission",
 	"insufficient_permission",
 	"permission denied",
 }
 
+// IsPermissionDeniedError checks if the error is a non-auth permission or
+// entitlement failure, such as a missing feature flag or subscription.
+func IsPermissionDeniedError(err error) bool {
+	if err == nil || IsModelNotFound(err) {
+		return false
+	}
+
+	var apiErr *openai.Error
+	if errors.As(err, &apiErr) {
+		if apiErr.StatusCode == 403 {
+			if containsAnyInFields(permissionDeniedPatterns,
+				apiErr.Code, apiErr.Type, apiErr.Message, apiErr.RawJSON()) {
+				return true
+			}
+			if !containsAnyInFields(authPatterns,
+				apiErr.Code, apiErr.Type, apiErr.Message, apiErr.RawJSON()) &&
+				containsAnyInFields(permissionFallbackPatterns,
+					apiErr.Code, apiErr.Type, apiErr.Message, apiErr.RawJSON()) {
+				return true
+			}
+		}
+	}
+
+	return containsAnyPattern(err, permissionDeniedPatterns)
+}
+
 // IsAuthError checks if the error is an authentication error.
 // Checks openai.Error status codes first, then falls back to string pattern matching.
 func IsAuthError(err error) bool {
-	if IsModelNotFound(err) {
+	if IsModelNotFound(err) || IsPermissionDeniedError(err) {
 		return false
 	}
 
@@ -245,10 +284,14 @@ func IsAuthError(err error) bool {
 			return true
 		}
 		if apiErr.StatusCode == 403 {
+			if containsAnyInFields(authPatterns,
+				apiErr.Code, apiErr.Type, apiErr.Message, apiErr.RawJSON()) {
+				return true
+			}
 			return true
 		}
 	}
-	return containsAnyPattern(err, authPatterns)
+	return containsAnyPattern(err, authPatterns) || containsAnyPattern(err, permissionFallbackPatterns)
 }
 
 // IsModelNotFound checks if the error is a model not found (404) error

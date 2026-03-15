@@ -234,6 +234,180 @@ func TestApprovalFlow_HandleReaction_UnknownPendingShowsUnknown(t *testing.T) {
 	}
 }
 
+func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       networkid.UserLoginID("login"),
+			UserMXID: owner,
+		},
+		Bridge: &bridgev2.Bridge{},
+	}
+
+	var redacted bool
+	mirrorCh := make(chan string, 1)
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return login },
+	})
+	flow.testResolvePortal = func(_ context.Context, _ *bridgev2.UserLogin, _ id.RoomID) (*bridgev2.Portal, error) {
+		return portal, nil
+	}
+	flow.testRedactSingleReaction = func(_ *bridgev2.MatrixReaction) {
+		redacted = true
+	}
+	flow.testMirrorRemoteDecisionReaction = func(_ context.Context, _ *bridgev2.UserLogin, _ *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration, reactionKey string) {
+		if sender.Sender != MatrixSenderID(owner) {
+			t.Errorf("expected mirrored sender to be owner, got %q", sender.Sender)
+		}
+		if prompt.PromptMessageID != networkid.MessageID("msg-1") {
+			t.Errorf("expected prompt message id msg-1, got %q", prompt.PromptMessageID)
+		}
+		mirrorCh <- reactionKey
+	}
+	flow.testEditPromptToResolvedState = func(context.Context, *bridgev2.UserLogin, *bridgev2.Portal, bridgev2.EventSender, ApprovalPromptRegistration, ApprovalDecisionPayload) {
+	}
+	flow.testRedactPromptPlaceholderReacts = func(context.Context, *bridgev2.UserLogin, *bridgev2.Portal, bridgev2.EventSender, ApprovalPromptRegistration) error {
+		return nil
+	}
+
+	if _, created := flow.Register("approval-1", time.Minute, &testApprovalFlowData{}); !created {
+		t.Fatalf("expected pending approval to be created")
+	}
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptEventID:   id.EventID("$prompt"),
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	msg := &bridgev2.MatrixReaction{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
+			Event:  &event.Event{ID: id.EventID("$reaction"), Sender: owner},
+			Portal: portal,
+		},
+	}
+	if !flow.HandleReaction(context.Background(), msg, id.EventID("$wrong-target"), ApprovalReactionKeyAllowOnce) {
+		t.Fatalf("expected wrong-target approval reaction to be handled")
+	}
+	if flow.Get("approval-1") != nil {
+		t.Fatalf("expected pending approval to be finalized")
+	}
+	if !redacted {
+		t.Fatalf("expected wrong-target reaction to be redacted")
+	}
+
+	select {
+	case key := <-mirrorCh:
+		if key != ApprovalReactionKeyAllowOnce {
+			t.Fatalf("expected mirrored allow-once reaction, got %q", key)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("timed out waiting for mirrored approval reaction")
+	}
+}
+
+func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStatus(t *testing.T) {
+	owner := id.UserID("@owner:example.com")
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
+	login := &bridgev2.UserLogin{
+		UserLogin: &database.UserLogin{
+			ID:       networkid.UserLoginID("login"),
+			UserMXID: owner,
+		},
+		Bridge: &bridgev2.Bridge{},
+	}
+
+	var redacted bool
+	var (
+		statusEvt *event.Event
+		status    bridgev2.MessageStatus
+	)
+	flow := NewApprovalFlow(ApprovalFlowConfig[*testApprovalFlowData]{
+		Login: func() *bridgev2.UserLogin { return login },
+	})
+	flow.testRedactSingleReaction = func(_ *bridgev2.MatrixReaction) {
+		redacted = true
+	}
+	flow.testSendMessageStatus = func(_ context.Context, gotPortal *bridgev2.Portal, evt *event.Event, gotStatus bridgev2.MessageStatus) {
+		if gotPortal != portal {
+			t.Fatalf("expected status to target original portal")
+		}
+		statusEvt = evt
+		status = gotStatus
+	}
+
+	for _, approvalID := range []string{"approval-1", "approval-2"} {
+		if _, created := flow.Register(approvalID, time.Minute, &testApprovalFlowData{}); !created {
+			t.Fatalf("expected pending approval %s to be created", approvalID)
+		}
+	}
+	flow.mu.Lock()
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-1",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-1",
+		PromptEventID:   id.EventID("$prompt-1"),
+		PromptMessageID: networkid.MessageID("msg-1"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.registerPromptLocked(ApprovalPromptRegistration{
+		ApprovalID:      "approval-2",
+		RoomID:          roomID,
+		OwnerMXID:       owner,
+		ToolCallID:      "tool-2",
+		PromptEventID:   id.EventID("$prompt-2"),
+		PromptMessageID: networkid.MessageID("msg-2"),
+		Options:         DefaultApprovalOptions(),
+	})
+	flow.mu.Unlock()
+
+	msg := &bridgev2.MatrixReaction{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
+			Event:  &event.Event{ID: id.EventID("$reaction"), Sender: owner},
+			Portal: portal,
+		},
+	}
+	if !flow.HandleReaction(context.Background(), msg, id.EventID("$wrong-target"), ApprovalReactionKeyAllowOnce) {
+		t.Fatalf("expected ambiguous wrong-target approval reaction to be handled")
+	}
+	if !redacted {
+		t.Fatalf("expected ambiguous wrong-target reaction to be redacted")
+	}
+	if statusEvt == nil {
+		t.Fatalf("expected message status to be sent")
+	}
+	if statusEvt.ID != id.EventID("$reaction") {
+		t.Fatalf("expected message status for reaction event, got %q", statusEvt.ID)
+	}
+	if status.Status != event.MessageStatusFail {
+		t.Fatalf("expected failed message status, got %q", status.Status)
+	}
+	if status.ErrorReason != event.MessageStatusGenericError {
+		t.Fatalf("expected generic error reason, got %q", status.ErrorReason)
+	}
+	if status.Message != approvalWrongTargetMSSMessage {
+		t.Fatalf("unexpected message status text: %q", status.Message)
+	}
+	if !status.IsCertain {
+		t.Fatalf("expected message status to be certain")
+	}
+	if status.SendNotice {
+		t.Fatalf("did not expect message status to request a notice")
+	}
+	if flow.Get("approval-1") == nil || flow.Get("approval-2") == nil {
+		t.Fatalf("expected ambiguous approvals to remain pending")
+	}
+}
+
 func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")

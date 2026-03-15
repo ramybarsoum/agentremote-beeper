@@ -483,12 +483,14 @@ type ApprovalPromptRegistration struct {
 }
 
 type ApprovalPromptReactionMatch struct {
-	KnownPrompt   bool
-	ShouldResolve bool
-	ApprovalID    string
-	Decision      ApprovalDecisionPayload
-	RejectReason  string
-	Prompt        ApprovalPromptRegistration
+	KnownPrompt            bool
+	ShouldResolve          bool
+	ApprovalID             string
+	Decision               ApprovalDecisionPayload
+	RejectReason           string
+	Prompt                 ApprovalPromptRegistration
+	MirrorDecisionReaction bool
+	RedactResolvedReaction bool
 }
 
 func optionsToRaw(options []ApprovalOption) []map[string]any {
@@ -647,4 +649,9 @@ func normalizeReactionKey(key string) string {
 		return ""
 	}
 	return variationselector.Remove(key)
+}
+
+func isApprovalReactionKey(key string) bool {
+	key = normalizeReactionKey(key)
+	return strings.HasPrefix(key, "approval.")
 }

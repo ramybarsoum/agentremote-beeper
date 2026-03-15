@@ -21,6 +21,8 @@ type ApprovalReactionHandler interface {
 	HandleReaction(ctx context.Context, msg *bridgev2.MatrixReaction, targetEventID id.EventID, emoji string) bool
 }
 
+const approvalWrongTargetMSSMessage = "React to the approval notice message to respond."
+
 // ApprovalFlowConfig holds the bridge-specific callbacks for ApprovalFlow.
 type ApprovalFlowConfig[D any] struct {
 	// Login returns the current UserLogin. Required.
@@ -102,6 +104,7 @@ type ApprovalFlow[D any] struct {
 	testRedactPromptPlaceholderReacts func(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration) error
 	testMirrorRemoteDecisionReaction  func(ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, prompt ApprovalPromptRegistration, reactionKey string)
 	testRedactSingleReaction          func(msg *bridgev2.MatrixReaction)
+	testSendMessageStatus             func(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus)
 }
 
 // NewApprovalFlow creates an ApprovalFlow from the given config.
@@ -594,6 +597,122 @@ func (f *ApprovalFlow[D]) matchReaction(targetEventID id.EventID, sender id.User
 	return match
 }
 
+func (f *ApprovalFlow[D]) matchFallbackReaction(roomID id.RoomID, sender id.UserID, key string, now time.Time) ApprovalPromptReactionMatch {
+	roomID = id.RoomID(strings.TrimSpace(roomID.String()))
+	sender = id.UserID(strings.TrimSpace(sender.String()))
+	key = normalizeReactionKey(key)
+	if roomID == "" || sender == "" || key == "" {
+		return ApprovalPromptReactionMatch{}
+	}
+
+	var (
+		found      int
+		match      ApprovalPromptReactionMatch
+		expiredIDs []string
+	)
+
+	f.mu.Lock()
+	for approvalID, entry := range f.promptsByApproval {
+		if entry == nil || entry.RoomID != roomID {
+			continue
+		}
+		if _, ok := f.pending[approvalID]; !ok {
+			continue
+		}
+		if entry.OwnerMXID != "" && sender != entry.OwnerMXID {
+			continue
+		}
+		if !entry.ExpiresAt.IsZero() && !now.IsZero() && now.After(entry.ExpiresAt) {
+			expiredIDs = append(expiredIDs, approvalID)
+			continue
+		}
+
+		var decision ApprovalDecisionPayload
+		matched := false
+		for _, opt := range entry.Options {
+			for _, optKey := range opt.allKeys() {
+				if key != optKey {
+					continue
+				}
+				matched = true
+				decision = ApprovalDecisionPayload{
+					ApprovalID: entry.ApprovalID,
+					Approved:   opt.Approved,
+					Always:     opt.Always,
+					Reason:     opt.decisionReason(),
+				}
+				break
+			}
+			if matched {
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+
+		found++
+		if found > 1 {
+			match = ApprovalPromptReactionMatch{}
+			break
+		}
+		match = ApprovalPromptReactionMatch{
+			KnownPrompt:            true,
+			ShouldResolve:          true,
+			ApprovalID:             approvalID,
+			Decision:               decision,
+			Prompt:                 *entry,
+			MirrorDecisionReaction: true,
+			RedactResolvedReaction: true,
+		}
+	}
+	for _, approvalID := range expiredIDs {
+		f.dropPromptLocked(approvalID)
+	}
+	f.mu.Unlock()
+
+	if found == 1 {
+		return match
+	}
+	return ApprovalPromptReactionMatch{}
+}
+
+func (f *ApprovalFlow[D]) hasPendingApprovalForOwner(roomID id.RoomID, sender id.UserID, now time.Time) bool {
+	roomID = id.RoomID(strings.TrimSpace(roomID.String()))
+	sender = id.UserID(strings.TrimSpace(sender.String()))
+	if roomID == "" || sender == "" {
+		return false
+	}
+
+	var expiredIDs []string
+	hasPending := false
+
+	f.mu.Lock()
+	for approvalID, entry := range f.promptsByApproval {
+		if entry == nil || entry.RoomID != roomID {
+			continue
+		}
+		if _, ok := f.pending[approvalID]; !ok {
+			continue
+		}
+		if entry.OwnerMXID != "" && sender != entry.OwnerMXID {
+			continue
+		}
+		if !entry.ExpiresAt.IsZero() && !now.IsZero() && now.After(entry.ExpiresAt) {
+			expiredIDs = append(expiredIDs, approvalID)
+			continue
+		}
+		hasPending = true
+		break
+	}
+	for _, approvalID := range expiredIDs {
+		f.dropPromptLocked(approvalID)
+	}
+	f.mu.Unlock()
+
+	return hasPending
+}
+
 // SendPromptParams holds the parameters for sending an approval prompt.
 type SendPromptParams struct {
 	ApprovalPromptMessageParams
@@ -702,7 +821,20 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 	now := time.Now()
 	match := f.matchReaction(targetEventID, msg.Event.Sender, emoji, now)
 	if !match.KnownPrompt {
-		return false
+		match = f.matchFallbackReaction(msg.Portal.MXID, msg.Event.Sender, emoji, now)
+		if !match.KnownPrompt {
+			if isApprovalReactionKey(emoji) && f.hasPendingApprovalForOwner(msg.Portal.MXID, msg.Event.Sender, now) {
+				f.sendMessageStatus(ctx, msg.Portal, msg.Event, bridgev2.MessageStatus{
+					Status:      event.MessageStatusFail,
+					ErrorReason: event.MessageStatusGenericError,
+					Message:     approvalWrongTargetMSSMessage,
+					IsCertain:   true,
+				})
+				f.redactSingleReaction(msg)
+				return true
+			}
+			return false
+		}
 	}
 
 	if !match.ShouldResolve {
@@ -766,6 +898,12 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 	}
 
 	if resolved {
+		if match.RedactResolvedReaction {
+			f.redactSingleReaction(msg)
+		}
+		if match.MirrorDecisionReaction {
+			f.mirrorRemoteDecisionReaction(ctx, match.Prompt, match.Decision)
+		}
 		f.FinishResolved(approvalID, match.Decision)
 	}
 	return true
@@ -803,6 +941,14 @@ func (f *ApprovalFlow[D]) redactSingleReaction(msg *bridgev2.MatrixReaction) {
 		}
 		_ = RedactEventAsSender(ctx, login, portal, sender, triggerID)
 	}()
+}
+
+func (f *ApprovalFlow[D]) sendMessageStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus) {
+	if f.testSendMessageStatus != nil {
+		f.testSendMessageStatus(ctx, portal, evt, status)
+		return
+	}
+	SendMatrixMessageStatus(ctx, portal, evt, status)
 }
 
 func (f *ApprovalFlow[D]) senderOrEmpty(portal *bridgev2.Portal) bridgev2.EventSender {
