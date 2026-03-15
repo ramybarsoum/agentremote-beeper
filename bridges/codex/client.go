@@ -1965,22 +1965,30 @@ func buildMessageMetadata(state *streamingState, turnID string, model string, fi
 	if state != nil && strings.TrimSpace(state.currentModel) != "" {
 		model = state.currentModel
 	}
+	snapshot := bridgesdk.BuildTurnSnapshot(canonicalUIMessage, bridgesdk.TurnDataBuildOptions{
+		ID:             turnID,
+		Role:           "assistant",
+		Text:           state.accumulated.String(),
+		Reasoning:      state.reasoning.String(),
+		ToolCalls:      state.toolCalls,
+		GeneratedFiles: agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
+	}, "codex")
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
-			Body:               state.accumulated.String(),
-			FinishReason:       finishReason,
-			TurnID:             turnID,
-			AgentID:            state.agentID,
-			ToolCalls:          state.toolCalls,
-			StartedAtMs:        state.startedAtMs,
-			CompletedAtMs:      state.completedAtMs,
-			CanonicalSchema:    "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: canonicalUIMessage,
-			GeneratedFiles:     agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
-			ThinkingContent:    state.reasoning.String(),
-			PromptTokens:       state.promptTokens,
-			CompletionTokens:   state.completionTokens,
-			ReasoningTokens:    state.reasoningTokens,
+			Body:                snapshot.Body,
+			FinishReason:        finishReason,
+			TurnID:              turnID,
+			AgentID:             state.agentID,
+			ToolCalls:           snapshot.ToolCalls,
+			StartedAtMs:         state.startedAtMs,
+			CompletedAtMs:       state.completedAtMs,
+			CanonicalTurnSchema: bridgesdk.CanonicalTurnDataSchemaV1,
+			CanonicalTurnData:   snapshot.TurnData.ToMap(),
+			GeneratedFiles:      snapshot.GeneratedFiles,
+			ThinkingContent:     snapshot.ThinkingContent,
+			PromptTokens:        state.promptTokens,
+			CompletionTokens:    state.completionTokens,
+			ReasoningTokens:     state.reasoningTokens,
 		}),
 		AssistantMessageMetadata: agentremote.AssistantMessageMetadata{
 			Model:              model,

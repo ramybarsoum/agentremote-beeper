@@ -5,26 +5,22 @@ import "github.com/beeper/agentremote/pkg/shared/citations"
 // BaseMessageMetadata contains fields common to all bridge MessageMetadata structs.
 // Embed this in each bridge's MessageMetadata to share CopyFrom logic.
 type BaseMessageMetadata struct {
-	Role                    string             `json:"role,omitempty"`
-	Body                    string             `json:"body,omitempty"`
-	FinishReason            string             `json:"finish_reason,omitempty"`
-	PromptTokens            int64              `json:"prompt_tokens,omitempty"`
-	CompletionTokens        int64              `json:"completion_tokens,omitempty"`
-	ReasoningTokens         int64              `json:"reasoning_tokens,omitempty"`
-	TurnID                  string             `json:"turn_id,omitempty"`
-	AgentID                 string             `json:"agent_id,omitempty"`
-	CanonicalPromptSchema   string             `json:"canonical_prompt_schema,omitempty"`
-	CanonicalPromptMessages []map[string]any   `json:"canonical_prompt_messages,omitempty"`
-	CanonicalTurnSchema     string             `json:"canonical_turn_schema,omitempty"`
-	CanonicalTurnData       map[string]any     `json:"canonical_turn_data,omitempty"`
-	CanonicalSchema         string             `json:"canonical_schema,omitempty"`
-	CanonicalUIMessage      map[string]any     `json:"canonical_ui_message,omitempty"`
-	StartedAtMs             int64              `json:"started_at_ms,omitempty"`
-	CompletedAtMs           int64              `json:"completed_at_ms,omitempty"`
-	ThinkingContent         string             `json:"thinking_content,omitempty"`
-	ToolCalls               []ToolCallMetadata `json:"tool_calls,omitempty"`
-	GeneratedFiles          []GeneratedFileRef `json:"generated_files,omitempty"`
-	ExcludeFromHistory      bool               `json:"exclude_from_history,omitempty"`
+	Role                string             `json:"role,omitempty"`
+	Body                string             `json:"body,omitempty"`
+	FinishReason        string             `json:"finish_reason,omitempty"`
+	PromptTokens        int64              `json:"prompt_tokens,omitempty"`
+	CompletionTokens    int64              `json:"completion_tokens,omitempty"`
+	ReasoningTokens     int64              `json:"reasoning_tokens,omitempty"`
+	TurnID              string             `json:"turn_id,omitempty"`
+	AgentID             string             `json:"agent_id,omitempty"`
+	CanonicalTurnSchema string             `json:"canonical_turn_schema,omitempty"`
+	CanonicalTurnData   map[string]any     `json:"canonical_turn_data,omitempty"`
+	StartedAtMs         int64              `json:"started_at_ms,omitempty"`
+	CompletedAtMs       int64              `json:"completed_at_ms,omitempty"`
+	ThinkingContent     string             `json:"thinking_content,omitempty"`
+	ToolCalls           []ToolCallMetadata `json:"tool_calls,omitempty"`
+	GeneratedFiles      []GeneratedFileRef `json:"generated_files,omitempty"`
+	ExcludeFromHistory  bool               `json:"exclude_from_history,omitempty"`
 }
 
 // AssistantMessageMetadata contains fields common to assistant messages across
@@ -92,26 +88,11 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 	if src.AgentID != "" {
 		b.AgentID = src.AgentID
 	}
-	if src.CanonicalPromptSchema != "" {
-		b.CanonicalPromptSchema = src.CanonicalPromptSchema
-	}
-	if len(src.CanonicalPromptMessages) > 0 {
-		b.CanonicalPromptMessages = make([]map[string]any, len(src.CanonicalPromptMessages))
-		for i, msg := range src.CanonicalPromptMessages {
-			b.CanonicalPromptMessages[i] = cloneJSONMap(msg)
-		}
-	}
 	if src.CanonicalTurnSchema != "" {
 		b.CanonicalTurnSchema = src.CanonicalTurnSchema
 	}
 	if len(src.CanonicalTurnData) > 0 {
 		b.CanonicalTurnData = cloneJSONMap(src.CanonicalTurnData)
-	}
-	if src.CanonicalSchema != "" {
-		b.CanonicalSchema = src.CanonicalSchema
-	}
-	if len(src.CanonicalUIMessage) > 0 {
-		b.CanonicalUIMessage = cloneJSONMap(src.CanonicalUIMessage)
 	}
 	if src.StartedAtMs != 0 {
 		b.StartedAtMs = src.StartedAtMs
@@ -225,28 +206,20 @@ func GeneratedFileRefsFromParts(parts []citations.GeneratedFilePart) []Generated
 // an assistant message's BaseMessageMetadata. Each bridge extracts these from
 // its own streamingState type and passes them here.
 type AssistantMetadataParams struct {
-	Body             string
-	FinishReason     string
-	TurnID           string
-	AgentID          string
-	StartedAtMs      int64
-	CompletedAtMs    int64
-	ThinkingContent  string
-	PromptTokens     int64
-	CompletionTokens int64
-	ReasoningTokens  int64
-	ToolCalls        []ToolCallMetadata
-	GeneratedFiles   []GeneratedFileRef
-
-	// Canonical prompt schema (used by the main AI bridge).
-	CanonicalPromptSchema   string
-	CanonicalPromptMessages []map[string]any
-	CanonicalTurnSchema     string
-	CanonicalTurnData       map[string]any
-
-	// Canonical UI message schema (used by codex, opencode).
-	CanonicalSchema    string
-	CanonicalUIMessage map[string]any
+	Body                string
+	FinishReason        string
+	TurnID              string
+	AgentID             string
+	StartedAtMs         int64
+	CompletedAtMs       int64
+	ThinkingContent     string
+	PromptTokens        int64
+	CompletionTokens    int64
+	ReasoningTokens     int64
+	ToolCalls           []ToolCallMetadata
+	GeneratedFiles      []GeneratedFileRef
+	CanonicalTurnSchema string
+	CanonicalTurnData   map[string]any
 }
 
 // BuildAssistantBaseMetadata constructs a BaseMessageMetadata for an assistant
@@ -254,24 +227,20 @@ type AssistantMetadataParams struct {
 // logic shared across bridge saveAssistantMessage implementations.
 func BuildAssistantBaseMetadata(p AssistantMetadataParams) BaseMessageMetadata {
 	return BaseMessageMetadata{
-		Role:                    "assistant",
-		Body:                    p.Body,
-		FinishReason:            p.FinishReason,
-		TurnID:                  p.TurnID,
-		AgentID:                 p.AgentID,
-		ToolCalls:               p.ToolCalls,
-		StartedAtMs:             p.StartedAtMs,
-		CompletedAtMs:           p.CompletedAtMs,
-		GeneratedFiles:          p.GeneratedFiles,
-		ThinkingContent:         p.ThinkingContent,
-		PromptTokens:            p.PromptTokens,
-		CompletionTokens:        p.CompletionTokens,
-		ReasoningTokens:         p.ReasoningTokens,
-		CanonicalPromptSchema:   p.CanonicalPromptSchema,
-		CanonicalPromptMessages: p.CanonicalPromptMessages,
-		CanonicalTurnSchema:     p.CanonicalTurnSchema,
-		CanonicalTurnData:       p.CanonicalTurnData,
-		CanonicalSchema:         p.CanonicalSchema,
-		CanonicalUIMessage:      p.CanonicalUIMessage,
+		Role:                "assistant",
+		Body:                p.Body,
+		FinishReason:        p.FinishReason,
+		TurnID:              p.TurnID,
+		AgentID:             p.AgentID,
+		ToolCalls:           p.ToolCalls,
+		StartedAtMs:         p.StartedAtMs,
+		CompletedAtMs:       p.CompletedAtMs,
+		GeneratedFiles:      p.GeneratedFiles,
+		ThinkingContent:     p.ThinkingContent,
+		PromptTokens:        p.PromptTokens,
+		CompletionTokens:    p.CompletionTokens,
+		ReasoningTokens:     p.ReasoningTokens,
+		CanonicalTurnSchema: p.CanonicalTurnSchema,
+		CanonicalTurnData:   p.CanonicalTurnData,
 	}
 }

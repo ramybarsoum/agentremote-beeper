@@ -274,7 +274,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		},
 		Timestamp: agentremote.MatrixEventTimestamp(msg.Event),
 	}
-	setCanonicalPromptMessages(userMessage.Metadata.(*MessageMetadata), canonicalPromptTail(promptContext, 1))
+	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 	}
@@ -618,7 +618,7 @@ func (oc *AIClient) handleMediaMessage(
 			},
 			Timestamp: agentremote.MatrixEventTimestamp(msg.Event),
 		}
-		setCanonicalPromptMessages(userMessage.Metadata.(*MessageMetadata), canonicalPromptTail(promptContext, 1))
+		setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
 		if msg.InputTransactionID != "" {
 			userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 		}
@@ -755,7 +755,7 @@ func (oc *AIClient) handleMediaMessage(
 		userMeta.MediaUnderstandingDecisions = understanding.Decisions
 		userMeta.Transcript = understanding.Transcript
 	}
-	setCanonicalPromptMessages(userMeta, canonicalPromptTail(promptContext, 1))
+	setCanonicalTurnDataFromPromptMessages(userMeta, promptTail(promptContext, 1))
 
 	userMessage := &database.Message{
 		ID:        agentremote.MatrixMessageID(eventID),
@@ -909,7 +909,7 @@ func (oc *AIClient) handleTextFileMessage(
 		},
 		Timestamp: agentremote.MatrixEventTimestamp(msg.Event),
 	}
-	setCanonicalPromptMessages(userMessage.Metadata.(*MessageMetadata), canonicalPromptTail(promptContext, 1))
+	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
 	if msg.InputTransactionID != "" {
 		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
 	}

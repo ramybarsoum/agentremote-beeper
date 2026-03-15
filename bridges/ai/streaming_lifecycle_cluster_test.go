@@ -54,8 +54,8 @@ func TestBuildStreamingMessageMetadataHandlesNilTurn(t *testing.T) {
 	if meta.TurnID != "" {
 		t.Fatalf("expected empty turn id, got %q", meta.TurnID)
 	}
-	if len(meta.CanonicalUIMessage) != 0 {
-		t.Fatalf("expected no canonical UI message without a turn, got %#v", meta.CanonicalUIMessage)
+	if len(meta.CanonicalTurnData) != 0 {
+		t.Fatalf("expected no canonical turn data without a turn, got %#v", meta.CanonicalTurnData)
 	}
 }
 

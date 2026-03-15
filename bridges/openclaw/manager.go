@@ -29,6 +29,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"github.com/beeper/agentremote/pkg/shared/openclawconv"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 type openClawManager struct {
@@ -98,8 +99,6 @@ func newOpenClawManager(client *OpenClawClient) *openClawManager {
 				BaseMessageMetadata: agentremote.BaseMessageMetadata{
 					Role:               "assistant",
 					ExcludeFromHistory: true,
-					CanonicalSchema:    "ai-sdk-ui-message-v1",
-					CanonicalUIMessage: prompt.UIMessage,
 				},
 			}
 		},
@@ -738,20 +737,26 @@ func (m *openClawManager) convertHistoryMessage(ctx context.Context, portal *bri
 	})
 	parts[0].DBMetadata = buildOpenClawHistoryMessageMetadata(message, meta, role, agentID, text, attachmentBlocks, uiMetadata, uiMessage)
 	parts[0].Extra[matrixevents.BeeperAIKey] = uiMessage
-	parts[0].DBMetadata.(*MessageMetadata).CanonicalSchema = "ai-sdk-ui-message-v1"
-	parts[0].DBMetadata.(*MessageMetadata).CanonicalUIMessage = uiMessage
 	return &bridgev2.ConvertedMessage{Parts: parts}, sender, messageID
 }
 
 func buildOpenClawHistoryMessageMetadata(message map[string]any, meta *PortalMetadata, role, agentID, text string, attachmentBlocks []map[string]any, uiMetadata, uiMessage map[string]any) *MessageMetadata {
+	snapshot := bridgesdk.BuildTurnSnapshot(uiMessage, bridgesdk.TurnDataBuildOptions{
+		ID:       strings.TrimSpace(stringValue(uiMetadata["turn_id"])),
+		Role:     strings.TrimSpace(role),
+		Text:     strings.TrimSpace(text),
+		Metadata: jsonutil.DeepCloneMap(uiMetadata),
+	}, "openclaw")
 	metadata := &MessageMetadata{
 		BaseMessageMetadata: agentremote.BaseMessageMetadata{
-			Role:            role,
-			Body:            text,
-			AgentID:         agentID,
-			ThinkingContent: agentremote.CanonicalReasoningText(agentremote.NormalizeUIParts(uiMessage["parts"])),
-			ToolCalls:       agentremote.CanonicalToolCalls(agentremote.NormalizeUIParts(uiMessage["parts"]), "openclaw"),
-			GeneratedFiles:  agentremote.CanonicalGeneratedFiles(agentremote.NormalizeUIParts(uiMessage["parts"])),
+			Role:                role,
+			Body:                snapshot.Body,
+			AgentID:             agentID,
+			CanonicalTurnSchema: bridgesdk.CanonicalTurnDataSchemaV1,
+			CanonicalTurnData:   snapshot.TurnData.ToMap(),
+			ThinkingContent:     snapshot.ThinkingContent,
+			ToolCalls:           snapshot.ToolCalls,
+			GeneratedFiles:      snapshot.GeneratedFiles,
 		},
 		SessionID:   meta.OpenClawSessionID,
 		SessionKey:  meta.OpenClawSessionKey,
@@ -2035,7 +2040,7 @@ func openClawHistoryFallbackText(uiParts []map[string]any) string {
 			if text := strings.TrimSpace(stringValue(part["text"])); text != "" {
 				return text
 			}
-		case "dynamic-tool":
+		case "dynamic-tool", "tool":
 			toolName := strings.TrimSpace(openclawconv.StringsTrimDefault(stringValue(part["toolName"]), "tool"))
 			switch strings.TrimSpace(stringValue(part["state"])) {
 			case "approval-requested":

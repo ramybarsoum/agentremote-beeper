@@ -4,6 +4,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/beeper/agentremote"
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 type MessageMetadata struct {
@@ -48,24 +49,38 @@ type MessageMetadataParams struct {
 }
 
 func buildMessageMetadataFromParams(p MessageMetadataParams) *MessageMetadata {
-	parts := agentremote.NormalizeUIParts(p.UIMessage["parts"])
+	snapshot := bridgesdk.BuildTurnSnapshot(p.UIMessage, bridgesdk.TurnDataBuildOptions{
+		ID:   p.TurnID,
+		Role: p.Role,
+		Text: p.Body,
+		Metadata: map[string]any{
+			"turn_id":           p.TurnID,
+			"agent_id":          p.AgentID,
+			"finish_reason":     p.FinishReason,
+			"prompt_tokens":     p.PromptTokens,
+			"completion_tokens": p.CompletionTokens,
+			"reasoning_tokens":  p.ReasoningTokens,
+			"started_at_ms":     p.StartedAtMs,
+			"completed_at_ms":   p.CompletedAtMs,
+		},
+	}, "opencode")
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BaseMessageMetadata{
-			Role:               p.Role,
-			Body:               p.Body,
-			FinishReason:       p.FinishReason,
-			PromptTokens:       p.PromptTokens,
-			CompletionTokens:   p.CompletionTokens,
-			ReasoningTokens:    p.ReasoningTokens,
-			TurnID:             p.TurnID,
-			AgentID:            p.AgentID,
-			CanonicalSchema:    "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: p.UIMessage,
-			StartedAtMs:        p.StartedAtMs,
-			CompletedAtMs:      p.CompletedAtMs,
-			ThinkingContent:    agentremote.CanonicalReasoningText(parts),
-			ToolCalls:          agentremote.CanonicalToolCalls(parts, "opencode"),
-			GeneratedFiles:     agentremote.CanonicalGeneratedFiles(parts),
+			Role:                p.Role,
+			Body:                snapshot.Body,
+			FinishReason:        p.FinishReason,
+			PromptTokens:        p.PromptTokens,
+			CompletionTokens:    p.CompletionTokens,
+			ReasoningTokens:     p.ReasoningTokens,
+			TurnID:              p.TurnID,
+			AgentID:             p.AgentID,
+			CanonicalTurnSchema: bridgesdk.CanonicalTurnDataSchemaV1,
+			CanonicalTurnData:   snapshot.TurnData.ToMap(),
+			StartedAtMs:         p.StartedAtMs,
+			CompletedAtMs:       p.CompletedAtMs,
+			ThinkingContent:     snapshot.ThinkingContent,
+			ToolCalls:           snapshot.ToolCalls,
+			GeneratedFiles:      snapshot.GeneratedFiles,
 		},
 		SessionID:       p.SessionID,
 		MessageID:       p.MessageID,

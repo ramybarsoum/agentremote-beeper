@@ -349,7 +349,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		},
 		Timestamp: time.Now(),
 	}
-	setCanonicalPromptMessages(userMessage.Metadata.(*MessageMetadata), canonicalPromptTail(promptContext, 1))
+	setCanonicalTurnDataFromPromptMessages(userMessage.Metadata.(*MessageMetadata), promptTail(promptContext, 1))
 	ensureCanonicalUserMessage(userMessage)
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving subagent task message")

@@ -26,31 +26,46 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 	if len(uiMessage) == 0 && turn != nil {
 		uiMessage = oc.buildStreamUIMessage(state, meta, nil)
 	}
-	turnData := sdk.TurnData{}
+	snapshot := sdk.TurnSnapshot{}
 	if turn != nil {
-		turnData = turnDataFromStreamingState(state, uiMessage)
+		snapshot = sdk.SnapshotFromTurnData(buildCanonicalTurnData(state, meta, nil), "ai")
+	} else {
+		snapshot = sdk.BuildTurnSnapshot(uiMessage, sdk.TurnDataBuildOptions{
+			ID:             turnID,
+			Role:           "assistant",
+			Text:           displayStreamingText(state),
+			Reasoning:      state.reasoning.String(),
+			ToolCalls:      state.toolCalls,
+			GeneratedFiles: agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
+		}, "ai")
+		if len(uiMessage) == 0 {
+			snapshot.UIMessage = nil
+			snapshot.TurnData = sdk.TurnData{}
+		}
 	}
 	modelID := oc.effectiveModel(meta)
+	canonicalTurnSchema := ""
+	canonicalTurnData := map[string]any(nil)
+	if len(snapshot.TurnData.ToMap()) > 0 {
+		canonicalTurnSchema = sdk.CanonicalTurnDataSchemaV1
+		canonicalTurnData = snapshot.TurnData.ToMap()
+	}
 	return &MessageMetadata{
 		BaseMessageMetadata: agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
-			Body:                    state.accumulated.String(),
-			FinishReason:            state.finishReason,
-			TurnID:                  turnID,
-			AgentID:                 state.agentID,
-			ToolCalls:               state.toolCalls,
-			StartedAtMs:             state.startedAtMs,
-			CompletedAtMs:           state.completedAtMs,
-			CanonicalPromptSchema:   canonicalPromptSchemaV1,
-			CanonicalPromptMessages: encodePromptMessages(assistantPromptMessagesFromState(state)),
-			GeneratedFiles:          agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
-			ThinkingContent:         state.reasoning.String(),
-			PromptTokens:            state.promptTokens,
-			CompletionTokens:        state.completionTokens,
-			ReasoningTokens:         state.reasoningTokens,
-			CanonicalTurnSchema:     sdk.CanonicalTurnDataSchemaV1,
-			CanonicalTurnData:       turnData.ToMap(),
-			CanonicalSchema:         "com.beeper.ai.message",
-			CanonicalUIMessage:      uiMessage,
+			Body:                snapshot.Body,
+			FinishReason:        state.finishReason,
+			TurnID:              turnID,
+			AgentID:             state.agentID,
+			ToolCalls:           snapshot.ToolCalls,
+			StartedAtMs:         state.startedAtMs,
+			CompletedAtMs:       state.completedAtMs,
+			GeneratedFiles:      snapshot.GeneratedFiles,
+			ThinkingContent:     snapshot.ThinkingContent,
+			PromptTokens:        state.promptTokens,
+			CompletionTokens:    state.completionTokens,
+			ReasoningTokens:     state.reasoningTokens,
+			CanonicalTurnSchema: canonicalTurnSchema,
+			CanonicalTurnData:   canonicalTurnData,
 		}),
 		AssistantMessageMetadata: agentremote.AssistantMessageMetadata{
 			CompletionID:       state.responseID,

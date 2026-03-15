@@ -104,8 +104,16 @@ func TurnDataFromUIMessage(uiMessage map[string]any) (TurnData, bool) {
 		Metadata: jsonutil.DeepCloneMap(jsonutil.ToMap(uiMessage["metadata"])),
 		Extra:    extraFields(uiMessage, "id", "role", "metadata", "parts"),
 	}
-	partsRaw, ok := uiMessage["parts"].([]any)
-	if !ok {
+	var partsRaw []any
+	switch typed := uiMessage["parts"].(type) {
+	case []any:
+		partsRaw = typed
+	case []map[string]any:
+		partsRaw = make([]any, 0, len(typed))
+		for _, part := range typed {
+			partsRaw = append(partsRaw, part)
+		}
+	default:
 		return td, td.Role != "" || td.ID != ""
 	}
 	td.Parts = make([]TurnPart, 0, len(partsRaw))
@@ -115,7 +123,7 @@ func TurnDataFromUIMessage(uiMessage map[string]any) (TurnData, bool) {
 			continue
 		}
 		part := TurnPart{
-			Type:       stringValue(partMap["type"]),
+			Type:       normalizeTurnPartType(stringValue(partMap["type"])),
 			State:      stringValue(partMap["state"]),
 			Text:       stringValue(partMap["text"]),
 			Reasoning:  stringValue(partMap["reasoning"]),
@@ -138,6 +146,15 @@ func TurnDataFromUIMessage(uiMessage map[string]any) (TurnData, bool) {
 		td.Parts = append(td.Parts, part)
 	}
 	return td, td.Role != "" || td.ID != "" || len(td.Parts) > 0
+}
+
+func normalizeTurnPartType(partType string) string {
+	switch partType {
+	case "dynamic-tool":
+		return "tool"
+	default:
+		return partType
+	}
 }
 
 // UIMessageFromTurnData projects canonical turn data into an AI SDK UIMessage

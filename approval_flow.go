@@ -652,8 +652,6 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 	} else {
 		dbMeta = &BaseMessageMetadata{
 			Role:               "assistant",
-			CanonicalSchema:    "ai-sdk-ui-message-v1",
-			CanonicalUIMessage: prompt.UIMessage,
 			ExcludeFromHistory: true,
 		}
 	}

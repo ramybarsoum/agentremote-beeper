@@ -189,7 +189,7 @@ func projectAssistantOpenClawMessage(meta *MessageMetadata, msg *database.Messag
 }
 
 func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []openClawToolCall) {
-	if messages := canonicalPromptMessages(meta); len(messages) > 0 {
+	if messages := promptMessagesFromMetadata(meta); len(messages) > 0 {
 		content := make([]map[string]any, 0, len(messages))
 		calls := make([]openClawToolCall, 0, len(messages))
 		toolCallByID := make(map[string]ToolCallMetadata, len(meta.ToolCalls))
@@ -252,91 +252,7 @@ func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []o
 		}
 	}
 
-	partsRaw, ok := meta.CanonicalUIMessage["parts"]
-	if !ok {
-		return nil, nil
-	}
-	parts, ok := partsRaw.([]any)
-	if !ok {
-		return nil, nil
-	}
-	content := make([]map[string]any, 0, len(parts))
-	calls := make([]openClawToolCall, 0, len(parts))
-	toolCallByID := make(map[string]ToolCallMetadata, len(meta.ToolCalls))
-	for _, tc := range meta.ToolCalls {
-		callID := strings.TrimSpace(tc.CallID)
-		if callID != "" {
-			toolCallByID[callID] = tc
-		}
-	}
-
-	for idx, raw := range parts {
-		part, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		partType := strings.TrimSpace(toString(part["type"]))
-		switch partType {
-		case "text":
-			text := toString(part["text"])
-			content = append(content, map[string]any{
-				"type": "text",
-				"text": text,
-			})
-		case "dynamic-tool":
-			callID := strings.TrimSpace(toString(part["toolCallId"]))
-			if callID == "" {
-				callID = fmt.Sprintf("call_part_%d", idx)
-			}
-			toolName := strings.TrimSpace(toString(part["toolName"]))
-			if toolName == "" {
-				toolName = "unknown_tool"
-			}
-			args := jsonutil.ToMap(part["input"])
-			if args == nil {
-				args = map[string]any{}
-			}
-			content = append(content, map[string]any{
-				"type":      "toolCall",
-				"id":        callID,
-				"name":      toolName,
-				"arguments": args,
-			})
-			call := openClawToolCall{
-				ID:    callID,
-				Name:  toolName,
-				Input: args,
-			}
-			if tc, found := toolCallByID[callID]; found {
-				call.Output = tc.Output
-				call.ResultStatus = tc.ResultStatus
-				call.ErrorMessage = tc.ErrorMessage
-				call.CallEventID = tc.CallEventID
-				call.ResultEventID = tc.ResultEventID
-				if call.Name == "unknown_tool" && strings.TrimSpace(tc.ToolName) != "" {
-					call.Name = tc.ToolName
-				}
-				if len(call.Input) == 0 && tc.Input != nil {
-					call.Input = tc.Input
-				}
-			} else {
-				call.Output = jsonutil.ToMap(part["output"])
-				state := strings.TrimSpace(toString(part["state"]))
-				if state == "output-denied" {
-					call.ResultStatus = string(ResultStatusDenied)
-					call.ErrorMessage = strings.TrimSpace(toString(part["errorText"]))
-				} else if strings.HasPrefix(state, "output-error") {
-					call.ResultStatus = string(ResultStatusError)
-					call.ErrorMessage = strings.TrimSpace(toString(part["errorText"]))
-				} else if strings.HasPrefix(state, "output-") {
-					call.ResultStatus = string(ResultStatusSuccess)
-				}
-			}
-			calls = append(calls, call)
-		}
-	}
-
-	return content, calls
+	return nil, nil
 }
 
 func projectToolResultOpenClawMessage(call openClawToolCall, msg *database.Message, index int) map[string]any {

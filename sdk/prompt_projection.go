@@ -79,7 +79,7 @@ func PromptMessagesFromTurnData(td TurnData) []PromptMessage {
 	case "user":
 		msg := PromptMessage{Role: PromptRoleUser}
 		for _, part := range td.Parts {
-			switch part.Type {
+			switch normalizeTurnPartType(part.Type) {
 			case "text":
 				if strings.TrimSpace(part.Text) != "" {
 					msg.Blocks = append(msg.Blocks, PromptBlock{Type: PromptBlockText, Text: part.Text})
@@ -131,7 +131,7 @@ func PromptMessagesFromTurnData(td TurnData) []PromptMessage {
 		assistant := PromptMessage{Role: PromptRoleAssistant}
 		var results []PromptMessage
 		for _, part := range td.Parts {
-			switch part.Type {
+			switch normalizeTurnPartType(part.Type) {
 			case "text":
 				if strings.TrimSpace(part.Text) != "" {
 					assistant.Blocks = append(assistant.Blocks, PromptBlock{Type: PromptBlockText, Text: part.Text})

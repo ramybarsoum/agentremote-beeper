@@ -9,6 +9,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestStripOpenClawToolResults(t *testing.T) {
@@ -104,21 +105,22 @@ func TestBuildOpenClawSessionMessagesFromCanonical(t *testing.T) {
 		Timestamp: time.UnixMilli(1730000000000),
 		Metadata: &MessageMetadata{
 			BaseMessageMetadata: agentremote.BaseMessageMetadata{
-				Role:            "assistant",
-				CanonicalSchema: "ai-sdk-ui-message-v1",
-				CanonicalUIMessage: map[string]any{
-					"parts": []any{
-						map[string]any{"type": "text", "text": "hello"},
-						map[string]any{
-							"type":       "dynamic-tool",
-							"toolCallId": "call_1",
-							"toolName":   "web_search",
-							"input":      map[string]any{"q": "matrix"},
-							"state":      "output-available",
-							"output":     map[string]any{"result": "ok"},
+				Role:                "assistant",
+				CanonicalTurnSchema: sdk.CanonicalTurnDataSchemaV1,
+				CanonicalTurnData: sdk.TurnData{
+					Role: "assistant",
+					Parts: []sdk.TurnPart{
+						{Type: "text", Text: "hello"},
+						{
+							Type:       "tool",
+							ToolCallID: "call_1",
+							ToolName:   "web_search",
+							Input:      map[string]any{"q": "matrix"},
+							State:      "output-available",
+							Output:     map[string]any{"result": "ok"},
 						},
 					},
-				},
+				}.ToMap(),
 				ToolCalls: []ToolCallMetadata{
 					{
 						CallID:        "call_1",

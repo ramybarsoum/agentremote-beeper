@@ -14,7 +14,7 @@ func (oc *AIClient) historyMessageBundle(
 	if msgMeta == nil {
 		return nil
 	}
-	if canonical := filterPromptMessagesForHistory(canonicalPromptMessages(msgMeta), injectImages); len(canonical) > 0 {
+	if canonical := filterPromptMessagesForHistory(promptMessagesFromMetadata(msgMeta), injectImages); len(canonical) > 0 {
 		if injectImages && len(msgMeta.GeneratedFiles) > 0 {
 			if generated := oc.generatedImagesHistoryMessage(ctx, msgMeta.GeneratedFiles); len(generated.Blocks) > 0 {
 				return append(canonical, generated)

@@ -206,8 +206,7 @@ func shouldIncludeInHistory(meta *MessageMetadata) bool {
 	if meta.Role != "user" && meta.Role != "assistant" {
 		return false
 	}
-	return len(meta.CanonicalPromptMessages) > 0 ||
-		len(meta.CanonicalTurnData) > 0 ||
+	return len(meta.CanonicalTurnData) > 0 ||
 		strings.TrimSpace(meta.Body) != "" ||
 		len(meta.ToolCalls) > 0 ||
 		strings.TrimSpace(meta.MediaURL) != "" ||

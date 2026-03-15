@@ -4,9 +4,10 @@ import "testing"
 
 func TestCopyFromBaseDeepCopiesNestedJSON(t *testing.T) {
 	src := &BaseMessageMetadata{
-		CanonicalUIMessage: map[string]any{
+		CanonicalTurnData: map[string]any{
 			"parts": []any{
 				map[string]any{
+					"type": "text",
 					"text": "hello",
 					"meta": map[string]any{"lang": "en"},
 				},
@@ -28,12 +29,12 @@ func TestCopyFromBaseDeepCopiesNestedJSON(t *testing.T) {
 	var dst BaseMessageMetadata
 	dst.CopyFromBase(src)
 
-	src.CanonicalUIMessage["parts"].([]any)[0].(map[string]any)["text"] = "changed"
-	src.CanonicalUIMessage["parts"].([]any)[0].(map[string]any)["meta"].(map[string]any)["lang"] = "fr"
+	src.CanonicalTurnData["parts"].([]any)[0].(map[string]any)["text"] = "changed"
+	src.CanonicalTurnData["parts"].([]any)[0].(map[string]any)["meta"].(map[string]any)["lang"] = "fr"
 	src.ToolCalls[0].Input["items"].([]any)[0].(map[string]any)["name"] = "after"
 	src.ToolCalls[0].Output["result"].(map[string]any)["value"] = "after"
 
-	part := dst.CanonicalUIMessage["parts"].([]any)[0].(map[string]any)
+	part := dst.CanonicalTurnData["parts"].([]any)[0].(map[string]any)
 	if got := part["text"]; got != "hello" {
 		t.Fatalf("expected canonical text to remain deep-copied, got %v", got)
 	}
