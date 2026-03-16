@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"unicode"
@@ -31,26 +32,10 @@ func visibleStreamingText(state *streamingState) string {
 	if state == nil {
 		return ""
 	}
-	if state.turn != nil {
-		if text := state.turn.VisibleText(); text != "" {
-			return text
-		}
-	}
-	uiMessage := streamui.SnapshotUIMessage(currentStreamingUIState(state))
-	if len(uiMessage) == 0 {
+	if state.turn == nil {
 		return ""
 	}
-	td, ok := sdk.TurnDataFromUIMessage(uiMessage)
-	if !ok {
-		return ""
-	}
-	var visible strings.Builder
-	for _, part := range td.Parts {
-		if part.Type == "text" {
-			visible.WriteString(part.Text)
-		}
-	}
-	return visible.String()
+	return state.turn.VisibleText()
 }
 
 func displayStreamingText(state *streamingState) string {
@@ -67,17 +52,12 @@ func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMe
 	td := buildCanonicalTurnData(state, meta, nil)
 	metadata := td.Metadata
 	if !includeUsage && len(metadata) > 0 {
-		metadata = map[string]any{
-			"turn_id":           metadata["turn_id"],
-			"agent_id":          metadata["agent_id"],
-			"model":             metadata["model"],
-			"finish_reason":     metadata["finish_reason"],
-			"response_id":       metadata["response_id"],
-			"response_status":   metadata["response_status"],
-			"started_at_ms":     metadata["started_at_ms"],
-			"first_token_at_ms": metadata["first_token_at_ms"],
-			"completed_at_ms":   metadata["completed_at_ms"],
-		}
+		metadata = maps.Clone(metadata)
+		delete(metadata, "usage")
+		delete(metadata, "prompt_tokens")
+		delete(metadata, "completion_tokens")
+		delete(metadata, "reasoning_tokens")
+		delete(metadata, "total_tokens")
 	}
 	return metadata
 }

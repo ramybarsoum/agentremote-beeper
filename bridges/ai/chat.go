@@ -354,6 +354,12 @@ func (oc *AIClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 
 	if catalogAgent, err := oc.sdkAgentCatalog().ResolveAgent(ctx, oc.UserLogin, id); err == nil && catalogAgent != nil {
 		agentID := catalogAgentID(catalogAgent)
+		if agentID == "" {
+			if resp := oc.agentContactResponse(ctx, catalogAgent); resp != nil {
+				return resp, nil
+			}
+			return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", id), mautrix.MNotFound)
+		}
 		agent, resolveErr := NewAgentStoreAdapter(oc).GetAgentByID(ctx, agentID)
 		if resolveErr == nil && agent != nil {
 			return oc.resolveAgentIdentifier(ctx, agent, "", createChat)

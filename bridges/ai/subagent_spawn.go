@@ -244,7 +244,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}), nil
 	}
 
-	defaultSubagents := (*agentconfig.SubagentConfig)(nil)
+	var defaultSubagents *agentconfig.SubagentConfig
 	if oc.connector != nil && oc.connector.Config.Agents != nil && oc.connector.Config.Agents.Defaults != nil {
 		defaultSubagents = oc.connector.Config.Agents.Defaults.Subagents
 	}

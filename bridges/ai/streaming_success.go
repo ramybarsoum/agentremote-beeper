@@ -24,10 +24,15 @@ func (oc *AIClient) completeStreamingSuccess(
 	if state.responseStatus == "" && state.responseID != "" {
 		state.responseStatus = canonicalResponseStatus(state)
 	}
+	_ = log
 	oc.finalizeStreamingReplyAccumulator(state)
-	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
-	state.writer().MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
-	state.turn.End(msgconv.MapFinishReason(state.finishReason))
+	oc.persistTerminalAssistantTurn(ctx, portal, state, meta)
+	if writer := state.writer(); writer != nil {
+		writer.MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
+	}
+	if state != nil && state.turn != nil {
+		state.turn.End(msgconv.MapFinishReason(state.finishReason))
+	}
 	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)
 	oc.maybeGenerateTitle(ctx, portal, finalRenderedBodyFallback(state))
 	oc.recordProviderSuccess(ctx)

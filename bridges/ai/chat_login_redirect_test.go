@@ -68,9 +68,12 @@ func TestResolveModelIDFromManifestAcceptsEncodedModelIDViaCandidates(t *testing
 	if !slices.Contains(candidates, canonical) {
 		t.Fatalf("expected decoded model candidate in %#v", candidates)
 	}
-	if got := resolveModelIDFromManifest(canonical); got != canonical {
-		t.Fatalf("expected canonical candidate %q to resolve via manifest, got %q", canonical, got)
+	for _, candidate := range candidates {
+		if got := resolveModelIDFromManifest(candidate); got == canonical {
+			return
+		}
 	}
+	t.Fatalf("expected one of %#v to resolve to canonical model %q", candidates, canonical)
 }
 
 func TestCandidateModelLookupIDsRejectsMalformedEncoding(t *testing.T) {

@@ -18,7 +18,7 @@ func (oc *AIClient) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.Mat
 }
 
 func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
-	if msg == nil || msg.Event == nil || msg.Portal == nil {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
 		return &database.Reaction{}, nil
 	}
 	if agentremote.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
@@ -54,7 +54,7 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 }
 
 func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
-	if msg == nil || msg.Event == nil || msg.Portal == nil || msg.TargetReaction == nil {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || msg == nil || msg.Event == nil || msg.Portal == nil || msg.TargetReaction == nil {
 		return nil
 	}
 	if agentremote.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {

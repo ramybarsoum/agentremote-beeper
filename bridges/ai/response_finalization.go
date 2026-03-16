@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -568,7 +567,7 @@ func finalRenderedBodyFallback(state *streamingState) string {
 	return "..."
 }
 
-func (oc *AIClient) persistTerminalAssistantTurn(ctx context.Context, _ zerolog.Logger, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
+func (oc *AIClient) persistTerminalAssistantTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
 	if state == nil {
 		return
 	}

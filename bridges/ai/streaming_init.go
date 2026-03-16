@@ -62,9 +62,6 @@ func (oc *AIClient) createStreamingTurn(
 
 	// Use bridges/ai's debounced edit with directive-processed visible text.
 	turn.SetDebouncedEditFunc(func(callCtx context.Context, force bool) error {
-		if oc == nil || state == nil || portal == nil {
-			return nil
-		}
 		return agentremote.SendDebouncedStreamEdit(agentremote.SendDebouncedStreamEditParams{
 			Login:            oc.UserLogin,
 			Portal:           portal,

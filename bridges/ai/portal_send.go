@@ -97,6 +97,9 @@ func (oc *AIClient) redactViaPortal(
 	portal *bridgev2.Portal,
 	targetMsgID networkid.MessageID,
 ) error {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return fmt.Errorf("bridge unavailable")
+	}
 	if portal == nil || portal.MXID == "" {
 		return fmt.Errorf("invalid portal")
 	}

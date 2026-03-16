@@ -125,6 +125,7 @@ func TestBuildApprovalResponsePromptMessage_ContainsDecision(t *testing.T) {
 
 func TestApprovalFlow_MatchReactionOwnerOnly(t *testing.T) {
 	flow := NewApprovalFlow(ApprovalFlowConfig[any]{})
+	t.Cleanup(flow.Close)
 	expires := time.Now().Add(time.Minute)
 
 	flow.mu.Lock()

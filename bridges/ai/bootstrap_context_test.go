@@ -115,10 +115,10 @@ func TestBootstrapFileIsOptionalAndAutoDeleted(t *testing.T) {
 	files := oc.buildBootstrapContextFiles(ctx, agentID, nil)
 	for _, file := range files {
 		if strings.EqualFold(file.Path, agents.DefaultBootstrapFilename) {
+			if strings.Contains(file.Content, "[MISSING]") {
+				t.Fatalf("expected no missing placeholder for BOOTSTRAP.md")
+			}
 			t.Fatalf("expected BOOTSTRAP.md to not be injected after auto-delete, but it was present")
-		}
-		if strings.EqualFold(file.Path, agents.DefaultBootstrapFilename) && strings.Contains(file.Content, "[MISSING]") {
-			t.Fatalf("expected no missing placeholder for BOOTSTRAP.md")
 		}
 	}
 

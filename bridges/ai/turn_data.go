@@ -16,11 +16,19 @@ func canonicalTurnData(meta *MessageMetadata) (sdk.TurnData, bool) {
 }
 
 func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any) sdk.TurnData {
+	turnID := ""
+	networkMessageID := ""
+	initialEventID := ""
+	if state != nil && state.turn != nil {
+		turnID = state.turn.ID()
+		networkMessageID = string(state.turn.NetworkMessageID())
+		initialEventID = state.turn.InitialEventID().String()
+	}
 	return sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
-		ID:   state.turn.ID(),
+		ID:   turnID,
 		Role: "assistant",
 		Metadata: map[string]any{
-			"turn_id":             state.turn.ID(),
+			"turn_id":             turnID,
 			"finish_reason":       state.finishReason,
 			"prompt_tokens":       state.promptTokens,
 			"completion_tokens":   state.completionTokens,
@@ -30,8 +38,8 @@ func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any)
 			"started_at_ms":       state.startedAtMs,
 			"completed_at_ms":     state.completedAtMs,
 			"first_token_at_ms":   state.firstTokenAtMs,
-			"network_message_id":  state.turn.NetworkMessageID(),
-			"initial_event_id":    state.turn.InitialEventID(),
+			"network_message_id":  networkMessageID,
+			"initial_event_id":    initialEventID,
 			"source_event_id":     state.sourceEventID(),
 			"generated_file_refs": agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
 		},
@@ -96,12 +104,16 @@ func buildTurnDataMetadata(state *streamingState, meta *PortalMetadata) map[stri
 	if state == nil {
 		return nil
 	}
+	turnID := ""
+	if state.turn != nil {
+		turnID = state.turn.ID()
+	}
 	modelID := ""
 	if meta != nil && meta.ResolvedTarget != nil {
 		modelID = strings.TrimSpace(meta.ResolvedTarget.ModelID)
 	}
 	return map[string]any{
-		"turn_id":           state.turn.ID(),
+		"turn_id":           turnID,
 		"agent_id":          state.agentID,
 		"model":             modelID,
 		"finish_reason":     state.finishReason,

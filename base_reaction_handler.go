@@ -27,7 +27,7 @@ func (h BaseReactionHandler) PreHandleMatrixReaction(_ context.Context, msg *bri
 }
 
 func (h BaseReactionHandler) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
-	if msg == nil || msg.Event == nil || msg.Portal == nil {
+	if h.Target == nil || msg == nil || msg.Event == nil || msg.Portal == nil {
 		return &database.Reaction{}, nil
 	}
 	login := h.Target.GetUserLogin()
@@ -51,7 +51,14 @@ func (h BaseReactionHandler) HandleMatrixReaction(ctx context.Context, msg *brid
 }
 
 func (h BaseReactionHandler) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
-	if handler, ok := h.Target.GetApprovalHandler().(ApprovalReactionRemoveHandler); ok {
+	if h.Target == nil || msg == nil {
+		return nil
+	}
+	approvalHandler := h.Target.GetApprovalHandler()
+	if approvalHandler == nil {
+		return nil
+	}
+	if handler, ok := approvalHandler.(ApprovalReactionRemoveHandler); ok {
 		handler.HandleReactionRemove(ctx, msg)
 	}
 	return nil

@@ -42,13 +42,20 @@ func (oc *AIClient) finishStreamingWithFailure(
 ) error {
 	state.finishReason = reason
 	state.completedAtMs = time.Now().UnixMilli()
-	oc.persistTerminalAssistantTurn(ctx, log, portal, state, meta)
-	state.writer().MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
+	_ = log
+	oc.persistTerminalAssistantTurn(ctx, portal, state, meta)
+	if writer := state.writer(); writer != nil {
+		writer.MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
+	}
 	if reason == "cancelled" {
 		state.writer().Abort(ctx, "cancelled")
-		state.turn.End(msgconv.MapFinishReason(reason))
+		if state != nil && state.turn != nil {
+			state.turn.End(msgconv.MapFinishReason(reason))
+		}
 	} else {
-		state.turn.EndWithError(err.Error())
+		if state != nil && state.turn != nil {
+			state.turn.EndWithError(err.Error())
+		}
 	}
 	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)
 	return streamFailureError(state, err)

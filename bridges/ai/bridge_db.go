@@ -1,11 +1,22 @@
 package ai
 
 import (
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/aidb"
 )
+
+func newBridgeChildDB(parent *dbutil.Database, log zerolog.Logger) *dbutil.Database {
+	if parent == nil {
+		return nil
+	}
+	return aidb.NewChild(
+		parent,
+		dbutil.ZeroLogger(log.With().Str("db_section", "agentremote").Logger()),
+	)
+}
 
 func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {
 	if oc == nil {
@@ -15,10 +26,7 @@ func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {
 		return oc.db
 	}
 	if oc.br != nil && oc.br.DB != nil {
-		oc.db = aidb.NewChild(
-			oc.br.DB.Database,
-			dbutil.ZeroLogger(oc.br.Log.With().Str("db_section", "agentremote").Logger()),
-		)
+		oc.db = newBridgeChildDB(oc.br.DB.Database, oc.br.Log)
 		return oc.db
 	}
 	return nil
@@ -34,7 +42,7 @@ func (oc *AIClient) bridgeDB() *dbutil.Database {
 		}
 	}
 	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
-		return aidb.NewChild(oc.UserLogin.Bridge.DB.Database, dbutil.NoopLogger)
+		return newBridgeChildDB(oc.UserLogin.Bridge.DB.Database, oc.log)
 	}
 	return nil
 }
@@ -49,7 +57,7 @@ func bridgeDBFromLogin(login *bridgev2.UserLogin) *dbutil.Database {
 		}
 	}
 	if login.Bridge != nil && login.Bridge.DB != nil {
-		return aidb.NewChild(login.Bridge.DB.Database, dbutil.NoopLogger)
+		return newBridgeChildDB(login.Bridge.DB.Database, login.Log)
 	}
 	return nil
 }

@@ -365,10 +365,11 @@ func (s *schedulerRuntime) executeCronJob(ctx context.Context, record *scheduled
 	preview := truncateSchedulePreview(body)
 	if record.Job.Delivery != nil && record.Job.Delivery.Mode == integrationcron.DeliveryAnnounce {
 		target := s.resolveCronDeliveryTarget(record.Job.AgentID, record.Job.Delivery)
-		if target.Portal == nil || strings.TrimSpace(target.RoomID) == "" {
+		portal, ok := target.Portal.(*bridgev2.Portal)
+		if !ok || portal == nil || strings.TrimSpace(target.RoomID) == "" {
 			return "skipped", "delivery target unavailable", preview
 		}
-		if err := s.client.sendPlainAssistantMessage(runCtx, target.Portal.(*bridgev2.Portal), body); err != nil {
+		if err := s.client.sendPlainAssistantMessage(runCtx, portal, body); err != nil {
 			return "error", err.Error(), preview
 		}
 	}

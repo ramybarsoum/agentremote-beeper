@@ -13,7 +13,7 @@ import (
 )
 
 func (oc *AIClient) sendReaction(ctx context.Context, portal *bridgev2.Portal, targetEventID id.EventID, emoji string) {
-	if portal == nil || portal.MXID == "" || targetEventID == "" || emoji == "" {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.ID == "" || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || portal == nil || portal.MXID == "" || targetEventID == "" || emoji == "" {
 		return
 	}
 

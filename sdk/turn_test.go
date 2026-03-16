@@ -106,6 +106,7 @@ func TestTurnRequestApprovalWaitsForResolvedDecision(t *testing.T) {
 			Login: func() *bridgev2.UserLogin { return nil },
 		}),
 	}
+	t.Cleanup(runtime.approval.Close)
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			MXID: "!room:test",
@@ -161,6 +162,7 @@ func TestTurnRequestApprovalUsesProvidedApprovalID(t *testing.T) {
 			Login: func() *bridgev2.UserLogin { return nil },
 		}),
 	}
+	t.Cleanup(runtime.approval.Close)
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			MXID: "!room:test",
