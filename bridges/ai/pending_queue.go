@@ -187,6 +187,22 @@ func (oc *AIClient) takeQueueSummary(roomID id.RoomID, noun string) string {
 	return buildQueueSummaryPrompt(queue, noun)
 }
 
+func (oc *AIClient) consumeQueueSummary(roomID id.RoomID, noun string) string {
+	oc.pendingQueuesMu.Lock()
+	defer oc.pendingQueuesMu.Unlock()
+	queue := oc.pendingQueues[roomID]
+	if queue == nil || queue.droppedCount == 0 {
+		return ""
+	}
+	summary := buildQueueSummaryPrompt(queue, noun)
+	queue.droppedCount = 0
+	queue.summaryLines = nil
+	if len(queue.items) == 0 {
+		delete(oc.pendingQueues, roomID)
+	}
+	return summary
+}
+
 func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly bool) (*pendingQueueDispatchCandidate, *pendingQueue) {
 	snapshot := oc.getQueueSnapshot(roomID)
 	if snapshot == nil || (len(snapshot.items) == 0 && snapshot.droppedCount == 0) {
@@ -214,7 +230,7 @@ func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly
 		}
 		summary := ""
 		if snapshot.droppedCount > 0 {
-			summary = oc.takeQueueSummary(roomID, "message")
+			summary = oc.consumeQueueSummary(roomID, "message")
 		}
 		items := oc.popQueueItems(roomID, count)
 		for idx := range items {
@@ -239,7 +255,7 @@ func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly
 		}
 		return &pendingQueueDispatchCandidate{
 			items:         []pendingQueueItem{item},
-			summaryPrompt: oc.takeQueueSummary(roomID, "message"),
+			summaryPrompt: oc.consumeQueueSummary(roomID, "message"),
 			synthetic:     true,
 		}, snapshot
 	}
