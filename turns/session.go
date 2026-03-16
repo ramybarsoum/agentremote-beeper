@@ -15,14 +15,6 @@ import (
 	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
-type StreamEventState struct {
-	TurnID        string
-	SuppressSend  bool
-	LoggedStart   *bool
-	EnsureSession func() *StreamSession
-	Logger        *zerolog.Logger
-}
-
 const (
 	// Fixed debounce interval for fallback post+edit streaming.
 	debounceInterval = 200 * time.Millisecond

@@ -307,51 +307,6 @@ func (m *OpenCodeManager) persistInstance(ctx context.Context, inst *openCodeIns
 	}
 }
 
-func (m *OpenCodeManager) RemoveInstance(ctx context.Context, instanceID string) error {
-	if m == nil || m.bridge == nil || m.bridge.host == nil {
-		return errors.New("opencode manager unavailable")
-	}
-	id := strings.TrimSpace(instanceID)
-	if id == "" {
-		return errors.New("instance id is required")
-	}
-
-	m.mu.RLock()
-	inst := m.instances[id]
-	m.mu.RUnlock()
-
-	if inst != nil {
-		m.cleanupInstancePortals(ctx, inst)
-	}
-
-	hadInstance := false
-	m.mu.Lock()
-	if inst := m.instances[id]; inst != nil {
-		hadInstance = true
-		inst.cancelAndStopTimer()
-		if inst.process != nil {
-			_ = inst.process.Close()
-		}
-		delete(m.instances, id)
-	}
-	m.mu.Unlock()
-
-	meta := m.bridge.host.OpenCodeInstances()
-	if meta != nil {
-		if _, ok := meta[id]; ok {
-			hadInstance = true
-		}
-		delete(meta, id)
-		if len(meta) == 0 {
-			meta = nil
-		}
-	}
-	if !hadInstance {
-		return ErrInstanceNotFound
-	}
-	return m.bridge.host.SaveOpenCodeInstances(ctx, meta)
-}
-
 func (m *OpenCodeManager) EnsureManagedInstance(ctx context.Context, launcherID, workingDir string) (*openCodeInstance, error) {
 	if m == nil || m.bridge == nil || m.bridge.host == nil {
 		return nil, errors.New("opencode manager unavailable")
@@ -395,24 +350,6 @@ func (m *OpenCodeManager) EnsureManagedInstance(ctx context.Context, launcherID,
 		return nil, err
 	}
 	return inst, nil
-}
-
-func (m *OpenCodeManager) cleanupInstancePortals(ctx context.Context, inst *openCodeInstance) {
-	portals, err := m.bridge.listAllChatPortals(ctx)
-	if err != nil {
-		m.log().Warn().Err(err).Msg("Failed to list portals for cleanup")
-		return
-	}
-	for _, portal := range portals {
-		meta := m.bridge.portalMeta(portal)
-		if meta == nil || !meta.IsOpenCodeRoom || meta.InstanceID != inst.cfg.ID {
-			continue
-		}
-		if err := inst.client.DeleteSession(ctx, meta.SessionID); err != nil {
-			m.log().Warn().Err(err).Str("session", meta.SessionID).Msg("Failed to delete OpenCode session during cleanup")
-		}
-		m.bridge.host.CleanupPortal(ctx, portal, "opencode instance removed")
-	}
 }
 
 func (m *OpenCodeManager) requireConnectedInstance(instanceID string) (*openCodeInstance, error) {

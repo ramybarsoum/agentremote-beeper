@@ -120,8 +120,7 @@ func (b *Bridge) DisconnectAll() {
 }
 
 var (
-	ErrUnavailable      = bridgeError("OpenCode integration is not available")
-	ErrInstanceNotFound = bridgeError("OpenCode instance not found")
+	ErrUnavailable = bridgeError("OpenCode integration is not available")
 )
 
 type bridgeError string

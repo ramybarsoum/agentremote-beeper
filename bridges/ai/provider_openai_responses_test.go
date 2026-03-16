@@ -5,8 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	bridgesdk "github.com/beeper/agentremote/sdk"
 	"go.mau.fi/util/ptr"
+
+	bridgesdk "github.com/beeper/agentremote/sdk"
 )
 
 func TestGenerateStreamRejectsUnsupportedResponsesPromptContext(t *testing.T) {

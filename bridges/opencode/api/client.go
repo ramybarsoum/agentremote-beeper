@@ -269,18 +269,6 @@ func (c *Client) RespondPermission(ctx context.Context, sessionID, permissionID,
 	return c.do(req, nil)
 }
 
-func (c *Client) ReplyQuestion(ctx context.Context, requestID string, answers [][]string) error {
-	if strings.TrimSpace(requestID) == "" {
-		return errors.New("question request id is required")
-	}
-	path := fmt.Sprintf("/question/%s/reply", url.PathEscape(requestID))
-	req, err := c.newRequest(ctx, http.MethodPost, path, map[string]any{"answers": answers})
-	if err != nil {
-		return err
-	}
-	return c.do(req, nil)
-}
-
 func (c *Client) RejectQuestion(ctx context.Context, requestID string) error {
 	if strings.TrimSpace(requestID) == "" {
 		return errors.New("question request id is required")
