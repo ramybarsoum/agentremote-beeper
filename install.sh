@@ -53,7 +53,7 @@ resolve_latest_version() {
 		fail "curl or wget is required"
 	fi
 
-	version="$(printf '%s' "$response" | tr -d '\n' | sed -n 's/.*"tag_name":"\([^"]*\)".*/\1/p')"
+	version="$(printf '%s' "$response" | tr -d '\n' | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
 	if [ -z "$version" ]; then
 		fail "failed to resolve the latest release tag for $OWNER/$REPO"
 	fi
