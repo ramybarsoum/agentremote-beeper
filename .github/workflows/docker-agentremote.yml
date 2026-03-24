@@ -23,7 +23,7 @@ jobs:
         include:
           - runs_on: ubuntu-latest
             target: amd64
-          - runs_on: ubuntu-arm64
+          - runs_on: ubuntu-24.04-arm
             target: arm64
     name: build-agentremote-docker (${{ matrix.target }})
 
