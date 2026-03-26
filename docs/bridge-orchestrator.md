@@ -5,8 +5,10 @@
 It wraps:
 
 ```bash
-go run ./cmd/agentremote ...
+go run -tags goolm ./cmd/agentremote ...
 ```
+
+Set `AGENTREMOTE_CRYPTO_BACKEND=libolm` to opt back into the native `libolm` backend for source builds.
 
 ## Authentication
 
