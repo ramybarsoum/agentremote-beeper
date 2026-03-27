@@ -10,6 +10,7 @@ import (
 const (
 	serviceOpenAI     = "openai"
 	serviceOpenRouter = "openrouter"
+	serviceGemini     = "gemini"
 	serviceExa        = "exa"
 )
 
@@ -27,29 +28,6 @@ type ServiceConfigMap map[string]ServiceConfig
 
 func trimToken(value string) string {
 	return strings.TrimSpace(value)
-}
-
-func normalizeBeeperBaseURL(raw string) string {
-	base := strings.TrimSpace(raw)
-	if base == "" {
-		return ""
-	}
-	if !strings.Contains(base, "://") {
-		base = "https://" + base
-	}
-	parsed, err := url.Parse(base)
-	if err != nil {
-		return ""
-	}
-	host := strings.TrimRight(parsed.Host, "/")
-	if host == "" {
-		return ""
-	}
-	scheme := parsed.Scheme
-	if scheme == "" {
-		scheme = "https"
-	}
-	return scheme + "://" + host + beeperBasePath
 }
 
 func normalizeProxyBaseURL(raw string) string {
@@ -123,16 +101,12 @@ func (oc *OpenAIConnector) resolveProxyRoot(meta *UserLoginMetadata) string {
 	if oc == nil {
 		return ""
 	}
-	if meta != nil && meta.Provider == ProviderMagicProxy {
+	if meta != nil {
 		if raw := strings.TrimSpace(meta.BaseURL); raw != "" {
 			return normalizeProxyBaseURL(raw)
 		}
 	}
-	raw := strings.TrimSpace(oc.resolveManagedBeeperAuth().BaseURL)
-	if raw == "" && meta != nil {
-		raw = strings.TrimSpace(meta.BaseURL)
-	}
-	return normalizeProxyBaseURL(raw)
+	return ""
 }
 
 func (oc *OpenAIConnector) resolveExaProxyBaseURL(meta *UserLoginMetadata) string {
@@ -159,51 +133,9 @@ func (oc *OpenAIConnector) resolveOpenRouterBaseURL() string {
 	return strings.TrimRight(base, "/")
 }
 
-func (oc *OpenAIConnector) resolveBeeperBaseURL(meta *UserLoginMetadata) string {
-	if meta != nil {
-		base := normalizeBeeperBaseURL(meta.BaseURL)
-		if base != "" {
-			return base
-		}
-	}
-	return oc.resolveManagedBeeperAuth().BaseURL
-}
-
-func (oc *OpenAIConnector) resolveBeeperToken(meta *UserLoginMetadata) string {
-	if meta != nil {
-		if key := trimToken(meta.APIKey); key != "" {
-			return key
-		}
-	}
-	return oc.resolveManagedBeeperAuth().Token
-}
-
 func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) ServiceConfigMap {
 	services := ServiceConfigMap{}
 	if meta == nil {
-		return services
-	}
-
-	if meta.Provider == ProviderBeeper {
-		base := oc.resolveBeeperBaseURL(meta)
-		if base != "" {
-			base = strings.TrimRight(base, "/")
-			token := oc.resolveBeeperToken(meta)
-			services[serviceOpenRouter] = ServiceConfig{
-				BaseURL: base + "/openrouter/v1",
-				APIKey:  token,
-			}
-			services[serviceOpenAI] = ServiceConfig{
-				BaseURL: base + "/openai/v1",
-				APIKey:  token,
-			}
-		}
-		if proxyBase := oc.resolveExaProxyBaseURL(meta); proxyBase != "" {
-			services[serviceExa] = ServiceConfig{
-				BaseURL: proxyBase,
-				APIKey:  oc.resolveBeeperToken(meta),
-			}
-		}
 		return services
 	}
 
@@ -217,6 +149,10 @@ func (oc *OpenAIConnector) resolveServiceConfig(meta *UserLoginMetadata) Service
 			}
 			services[serviceOpenAI] = ServiceConfig{
 				BaseURL: joinProxyPath(base, "/openai/v1"),
+				APIKey:  token,
+			}
+			services[serviceGemini] = ServiceConfig{
+				BaseURL: joinProxyPath(base, "/gemini/v1beta"),
 				APIKey:  token,
 			}
 			services[serviceExa] = ServiceConfig{
@@ -246,8 +182,6 @@ func (oc *OpenAIConnector) resolveProviderAPIKey(meta *UserLoginMetadata) string
 		return ""
 	}
 	switch meta.Provider {
-	case ProviderBeeper:
-		return oc.resolveBeeperToken(meta)
 	case ProviderMagicProxy:
 		if key := trimToken(meta.APIKey); key != "" {
 			return key
@@ -324,10 +258,6 @@ func loginTokenForService(meta *UserLoginMetadata, service string) string {
 	if meta == nil {
 		return ""
 	}
-	if meta.Provider == ProviderBeeper {
-		return trimToken(meta.APIKey)
-	}
-
 	switch service {
 	case serviceOpenAI:
 		if meta.Provider == ProviderOpenAI {
